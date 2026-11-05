@@ -382,7 +382,8 @@ Airflow 3.3 (`airflow/tests`).
 Phase 0 spikes:
 
 - `python-oracledb` thin-mode `fetch_df_all` and `mssql-python` `cursor.arrow()`
-  against one real source each, measured;
+  against one real source each, over the company network with TLS (already run
+  against local Oracle 23 Free and SQL Server 2022 containers; see section 14);
 - Airflow 3: the UI link format (`/dags/<dag_id>/runs/<run_id>` is assumed),
   the trigger request body, and API tokens in all-admins mode;
 - a Claude Code managed deny rule that matches `.env` in every project;
@@ -404,12 +405,17 @@ Built and verified in this repository on 2026-11-04:
   `ctzd ci smoke`, which also caught a page that raises;
 - the Helm chart linted and rendered with `ctzd ci render` output;
 - the factory DAG loaded by Airflow 3.3.2 with the Kubernetes provider 10.25;
-- the job-spec publisher run against a local git repository.
+- the job-spec publisher run against a local git repository;
+- `ctzd.query` against Oracle 23 Free (thin mode) and SQL Server 2022 in local
+  containers (`scripts/driver-spike.sh`): 200,000 rows in 0.18 s and 0.09 s,
+  named binds on both, decimals as float64, dates as datetime64, nulls kept.
+  Oracle reports unquoted column names in upper case, so `ctzd.query`
+  lower-cases them, as SQLAlchemy does.
 
 Written but not yet run against real systems: the platform API's GitHub,
 Jenkins, Airflow, Kubernetes, and Key Vault clients; the Jenkins library and
-jobs; the device-flow login; the Oracle and SQL Server drivers; `install.ps1`
-and MinGit on Windows.
+jobs; the device-flow login; the drivers over the company network; the store on
+ADLS; `install.ps1` and MinGit on Windows.
 
 ## 15. Open items
 

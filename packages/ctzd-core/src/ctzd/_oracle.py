@@ -14,8 +14,13 @@ _CONNECT_TIMEOUT_SECONDS = 15.0
 _CALL_TIMEOUT_MS = 10 * 60 * 1000  # per round trip
 
 
+def _column_name(name: str) -> str:
+    """Oracle reports unquoted identifiers in upper case; lower-case those, as SQLAlchemy does. Quoted mixed-case names stay."""
+    return name.lower() if name.isupper() else name
+
+
 def fetch(source: OracleSource, sql: str, params: Mapping[str, object]) -> pd.DataFrame:
     with oracledb.connect(user=source.user, password=source.password.get_secret_value(), dsn=source.dsn, tcp_connect_timeout=_CONNECT_TIMEOUT_SECONDS) as connection:
         connection.call_timeout = _CALL_TIMEOUT_MS
-        frame = connection.fetch_df_all(statement=sql, parameters=dict(params) or None, arraysize=_ARRAYSIZE)
-        return to_pandas(frame)
+        frame = to_pandas(connection.fetch_df_all(statement=sql, parameters=dict(params) or None, arraysize=_ARRAYSIZE))
+    return frame.rename(columns=_column_name)
