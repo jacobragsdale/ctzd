@@ -6,6 +6,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol
 
+from pydantic import ValidationError
+
 from ctzd_cli import api_client, appconfig, assets, auth, checks, config, gitops, proc, release, render, scaffold, setup_checks, sync
 from ctzd_cli import api_models as m
 from ctzd_cli.appconfig import AppConfig, AppSection, Job, SourcesSection, Ui
@@ -184,7 +186,7 @@ def dev(ctx: Context, *, port: int, run: Callable[[list[str], Path, dict[str, st
     return Outcome(summary=f"The local dashboard stopped (exit {code}).", data={"url": f"http://localhost:{port}", "exit_code": code}, ok=code == 0)
 
 
-def run_job(ctx: Context, *, job: str, local: bool) -> Outcome:
+def run_job(ctx: Context, *, job: str, local: bool, wait: bool, timeout: float) -> Outcome:
     root, app = _app(ctx)
     app.job(job)
     if local:
@@ -192,16 +194,39 @@ def run_job(ctx: Context, *, job: str, local: bool) -> Outcome:
         return Outcome(
             summary=f"Job {job} {'finished' if result.ok else 'failed'} locally (exit {result.code}).", data={"exit_code": result.code, "output": proc.tail(result.output, 40)}, ok=result.ok
         )
-    created = ctx.platform_factory().run_job(app.app.sbu, app.app.name, job)
-    return Outcome(summary=f"Started job {job} in Airflow.", data=created.model_dump(), next_steps=[f"Follow the run at {created.url}."])
+    platform = ctx.platform_factory()
+    created = platform.run_job(app.app.sbu, app.app.name, job)
+    if not wait:
+        return Outcome(summary=f"Started job {job} in Airflow.", data=created.model_dump(), next_steps=[f"Follow the run at {created.url}, or run `ctzd run {job} --wait`."])
+    deadline = ctx.clock() + timeout
+    state = platform.job_run(app.app.sbu, app.app.name, job, created.run_id)
+    while state.state in {"queued", "running"} and ctx.clock() < deadline:
+        ctx.sleep(_POLL_SECONDS)
+        state = platform.job_run(app.app.sbu, app.app.name, job, created.run_id)
+    if state.state == "failed":
+        return Outcome(summary=f"Job {job} failed in Airflow.", data=state.model_dump(), next_steps=[f"Read `ctzd logs --job {job}`, fix the cause, deploy, and run it again."], ok=False)
+    finished = state.state == "success"
+    return Outcome(
+        summary=f"Job {job} {'finished' if finished else 'is still ' + state.state} in Airflow.", data=state.model_dump(), next_steps=[] if finished else [f"Follow the run at {state.url}."]
+    )
+
+
+def sources(ctx: Context) -> Outcome:
+    found = ctx.platform_factory().sources().sources
+    return Outcome(
+        summary="Sources: " + ", ".join(found) if found else "No sources are configured yet.",
+        data={"sources": list(found)},
+        next_steps=["Add the ones the app reads to [sources].use in app.toml, then run `ctzd env`."],
+    )
 
 
 def add_job(ctx: Context, *, name: str, schedule: str, size: appconfig.Size) -> Outcome:
     root, _app_config = _app(ctx)
     try:
         job = Job(name=name, schedule=schedule, size=size)
-    except ValueError as err:
-        raise UsageError(str(err)) from None
+    except ValidationError as err:
+        problems = "; ".join(str(error["msg"]).removeprefix("Value error, ") for error in err.errors(include_url=False))
+        raise UsageError(problems) from None
     appconfig.add_job(root, job)
     files = scaffold.add_job_files(root, job)
     return Outcome(
@@ -253,25 +278,29 @@ def wait_for_build(ctx: Context, platform: api_client.Platform, app: AppConfig, 
     return build
 
 
+def _save_screenshot(root: Path, platform: api_client.Platform, app: AppConfig, build: m.Build) -> str | None:
+    if not build.has_screenshot or build.number is None:
+        return None
+    shots = root / SCREENSHOTS
+    shots.mkdir(parents=True, exist_ok=True)
+    shot = shots / (f"v{build.release}.png" if build.release is not None else f"build-{build.number}.png")
+    shot.write_bytes(platform.screenshot(app.app.sbu, app.app.name, build.number))
+    return str(shot)
+
+
 def _build_outcome(root: Path, platform: api_client.Platform, app: AppConfig, commit: str, build: m.Build) -> Outcome:
-    data: dict[str, object] = {"commit": commit, "build": build.model_dump()}
+    data: dict[str, object] = {"commit": commit, "build": build.model_dump(), "screenshot": _save_screenshot(root, platform, app, build)}
     if build.state == "failed":
         return Outcome(
             summary=f"The deploy failed at {build.stage or 'an unknown step'}. Production still runs the previous release.",
             data=data,
-            next_steps=["Read build.log_tail, fix the cause, then run `ctzd deploy` again.", "See the ctzd-troubleshoot skill."],
+            next_steps=["Read build.log_tail (and the screenshot, if there is one), fix the cause, then run `ctzd deploy` again.", "See the ctzd-troubleshoot skill."],
             ok=False,
         )
     if build.state != "succeeded":
         return Outcome(summary=f"The build is still {build.state}.", data=data, next_steps=["Run `ctzd status --wait` to keep waiting."])
     status = platform.status(app.app.sbu, app.app.name)
     data |= {"release": build.release, "url": status.url if app.app.ui != "none" else None, "dags": status.dags}
-    if build.has_screenshot and build.number is not None:
-        shots = root / SCREENSHOTS
-        shots.mkdir(parents=True, exist_ok=True)
-        shot = shots / f"v{build.release}.png"
-        shot.write_bytes(platform.screenshot(app.app.sbu, app.app.name, build.number))
-        data["screenshot"] = str(shot)
     where = status.url if app.app.ui != "none" else ", ".join(status.dags.values()) or "Airflow"
     return Outcome(summary=f"Release v{build.release} is live: {where}", data=data)
 

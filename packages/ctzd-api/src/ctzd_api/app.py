@@ -101,6 +101,14 @@ def create_app(services: Services) -> FastAPI:
     def run_job(login: Login, sbu: str, name: str, job: str) -> m.JobRunCreated:
         return service.run_job(services, login, AppRef(sbu, name), job)
 
+    @api.get("/v1/apps/{sbu}/{name}/jobs/{job}/runs/{run_id}")
+    def job_run(login: Login, sbu: str, name: str, job: str, run_id: str) -> m.JobRunState:
+        return service.job_run(services, login, AppRef(sbu, name), job, run_id)
+
+    @api.get("/v1/sources")
+    def sources(_login: Login) -> m.SourceList:
+        return service.sources(services)
+
     @api.get("/v1/apps/{sbu}/{name}/logs")
     def logs(login: Login, sbu: str, name: str, tail: int = 200, job: str | None = None) -> m.LogText:
         return service.logs(services, login, AppRef(sbu, name), job=job, tail=max(1, min(tail, 5_000)))

@@ -90,7 +90,11 @@ class Git:
         conflicts = self.run("diff", "--name-only", "--diff-filter=U", check=False).output.split()
         self.run("rebase", "--abort", check=False)
         msg = "Someone else changed this app and their changes conflict with yours."
-        raise CliError(msg, hint=f"Conflicting files: {', '.join(conflicts) or 'unknown'}. Run `git pull --rebase`, resolve the conflicts, then deploy again.")
+        hint = (
+            f"Conflicting files: {', '.join(conflicts) or 'unknown'}. Their changes are already fetched: run "
+            f"`git rebase {REMOTE}/{BRANCH}`, resolve each conflict, `git add` the files, `git rebase --continue`, then `ctzd deploy` again."
+        )
+        raise CliError(msg, hint=hint)
 
     def push_main(self) -> None:
         self.run("push", "--quiet", REMOTE, f"HEAD:refs/heads/{BRANCH}")

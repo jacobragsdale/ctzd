@@ -27,6 +27,8 @@ if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
     Remove-Item $zip
 }
 Add-UserPath $Bin
+# `ctzd setup` unpacks a private git here when the laptop has none; agents may need it for a merge conflict.
+Add-UserPath (Join-Path $env:LOCALAPPDATA 'ctzd\mingit\cmd')
 
 # 2. Point uv at the internal package index and the internal mirror of Python builds.
 $uvConfigDir = Join-Path $env:APPDATA 'uv'

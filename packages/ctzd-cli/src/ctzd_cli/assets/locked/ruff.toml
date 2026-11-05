@@ -5,6 +5,8 @@ force-exclude = true
 show-fixes = true
 unsafe-fixes = false
 src = ["src"]
+# Platform-owned skills (and Claude Code's copy) hold example code; ruff must not rewrite them.
+extend-exclude = [".agents", ".claude"]
 
 [lint]
 select = ["ALL"]

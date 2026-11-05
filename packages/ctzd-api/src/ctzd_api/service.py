@@ -202,6 +202,25 @@ def run_job(services: Services, login: str, app: AppRef, job: str) -> m.JobRunCr
     return m.JobRunCreated(dag_id=dag, run_id=run_id, url=f"{services.platform.dag_url(app.sbu, app.name, job)}/runs/{run_id}")
 
 
+_RUN_STATES: dict[str, m.JobState] = {"queued": "queued", "running": "running", "success": "success", "failed": "failed", "upstream_failed": "failed"}
+
+
+def job_run(services: Services, login: str, app: AppRef, job: str, run_id: str) -> m.JobRunState:
+    repo = _repo(services, app)
+    require(services, login, repo, "read")
+    dag = dag_id(app.sbu, app.name, job)
+    state = _RUN_STATES.get(services.airflow.run_state(dag, run_id), "running")
+    return m.JobRunState(dag_id=dag, run_id=run_id, state=state, url=f"{services.platform.dag_url(app.sbu, app.name, job)}/runs/{run_id}")
+
+
+SOURCE_PREFIX = "ctzd-source-"
+
+
+def sources(services: Services) -> m.SourceList:
+    names = sorted(name.removeprefix(SOURCE_PREFIX).replace("-", "_") for name in services.secrets.names(SOURCE_PREFIX))
+    return m.SourceList(sources=tuple(names))
+
+
 def logs(services: Services, login: str, app: AppRef, *, job: str | None, tail: int) -> m.LogText:
     repo = _repo(services, app)
     require(services, login, repo, "read")
@@ -210,7 +229,7 @@ def logs(services: Services, login: str, app: AppRef, *, job: str | None, tail: 
 
 
 def secret_name(source: str) -> str:
-    return "ctzd-source-" + source.replace("_", "-")
+    return SOURCE_PREFIX + source.replace("_", "-")
 
 
 def env(services: Services, login: str, app: AppRef, sources: tuple[str, ...]) -> m.EnvVars:

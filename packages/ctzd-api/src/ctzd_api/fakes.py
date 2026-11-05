@@ -68,10 +68,15 @@ class FakeJenkins:
 class FakeAirflow:
     runs: list[str] = field(default_factory=list)
     logs: dict[str, str] = field(default_factory=dict)
+    states: dict[str, str] = field(default_factory=dict)
 
     def trigger(self, dag_id: str) -> str:
         self.runs.append(dag_id)
         return f"manual__{len(self.runs)}"
+
+    def run_state(self, dag_id: str, run_id: str) -> str:
+        del dag_id
+        return self.states.get(run_id, "queued")
 
     def latest_task_log(self, dag_id: str, tail: int) -> str:
         return "\n".join(self.logs.get(dag_id, "").splitlines()[-tail:])
@@ -98,3 +103,6 @@ class FakeSecrets:
 
     def get(self, name: str) -> str | None:
         return self.values.get(name)
+
+    def names(self, prefix: str) -> list[str]:
+        return sorted(name for name in self.values if name.startswith(prefix))

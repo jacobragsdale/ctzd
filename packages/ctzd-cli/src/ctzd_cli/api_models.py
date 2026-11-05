@@ -66,6 +66,20 @@ class JobRunCreated(_Model):
     url: str
 
 
+JobState = Literal["queued", "running", "success", "failed"]
+
+
+class JobRunState(_Model):
+    dag_id: str
+    run_id: str
+    state: JobState
+    url: str
+
+
+class SourceList(_Model):
+    sources: tuple[str, ...]
+
+
 class LogText(_Model):
     text: str
 

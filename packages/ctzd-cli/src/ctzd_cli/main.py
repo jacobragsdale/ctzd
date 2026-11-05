@@ -84,6 +84,9 @@ def _app_parsers(sub: "argparse._SubParsersAction[argparse.ArgumentParser]", com
     run = sub.add_parser("run", parents=[common], help="run a job in Airflow, or locally with --local")
     run.add_argument("job")
     run.add_argument("--local", action="store_true")
+    run.add_argument("--wait", action="store_true", help="wait until the Airflow run finishes")
+    run.add_argument("--timeout", type=float, default=_DEPLOY_TIMEOUT)
+    sub.add_parser("sources", parents=[common], help="list the data sources the platform knows")
     add = sub.add_parser("add", parents=[common], help="add a part to the app")
     add_job = add.add_subparsers(dest="action", required=True).add_parser("job", parents=[common], help="add a scheduled job")
     add_job.add_argument("name")
@@ -160,7 +163,8 @@ HANDLERS: dict[str, Handler] = {
     "new": lambda a, ctx: commands.new(ctx, name=_required(a.name, "NAME"), sbu=_required(a.sbu, "--sbu"), ui=a.ui, directory=a.dir, owner=a.owner, offline=a.offline),
     "open": lambda a, ctx: commands.open_app(ctx, name=_required(a.name, "NAME"), sbu=_required(a.sbu, "--sbu"), directory=a.dir),
     "dev": lambda a, ctx: commands.dev(ctx, port=a.port, run=_stream),
-    "run": lambda a, ctx: commands.run_job(ctx, job=_required(a.job, "JOB"), local=a.local),
+    "run": lambda a, ctx: commands.run_job(ctx, job=_required(a.job, "JOB"), local=a.local, wait=a.wait, timeout=a.timeout),
+    "sources": lambda _a, ctx: commands.sources(ctx),
     "add job": lambda a, ctx: commands.add_job(ctx, name=_required(a.name, "NAME"), schedule=_required(a.schedule, "--schedule"), size=a.size),
     "check": lambda a, ctx: commands.check(ctx, fast=a.fast),
     "env": lambda _a, ctx: commands.env(ctx),

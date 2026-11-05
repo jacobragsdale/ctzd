@@ -183,9 +183,10 @@ driver or HTTP client directly.
 | `ctzd new NAME --sbu SBU --ui streamlit\|dash\|none` | Creates the GitHub repo through the platform API and writes the starter app into a new folder. `--offline` writes the files only. |
 | `ctzd open NAME --sbu SBU` | Clones an existing app into a new folder. |
 | `ctzd dev` | Runs the dashboard locally against real data. |
-| `ctzd run JOB [--local]` | Runs a job in Airflow and prints the run link, or runs it locally. |
+| `ctzd run JOB [--local] [--wait]` | Runs a job in Airflow and prints the run link, `--wait` follows it to success or failure; `--local` runs it on the laptop. |
 | `ctzd add job NAME --schedule CRON` | Adds a job module, its test, and its `app.toml` entry. |
-| `ctzd check [--fix]` | Runs every gate. |
+| `ctzd check [--fast]` | Runs every gate, fixing formatting and simple lint locally; `--fast` skips the tests. |
+| `ctzd sources` | Lists the data sources the platform has, by name. |
 | `ctzd env` | Writes the app's read-only source credentials into `.env`. |
 | `ctzd deploy` | Checks, commits, pushes, follows Jenkins, prints the URL, DAG links, and screenshot. |
 | `ctzd status` | Current release, pause state, URL, DAG links, last build. |

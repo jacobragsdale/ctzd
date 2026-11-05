@@ -179,3 +179,17 @@ def test_the_cli_client_speaks_the_same_protocol(client: TestClient) -> None:
     assert platform.build_for_commit("fi", "bond-prices", "nothing") == m.Build(number=None, state="not_found")
     with pytest.raises(CliError, match="no release v9"):
         platform.rollback("fi", "bond-prices", 9)
+
+
+def test_a_job_runs_state_is_reported(client: TestClient, world: Services) -> None:
+    airflow = world.airflow
+    assert isinstance(airflow, fakes.FakeAirflow)
+    airflow.states["manual__1"] = "upstream_failed"
+    body = client.get("/v1/apps/fi/bond-prices/jobs/refresh/runs/manual__1", headers=BOB).json()
+    assert body["state"] == "failed"
+    assert body["url"].endswith("/dags/fi__bond_prices__refresh/runs/manual__1")
+
+
+def test_sources_lists_names_without_values(client: TestClient) -> None:
+    body = client.get("/v1/sources", headers=BOB).json()
+    assert body == {"sources": ["fi_pricing"]}

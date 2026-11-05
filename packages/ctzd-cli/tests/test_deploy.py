@@ -24,6 +24,7 @@ class FakePlatform:
     resumed: int = 0
     asked: list[str] = field(default_factory=list)
     paused: bool = False
+    job_states: list[m.JobState] = field(default_factory=lambda: ["queued"])
 
     def me(self) -> m.Me:
         return m.Me(login="ann")
@@ -51,7 +52,14 @@ class FakePlatform:
         raise NotImplementedError
 
     def run_job(self, sbu: str, name: str, job: str) -> m.JobRunCreated:
-        raise NotImplementedError
+        return m.JobRunCreated(dag_id=f"{sbu}__{name.replace('-', '_')}__{job}", run_id="manual__1", url="https://airflow.ctzd.contoso.com/dags/x/runs/manual__1")
+
+    def job_run(self, sbu: str, name: str, job: str, run_id: str) -> m.JobRunState:
+        state = self.job_states.pop(0) if len(self.job_states) > 1 else self.job_states[0]
+        return m.JobRunState(dag_id=f"{sbu}__{name.replace('-', '_')}__{job}", run_id=run_id, state=state, url="https://airflow.ctzd.contoso.com/dags/x/runs/manual__1")
+
+    def sources(self) -> m.SourceList:
+        return m.SourceList(sources=("fi_pricing",))
 
     def logs(self, sbu: str, name: str, *, job: str | None, tail: int) -> m.LogText:
         raise NotImplementedError
@@ -164,3 +172,20 @@ def test_deploying_without_changes_when_not_paused_pushes_nothing_new(repo: tupl
     before = git(remote, "rev-parse", "main")
     commands.deploy(context(app, FakePlatform([m.Build(number=10, state="succeeded", release=4)])), message=None, detach=False, timeout=60)
     assert git(remote, "rev-parse", "main") == before
+
+
+def test_run_wait_follows_the_airflow_run_to_success(repo: tuple[Path, Path]) -> None:
+    app, _remote = repo
+    (app / "app.toml").write_text((app / "app.toml").read_text() + '\n[[jobs]]\nname = "refresh"\nschedule = "0 6 * * *"\n')
+    platform = FakePlatform([m.Build(number=1, state="succeeded")], job_states=["queued", "running", "success"])
+    outcome = commands.run_job(context(app, platform), job="refresh", local=False, wait=True, timeout=600)
+    assert outcome.ok
+    assert outcome.data["state"] == "success"
+
+
+def test_run_wait_reports_a_failed_run(repo: tuple[Path, Path]) -> None:
+    app, _remote = repo
+    (app / "app.toml").write_text((app / "app.toml").read_text() + '\n[[jobs]]\nname = "refresh"\nschedule = "0 6 * * *"\n')
+    outcome = commands.run_job(context(app, FakePlatform([m.Build(number=1, state="succeeded")], job_states=["failed"])), job="refresh", local=False, wait=True, timeout=600)
+    assert not outcome.ok
+    assert "ctzd logs --job refresh" in outcome.next_steps[0]

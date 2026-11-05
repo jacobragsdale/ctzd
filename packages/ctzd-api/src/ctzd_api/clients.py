@@ -184,6 +184,10 @@ class _DagRun(_Reply):
     dag_run_id: str
 
 
+class _DagRunState(_Reply):
+    state: str
+
+
 class _DagRuns(_Reply):
     dag_runs: tuple[_DagRun, ...] = ()
 
@@ -218,6 +222,10 @@ class AirflowClient:
     def trigger(self, dag_id: str) -> str:
         response = self._http.post(f"/api/v2/dags/{dag_id}/dagRuns", json={"logical_date": None}, headers=self._headers())
         return _DagRun.model_validate_json(_check(response).content).dag_run_id
+
+    def run_state(self, dag_id: str, run_id: str) -> str:
+        response = self._http.get(f"/api/v2/dags/{dag_id}/dagRuns/{run_id}", headers=self._headers())
+        return _DagRunState.model_validate_json(_check(response).content).state
 
     def latest_task_log(self, dag_id: str, tail: int) -> str:
         headers = self._headers()
@@ -294,15 +302,35 @@ class _Secret(_Reply):
     value: str
 
 
+class _SecretItem(_Reply):
+    id: str
+
+
+class _SecretPage(_Reply):
+    value: tuple[_SecretItem, ...] = ()
+    nextLink: str | None = None  # noqa: N815 - Key Vault's JSON field name.
+
+
 class KeyVaultClient:
     def __init__(self, vault_url: str, credential: TokenCredential) -> None:
         self._url = vault_url.rstrip("/")
         self._credential = credential
         self._http = httpx.Client(timeout=_TIMEOUT)
 
+    def _auth(self) -> dict[str, str]:
+        return {"Authorization": f"Bearer {self._credential.get_token('https://vault.azure.net/.default').token}"}
+
+    def names(self, prefix: str) -> list[str]:
+        found: list[str] = []
+        url: str | None = f"{self._url}/secrets?api-version=7.4"
+        while url is not None:
+            page = _SecretPage.model_validate_json(_check(self._http.get(url, headers=self._auth())).content)
+            found += [item.id.rstrip("/").rsplit("/", 1)[-1] for item in page.value]
+            url = page.nextLink
+        return sorted(name for name in found if name.startswith(prefix))
+
     def get(self, name: str) -> str | None:
-        token = self._credential.get_token("https://vault.azure.net/.default").token
-        response = self._http.get(f"{self._url}/secrets/{name}", params={"api-version": "7.4"}, headers={"Authorization": f"Bearer {token}"})
+        response = self._http.get(f"{self._url}/secrets/{name}", params={"api-version": "7.4"}, headers=self._auth())
         if response.status_code == httpx.codes.NOT_FOUND:
             return None
         return _Secret.model_validate_json(_check(response).content).value
