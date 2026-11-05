@@ -1,0 +1,6 @@
+apiVersion: v2
+name: ctzd-app
+description: One ctzd dashboard. Values come from `ctzd ci render` plus the platform values file.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

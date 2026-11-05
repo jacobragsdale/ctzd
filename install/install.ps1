@@ -1,0 +1,48 @@
+# Installs ctzd for the current user, with no admin rights. An AI agent runs this; the person never has to:
+#   powershell -c "irm https://ctzd.contoso.com/install.ps1 | iex"
+# Every download comes from the platform host, so laptops need no access to github.com or pypi.org.
+$ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
+
+$Platform = 'https://ctzd.contoso.com'
+$Index = 'https://pypi.contoso.com/simple'
+$Bin = Join-Path $HOME '.local\bin'
+
+function Add-UserPath([string] $Folder) {
+    $current = [Environment]::GetEnvironmentVariable('Path', 'User')
+    if (-not ($current -split ';' | Where-Object { $_ -eq $Folder })) {
+        [Environment]::SetEnvironmentVariable('Path', "$Folder;$current", 'User')
+    }
+    if (-not ($env:Path -split ';' | Where-Object { $_ -eq $Folder })) {
+        $env:Path = "$Folder;$env:Path"
+    }
+}
+
+# 1. uv, the Python tool manager, into ~/.local/bin.
+New-Item -ItemType Directory -Force -Path $Bin | Out-Null
+if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
+    $zip = Join-Path $env:TEMP 'ctzd-uv.zip'
+    Invoke-WebRequest -Uri "$Platform/downloads/uv-x86_64-pc-windows-msvc.zip" -OutFile $zip
+    Expand-Archive -Path $zip -DestinationPath $Bin -Force
+    Remove-Item $zip
+}
+Add-UserPath $Bin
+
+# 2. Point uv at the internal package index and the internal mirror of Python builds.
+$uvConfigDir = Join-Path $env:APPDATA 'uv'
+New-Item -ItemType Directory -Force -Path $uvConfigDir | Out-Null
+@"
+python-install-mirror = "$Platform/downloads/python"
+
+[[index]]
+name = "internal"
+url = "$Index"
+default = true
+"@ | Set-Content -Path (Join-Path $uvConfigDir 'uv.toml') -Encoding utf8
+
+# 3. ctzd itself, as a uv tool (its own Python and environment, upgraded in place).
+uv tool install --upgrade ctzd
+if ($LASTEXITCODE -ne 0) { throw 'uv could not install ctzd from the internal package index.' }
+
+# 4. Check the rest (git, login, agent setup) and tell the agent what to do next.
+& (Join-Path $Bin 'ctzd.exe') setup --json

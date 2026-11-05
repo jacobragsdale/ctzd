@@ -6,7 +6,16 @@ from ctzd_cli.appconfig import AppConfig
 from ctzd_cli.config import PlatformConfig, dag_id
 
 PORT = 8080
-_STREAMLIT = ("streamlit", "run", "src/app/ui/main.py", f"--server.port={PORT}", "--server.address=0.0.0.0", "--server.headless=true", "--browser.gatherUsageStats=false")
+_STREAMLIT = (
+    "streamlit",
+    "run",
+    "src/app/ui/main.py",
+    f"--server.port={PORT}",
+    "--server.address=0.0.0.0",
+    "--server.headless=true",
+    "--browser.gatherUsageStats=false",
+    "--client.toolbarMode=viewer",
+)
 _DASH = ("gunicorn", "app.ui.main:server", f"--bind=0.0.0.0:{PORT}", "--workers=2", "--threads=4", "--timeout=120")
 
 

@@ -37,7 +37,7 @@ ctzd-fi = { workspace = true }
 [tool.ruff]
 line-length = 200
 extend-exclude = ["packages/ctzd-cli/src/ctzd_cli/assets"]  # app templates; checked by generating an app
-src = ["packages/*/src", "kits/*/src"]  # first-party packages of this workspace, for import sorting
+src = ["packages/*/src", "kits/*/src", "airflow/dags"]
 required-version = ">=0.17.3"
 force-exclude = true
 show-fixes = true
@@ -74,7 +74,8 @@ docstring-code-format = true
 skip-magic-trailing-comma = true  # Collapse comma-forced multiline constructs when they fit.
 
 [tool.ty.src]
-exclude = ["packages/ctzd-cli/src/ctzd_cli/assets"]  # app templates; checked by generating an app
+# App templates are checked by generating an app; the Airflow DAG is checked in its own project (airflow/).
+exclude = ["packages/ctzd-cli/src/ctzd_cli/assets", "airflow"]
 
 [tool.ty.rules]
 all = "error"  # Every rule is an error, including those ty leaves off by default. Opt out one rule at a time, with a reason.
@@ -90,7 +91,7 @@ error-on-warning = true
 [tool.pytest.ini_options]
 addopts = "-ra --strict-markers --strict-config --import-mode=importlib -m 'not integration' -p no:dash"  # dash registers a pytest plugin that warns on load; nothing here uses it
 testpaths = ["packages", "kits"]
-norecursedirs = [".*", "build", "dist", "node_modules", "assets"]  # assets/ holds app templates, tested by generating an app
+norecursedirs = [".*", "build", "dist", "node_modules", "assets", "airflow"]  # assets/ holds app templates, tested by generating an app
 xfail_strict = true  # An xfail that starts passing is a failure, not a silent pass.
 filterwarnings = [
     "error",  # pandas 3 chained assignment only warns; the lost write is otherwise invisible.

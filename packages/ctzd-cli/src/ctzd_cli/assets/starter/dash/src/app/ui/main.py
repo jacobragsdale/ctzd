@@ -15,7 +15,11 @@ server = app.server
 def layout() -> html.Div:
     frame = with_share(load_demo())
     return html.Div(
-        [html.H1("{{title}}"), dcc.Graph(figure=px.bar(frame, x="category", y="value")), dag.AgGrid(rowData=frame.to_dict("records"), columnDefs=[{"field": column} for column in frame.columns])]
+        [
+            html.H1("{{title}}"),
+            dcc.Graph(figure=px.bar(frame, x="category", y="value")),
+            dag.AgGrid(rowData=frame.to_dict("records"), columnDefs=[{"field": column} for column in frame.columns], columnSize="sizeToFit"),
+        ]
     )
 
 

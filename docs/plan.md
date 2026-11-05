@@ -9,6 +9,8 @@ This page records the plan agreed on 2026-11-04: what users experience, how the
 pieces fit, every decision with its reason, and the rollout. The Jenkins and
 Kubernetes sections are proposals for the infrastructure owner to confirm or
 change. All hostnames and organisation names here are `contoso` placeholders.
+Version 0.1.0 of everything described here is implemented in this repository;
+section 14 says what has and has not been run.
 
 ## 1. What a citizen developer experiences
 
@@ -132,10 +134,11 @@ fi-bond-prices/
 │   ├── ui/main.py           # the Streamlit or Dash entry point
 │   └── jobs/<name>.py       # one module per scheduled job, each with main() -> int
 ├── tests/
+├── .env.example             # written by ctzd sync from [sources].use
 ├── AGENTS.md                # locked
 ├── .agents/skills/          # locked
 ├── Dockerfile  Jenkinsfile  # locked
-├── ruff.toml  ty.toml  .importlinter  pytest.toml  .coveragerc  # locked
+├── ruff.toml  ty.toml  .importlinter  pytest.toml  .python-version  # locked
 ├── .pre-commit-config.yaml  .gitignore  .gitattributes  .dockerignore  # locked
 └── .ctzd/version            # platform version the locked files came from
 ```
@@ -175,9 +178,9 @@ driver or HTTP client directly.
 
 | Command | What it does |
 |---|---|
-| `ctzd setup` | Checks and installs prerequisites (git or MinGit), logs in, checks the agent setup. |
-| `ctzd login` | GitHub device-flow login; stores the token in the OS credential store. |
-| `ctzd new NAME --sbu SBU --ui streamlit\|dash\|none` | Creates the GitHub repo through the platform API and writes the starter app into a new folder. |
+| `ctzd setup` | Checks uv, git (installing MinGit on Windows when missing), the GitHub login, and the agent setup. |
+| `ctzd login --start`, `ctzd login --wait` | GitHub device-flow login in two steps, because agents see output only when a command ends: `--start` returns the code to show the person, `--wait` blocks until they approve it. The token goes into the OS credential store. |
+| `ctzd new NAME --sbu SBU --ui streamlit\|dash\|none` | Creates the GitHub repo through the platform API and writes the starter app into a new folder. `--offline` writes the files only. |
 | `ctzd open NAME --sbu SBU` | Clones an existing app into a new folder. |
 | `ctzd dev` | Runs the dashboard locally against real data. |
 | `ctzd run JOB [--local]` | Runs a job in Airflow and prints the run link, or runs it locally. |
@@ -186,7 +189,7 @@ driver or HTTP client directly.
 | `ctzd env` | Writes the app's read-only source credentials into `.env`. |
 | `ctzd deploy` | Checks, commits, pushes, follows Jenkins, prints the URL, DAG links, and screenshot. |
 | `ctzd status` | Current release, pause state, URL, DAG links, last build. |
-| `ctzd logs [--job JOB] [--follow]` | Dashboard or job logs. |
+| `ctzd logs [--job JOB] [--tail N]` | Recent dashboard or job log lines. |
 | `ctzd releases` | Lists releases. |
 | `ctzd rollback [vN]` | Restores a release and pauses auto-deploy. |
 | `ctzd sync` | Rewrites locked files to the installed platform version. |
@@ -218,19 +221,23 @@ sequenceDiagram
 
 ## 6. Data access
 
-**Sources.** Each data source is one Key Vault secret holding a JSON
-description of the source and its read-only account. The platform syncs the
-secrets into the cluster and every app pod receives them as environment
-variables named `CTZD_SOURCE_<NAME>`. `ctzd env` writes the same variables into
-`.env` for the sources listed in `app.toml`. Supported kinds are `oracle`,
-`mssql`, and `rest` (bearer token, header key, basic, or OAuth client
-credentials). Adding a source is a platform-team task.
+**Sources.** Each data source is one Key Vault secret, `ctzd-source-<name>`,
+holding a JSON description of the source and its read-only account. The
+platform syncs the secrets into the cluster and every app pod receives them as
+environment variables named `CTZD_SOURCE_<NAME>`. `ctzd env` writes the same
+variables into `.env` for the sources listed in `app.toml`. Supported kinds are
+`oracle`, `mssql`, `rest` (no auth, bearer token, header key, basic, or OAuth
+client credentials), and `teams` (a Workflows webhook). Adding a source is a
+platform-team task.
 
 **Queries.** Loaders call `ctzd.query("fi_pricing", "sql/prices.sql", {"as_of": day})`
-and get a pandas DataFrame with Arrow-backed dtypes. SQL lives in files with
-bind parameters (`:name` for Oracle, `%(name)s` for MSSQL) and selects only the
-columns it needs. REST loaders call `ctzd.rest("fi_api").get_json(...)`, which
-applies timeouts, retries, and pagination.
+and get a pandas DataFrame; decimals arrive as float64 and dates as datetime64.
+SQL lives in files with bind parameters (`:name` for Oracle, `%(name)s` for
+MSSQL) and selects only the columns it needs. REST loaders call
+`ctzd.rest("fi_api").get_frame("/bonds", records="items")`, `get_json`,
+`get_all_pages`, or `post_json`; the client applies timeouts, retries on
+429 and 5xx, OAuth token refresh, and paging, and keeps connections open
+between calls.
 
 **Caching.** `@ctzd.cached(ttl="15m")` caches a loader's result in the process,
 the same way in Streamlit and Dash. `ctzd-core` logs any dashboard loader slower
@@ -243,19 +250,27 @@ table; `ctzd.read_table("sector_summary")` reads the latest version, and
 
 **Notifications.** `ctzd.notify.email(...)` and `ctzd.notify.teams(...)`.
 
-**Validation.** A loader may pass `columns={"price": "float64", ...}` to check
-that the required columns exist with the expected dtypes. Nothing heavier.
+**Validation.** `ctzd.require_columns(frame, {"isin": "str", "price": "float"})`
+checks that the required columns exist with the expected dtype family (`str`,
+`float`, `int`, `number`, `datetime`, `bool`, or `any`). Nothing heavier.
+
+**Tests.** `ctzd.testing.fake_sources(fi_pricing={"sql/prices.sql": frame})`,
+`fake_store(tmp_path)`, and `outbox()` replace sources, the store, and
+notifications in tests; inside `fake_sources` any source that is not faked
+fails, so a test never reaches a real system.
 
 ## 7. Quality gates
 
 `ctzd check` runs, in order:
 
-1. the locked-file drift check;
-2. `ruff check` (every rule) and `ruff format --check`;
-3. `ty check` (every rule an error);
-4. `lint-imports` (the layer contracts);
-5. a parse of every `src/app/data/sql/*.sql` file;
-6. `pytest`, with branch coverage of `src/app/logic` at least 70%.
+1. the locked-file drift check (locally it restores changed platform files and
+   syncs an app whose platform version is older than the installed CLI);
+2. `uv sync` (`uv sync --locked` in Jenkins);
+3. `ruff format` and `ruff check --fix` (check-only in Jenkins), every rule;
+4. `ty check`, every rule an error;
+5. `lint-imports`, the layer contracts;
+6. a parse of every `src/app/data/sql/*.sql` file as Oracle or SQL Server;
+7. `pytest`, with branch coverage of `src/app/logic` at least 70%.
 
 The starter tests include a Streamlit `AppTest` or Dash callback test that runs
 the page against fake sources from `ctzd.testing`. Jenkins runs the same
@@ -280,8 +295,9 @@ Each repo carries a short `AGENTS.md` and these skills in `.agents/skills/`:
 | `sbu-<sbu>` | The SBU's sources, glossary, and shared loaders. |
 
 Codex, Copilot, Cursor, Gemini CLI, and OpenCode read `.agents/skills/`. Claude
-Code reads `AGENTS.md` but loads skills only from `.claude/skills/`, so every
-`ctzd` command refreshes a gitignored `.claude/skills/` copy. `ctzd setup`
+Code reads `AGENTS.md` but loads skills only from `.claude/skills/`, so
+`ctzd new`, `ctzd open`, `ctzd sync`, and every `ctzd check` refresh a
+gitignored `.claude/skills/` copy. `ctzd setup`
 warns when a `CLAUDE.md` in a parent folder would stop Claude Code from reading
 `AGENTS.md`.
 
@@ -291,12 +307,14 @@ existing one.
 
 ## 9. Onboarding and distribution
 
-`install.ps1`, run by the agent, installs uv for the current user, runs
-`uv tool install ctzd` from the internal PyPI, and runs `ctzd setup`. Setup
-installs MinGit when git is missing, runs `ctzd login`, and prints what the
-agent should do next. The uv and MinGit downloads, and uv's managed Python
-builds, are served from the platform host in case laptops cannot reach
-github.com. `ctzd` checks for a newer version of itself on each run.
+`install.ps1`, run by the agent, puts uv in `~/.local/bin`, writes a user
+`uv.toml` that points at the internal PyPI and an internal mirror of uv's
+Python builds, runs `uv tool install ctzd`, and runs `ctzd setup`. Setup
+installs MinGit when git is missing and reports whether the person still needs
+to log in, which the agent then does with the two-step `ctzd login`. The uv,
+MinGit, and Python downloads are served from the platform host, so laptops
+need no access to github.com or pypi.org. Upgrading is `uv tool upgrade ctzd`;
+an app whose platform version is newer than the installed CLI asks for it.
 
 ## 10. Jobs on Airflow
 
@@ -305,22 +323,30 @@ and each job's schedule, size, retries, and timeout) and commits it to the
 `ctzd-dags` repo. The factory DAG in that repo reads every spec and generates
 one DAG per job, named `<sbu>__<app>__<job>`, each running
 `python -m app.jobs.<job>` in the app's image with KubernetesPodOperator.
-A failed run emails the app's owners. `ctzd deploy` prints each DAG's link and
-`ctzd run` triggers a run and prints its link. The Airflow UI runs the simple
-auth manager in all-admins mode.
+A failed run emails the app's owners through the SMTP provider's
+`SmtpNotifier`, which needs Airflow's `smtp_default` connection. A spec that
+fails to parse is logged and skipped so the other apps' jobs keep running.
+Because the specs live in the same git repository as the factory DAG, a
+GitDagBundle version pins both together. `ctzd deploy` prints each DAG's link
+and `ctzd run` triggers a run and prints its link. The Airflow UI runs the
+simple auth manager in all-admins mode. The factory is tested by loading it in
+Airflow 3.3 (`airflow/tests`).
 
 ## 11. Jenkins and Kubernetes (proposals for the infrastructure owner)
 
 - **Discovery.** One GitHub Organization Folder job scans `ctzd-apps` and
   builds every repo with a `Jenkinsfile`. The `Jenkinsfile` is
   `@Library('ctzd') _` plus `ctzdApp()`.
-- **Pipeline.** `ctzdApp()` runs `ctzd ci check`, builds and pushes
+- **Pipeline.** `ctzdApp()` installs the CLI at the app's recorded platform
+  version into a per-build venv, runs `ctzd ci check`, builds and pushes
   `contosoctzd.azurecr.io/apps/<sbu>-<app>:<sha>`, skips deploy if the app is
   paused, runs `helm upgrade --install --atomic` with values from
   `ctzd ci render`, commits the job specs to `ctzd-dags`, runs `ctzd ci smoke`
-  against the live URL (rolling back on failure), and finishes with
-  `ctzd ci release`, which tags the commit `ctzd/vN`. Branches other than
-  `main` run the checks only.
+  against the live URL (running `helm rollback` and failing the build if the
+  page shows an error), and finishes with `ctzd ci release`, which tags the
+  commit `ctzd/vN`, and records the live release in the `ctzd-state-<sbu>-<app>`
+  ConfigMap that the platform API reads. Branches other than `main` run the
+  checks only.
 - **Rollback job.** A parameterised `ctzd-rollback` job, triggered by the
   platform API, redeploys a release's image and config and sets the pause flag.
 - **Branch protection.** `main` accepts direct pushes; force-pushes and
@@ -357,8 +383,8 @@ Phase 0 spikes:
 
 - `python-oracledb` thin-mode `fetch_df_all` and `mssql-python` `cursor.arrow()`
   against one real source each, measured;
-- Airflow 3: the UI link format, the trigger request body, API tokens in
-  all-admins mode, and whether a DAG bundle version includes the spec files;
+- Airflow 3: the UI link format (`/dags/<dag_id>/runs/<run_id>` is assumed),
+  the trigger request body, and API tokens in all-admins mode;
 - a Claude Code managed deny rule that matches `.env` in every project;
 - whether Claude Code loads `AGENTS.md` and skills when the agent works in an
   app subfolder;
@@ -366,7 +392,26 @@ Phase 0 spikes:
 - MinGit and uv on a locked-down laptop, and uv's Python downloads from an
   internal mirror.
 
-## 14. Open items
+## 14. Implementation status
+
+Built and verified in this repository on 2026-11-04:
+
+- the CLI, `ctzd-core`, and the platform API, with their test suites, under the
+  house ruff and ty configuration;
+- one app of each kind (Streamlit, Dash, jobs only) generated by `ctzd new`
+  and passing every `ctzd check` gate (`scripts/e2e.sh`);
+- app images built on the base image, run as the non-root user, and checked by
+  `ctzd ci smoke`, which also caught a page that raises;
+- the Helm chart linted and rendered with `ctzd ci render` output;
+- the factory DAG loaded by Airflow 3.3.2 with the Kubernetes provider 10.25;
+- the job-spec publisher run against a local git repository.
+
+Written but not yet run against real systems: the platform API's GitHub,
+Jenkins, Airflow, Kubernetes, and Key Vault clients; the Jenkins library and
+jobs; the device-flow login; the Oracle and SQL Server drivers; `install.ps1`
+and MinGit on Windows.
+
+## 15. Open items
 
 - The FI package stack, first sources, and pilot apps.
 - Rough numbers of SBUs, citizen developers, and apps for sizing Airflow and

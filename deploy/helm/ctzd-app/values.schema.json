@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["enabled", "app", "sbu", "fullname", "image", "host", "port", "command", "readinessPath", "resources", "env"],
+  "properties": {
+    "enabled": {"type": "boolean"},
+    "app": {"type": "string", "pattern": "^[a-z][a-z0-9-]{1,28}[a-z0-9]$"},
+    "sbu": {"type": "string", "pattern": "^[a-z][a-z0-9]*$"},
+    "fullname": {"type": "string", "maxLength": 53},
+    "image": {"type": "string"},
+    "release": {"type": ["integer", "null"]},
+    "host": {"type": "string"},
+    "port": {"type": "integer"},
+    "command": {"type": "array", "items": {"type": "string"}},
+    "readinessPath": {"type": "string"},
+    "resources": {"type": "object"},
+    "env": {"type": "object", "additionalProperties": {"type": "string"}},
+    "ingressClassName": {"type": "string"},
+    "tlsSecretName": {"type": "string"},
+    "sourcesSecretName": {"type": "string"},
+    "smtpConfigMapName": {"type": "string"},
+    "serviceAccountName": {"type": "string"}
+  }
+}

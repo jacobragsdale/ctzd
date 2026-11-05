@@ -1,0 +1,32 @@
+[project]
+name = "ctzd-airflow"
+version = "0.1.0"
+description = "The ctzd factory DAG and its tests, run against a real Airflow"
+requires-python = ">=3.13"
+dependencies = [
+    "apache-airflow>=3.1",
+    "apache-airflow-providers-cncf-kubernetes>=10.25",
+    "apache-airflow-providers-smtp>=2.3",
+]
+
+[dependency-groups]
+dev = ["pytest>=9.2"]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-markers --strict-config --import-mode=importlib"
+testpaths = ["tests"]
+
+[tool.ty.rules]
+all = "error"  # Every rule is an error, including those ty leaves off by default. Opt out one rule at a time, with a reason.
+
+[tool.ty.analysis]
+respect-type-ignore-comments = false  # Require a specific `# ty: ignore[rule]` suppression.
+strict-generic-narrowing = true  # isinstance on a generic narrows to its top materialization, e.g. list[object].
+strict-equality-semantics = true  # Do not narrow from ==, in, or match value patterns; a subclass can compare equal.
+
+[tool.ty.terminal]
+error-on-warning = true
+

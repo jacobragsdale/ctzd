@@ -1,0 +1,6 @@
+# Platform settings for the ctzd-app chart (proposal for the infrastructure owner).
+ingressClassName: nginx
+tlsSecretName: ctzd-wildcard-tls
+sourcesSecretName: ctzd-sources
+smtpConfigMapName: ctzd-smtp
+serviceAccountName: ctzd-app

@@ -1,0 +1,26 @@
+# Proposal for the infrastructure owner. Jenkins installs one release per app:
+#   helm upgrade --install <sbu>-<app> deploy/helm/ctzd-app --namespace ctzd-apps --atomic --timeout 5m \
+#     -f platform-values.yaml -f helm-values.json
+# helm-values.json comes from `ctzd ci render`; the keys below are the platform's own settings.
+
+# --- set by `ctzd ci render` from app.toml ---
+enabled: true
+app: ""
+sbu: ""
+fullname: ""
+image: ""
+release: null
+host: ""
+port: 8080
+command: []
+readinessPath: /healthz
+resources: {}
+env: {}
+
+# --- platform settings (platform-values.yaml) ---
+ingressClassName: nginx
+tlsSecretName: ctzd-wildcard-tls
+# Every data source's secret, synced from Key Vault, mounted as environment variables.
+sourcesSecretName: ctzd-sources
+smtpConfigMapName: ctzd-smtp
+serviceAccountName: ctzd-app
