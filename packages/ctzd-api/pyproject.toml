@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "azure-identity>=1.27",
+    "ctzd>=0.1",
     "fastapi>=0.162",
     "httpx>=0.28",
     "pydantic>=2.14",

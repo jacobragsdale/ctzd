@@ -1,0 +1,59 @@
+"""What the API needs from the systems around it. Each has an HTTP implementation and an in-memory fake."""
+
+from dataclasses import dataclass
+from typing import Literal, Protocol
+
+Permission = Literal["admin", "maintain", "write", "triage", "read", "none"]
+
+
+@dataclass(frozen=True)
+class AppState:
+    """What Jenkins records in the cluster for each app: the live release and the rollback pause."""
+
+    release: int | None
+    paused: bool
+
+
+@dataclass(frozen=True)
+class JenkinsBuild:
+    number: int
+    commit: str | None
+    building: bool
+    result: str | None
+    url: str
+    description: str | None
+    failed_stage: str | None
+    artifacts: tuple[str, ...]
+
+
+class GitHub(Protocol):
+    def login_for(self, user_token: str) -> str | None: ...
+    def is_org_member(self, login: str) -> bool: ...
+    def permission(self, repo: str, login: str) -> Permission: ...
+    def repo_exists(self, repo: str) -> bool: ...
+    def create_repo(self, repo: str, *, admin: str, team: str) -> None: ...
+    def archive_repo(self, repo: str) -> None: ...
+    def file(self, repo: str, path: str) -> str | None: ...
+    def release_tags(self, repo: str) -> list[tuple[str, str]]: ...
+
+
+class Jenkins(Protocol):
+    def builds(self, repo: str) -> list[JenkinsBuild]: ...
+    def console_tail(self, build: JenkinsBuild, lines: int) -> str: ...
+    def artifact(self, build: JenkinsBuild, name: str) -> bytes: ...
+    def trigger(self, job: str, parameters: dict[str, str]) -> None: ...
+
+
+class Airflow(Protocol):
+    def trigger(self, dag_id: str) -> str: ...
+    def latest_task_log(self, dag_id: str, tail: int) -> str: ...
+
+
+class Kube(Protocol):
+    def state(self, fullname: str) -> AppState: ...
+    def set_paused(self, fullname: str, *, paused: bool) -> None: ...
+    def dashboard_log(self, fullname: str, tail: int) -> str: ...
+
+
+class Secrets(Protocol):
+    def get(self, name: str) -> str | None: ...

@@ -10,6 +10,7 @@ dev = [
     "ctzd-api",
     "ctzd-core[dash]",
     "ctzd-fi",
+    "httpx2>=2.16",  # starlette.testclient prefers it
     "pandas-stubs>=3.1",
     "pyarrow-stubs>=20",
     "pre-commit>=4.7",
