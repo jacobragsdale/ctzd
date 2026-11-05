@@ -276,6 +276,18 @@ def _build_outcome(root: Path, platform: api_client.Platform, app: AppConfig, co
     return Outcome(summary=f"Release v{build.release} is live: {where}", data=data)
 
 
+_NAMES_IN_MESSAGE = 5
+
+
+def commit_message(changed: list[str], message: str | None) -> str:
+    if message is not None:
+        return message
+    if not changed:
+        return "Resume auto-deploy after a rollback"
+    more = " and more" if len(changed) > _NAMES_IN_MESSAGE else ""
+    return "Update " + ", ".join(changed[:_NAMES_IN_MESSAGE]) + more
+
+
 def deploy(ctx: Context, *, message: str | None, detach: bool, timeout: float) -> Outcome:
     root, app = _app(ctx)
     steps = ctx.run_checks(_target(root, app), mode="local", fast=False)
@@ -284,13 +296,15 @@ def deploy(ctx: Context, *, message: str | None, detach: bool, timeout: float) -
         gate.summary = "Not deployed. " + gate.summary
         return gate
     git = gitops.open_repo(root, token=ctx.token(), identity=auth.identity() or ("ctzd", "ctzd@localhost"))
+    platform = ctx.platform_factory()
     changed = git.changed_paths()
-    summary = message or "Update " + ", ".join(changed[:5]) + (" and more" if len(changed) > 5 else "")  # noqa: PLR2004 - five names keep the message short.
-    committed = git.commit_all(summary if changed else "Redeploy")
+    # After a rollback, a deploy with no new changes still needs a new build to put main back in production.
+    paused = not changed and platform.status(app.app.sbu, app.app.name).paused
+    summary = commit_message(changed, message)
+    committed = git.commit_all(summary, allow_empty=paused)
     git.rebase_onto_remote()
     git.push_main()
     commit = git.head() or ""
-    platform = ctx.platform_factory()
     platform.resume(app.app.sbu, app.app.name)
     if detach:
         return Outcome(summary="Pushed; Jenkins is building it.", data={"commit": commit, "committed": committed}, next_steps=["Run `ctzd status --wait`."])

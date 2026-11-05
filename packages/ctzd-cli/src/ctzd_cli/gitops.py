@@ -64,11 +64,14 @@ class Git:
         output = self.run("status", "--porcelain=v1", "--untracked-files=all").output
         return sorted(line[3:] for line in output.splitlines() if line.strip())
 
-    def commit_all(self, message: str) -> bool:
-        """Stage and commit everything; return False when there was nothing to commit."""
+    def commit_all(self, message: str, *, allow_empty: bool = False) -> bool:
+        """Stage and commit everything; return False when there was nothing to commit and no empty commit was wanted."""
         self.run("add", "--all")
         if not self.run("diff", "--cached", "--quiet", check=False).code:
-            return False
+            if not allow_empty:
+                return False
+            self.run("commit", "--quiet", "--allow-empty", "--message", message)
+            return True
         self.run("commit", "--quiet", "--message", message)
         return True
 

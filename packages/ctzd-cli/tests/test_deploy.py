@@ -23,6 +23,7 @@ class FakePlatform:
     builds: list[m.Build]
     resumed: int = 0
     asked: list[str] = field(default_factory=list)
+    paused: bool = False
 
     def me(self) -> m.Me:
         return m.Me(login="ann")
@@ -31,7 +32,7 @@ class FakePlatform:
         return m.CreatedApp(repo=f"ctzd-apps/{request.sbu}-{request.name}", clone_url="unused", url="unused")
 
     def status(self, sbu: str, name: str) -> m.AppStatus:
-        return m.AppStatus(sbu=sbu, name=name, url=f"https://{sbu}-{name}.ctzd.contoso.com", release=4, paused=False, dags={}, last_build=None)
+        return m.AppStatus(sbu=sbu, name=name, url=f"https://{sbu}-{name}.ctzd.contoso.com", release=4, paused=self.paused, dags={}, last_build=None)
 
     def resume(self, sbu: str, name: str) -> None:
         del sbu, name
@@ -146,3 +147,20 @@ def test_waiting_gives_up_at_the_timeout_and_says_how_to_continue(repo: tuple[Pa
     assert outcome.ok
     assert "still running" in outcome.summary
     assert outcome.next_steps == ["Run `ctzd status --wait` to keep waiting."]
+
+
+def test_deploying_without_changes_after_a_rollback_makes_a_new_build(repo: tuple[Path, Path]) -> None:
+    app, remote = repo
+    before = git(remote, "rev-parse", "main")
+    platform = FakePlatform([m.Build(number=10, state="succeeded", release=5)], paused=True)
+    outcome = commands.deploy(context(app, platform), message=None, detach=False, timeout=60)
+    assert outcome.ok
+    assert git(remote, "rev-parse", "main") != before
+    assert git(app, "log", "-1", "--format=%s") == "Resume auto-deploy after a rollback"
+
+
+def test_deploying_without_changes_when_not_paused_pushes_nothing_new(repo: tuple[Path, Path]) -> None:
+    app, remote = repo
+    before = git(remote, "rev-parse", "main")
+    commands.deploy(context(app, FakePlatform([m.Build(number=10, state="succeeded", release=4)])), message=None, detach=False, timeout=60)
+    assert git(remote, "rev-parse", "main") == before
