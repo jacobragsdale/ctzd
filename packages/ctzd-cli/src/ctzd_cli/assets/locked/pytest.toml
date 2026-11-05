@@ -1,0 +1,18 @@
+# Platform-owned: ctzd sync rewrites this file.
+[pytest]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+    "--import-mode=importlib",
+    "-m", "not integration",
+    "-p", "no:dash",
+    "--cov=app.logic",
+    "--cov-branch",
+    "--cov-report=term-missing:skip-covered",
+    "--cov-fail-under=70",
+]
+testpaths = ["tests"]
+xfail_strict = true
+filterwarnings = ["error"]
+markers = ["integration: needs a real source; excluded from the default run"]

@@ -1,0 +1,9 @@
+# Platform-owned: ctzd sync rewrites this file. For people who commit with git themselves.
+repos:
+  - repo: local
+    hooks:
+      - id: ctzd-check
+        name: ctzd check --fast
+        entry: ctzd check --fast
+        language: system
+        pass_filenames: false

@@ -1,0 +1,10 @@
+.git
+.venv
+.env
+.env.*
+.ctzd/out
+.ctzd/screenshots
+.claude
+.agents
+tests
+**/__pycache__

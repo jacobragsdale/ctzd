@@ -1,0 +1,11 @@
+# Platform-owned: ctzd sync rewrites this file.
+[rules]
+all = "error"
+
+[analysis]
+respect-type-ignore-comments = false
+strict-generic-narrowing = true
+strict-equality-semantics = true
+
+[terminal]
+error-on-warning = true

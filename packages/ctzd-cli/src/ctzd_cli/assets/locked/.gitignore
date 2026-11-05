@@ -1,0 +1,12 @@
+# Platform-owned: ctzd sync rewrites this file.
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.coverage
+.env
+.env.*
+!.env.example
+.ctzd/out/
+.ctzd/screenshots/
+.claude/

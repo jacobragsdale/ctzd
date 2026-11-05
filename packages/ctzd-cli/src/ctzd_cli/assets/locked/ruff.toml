@@ -1,0 +1,33 @@
+# Platform-owned: ctzd sync rewrites this file. Fix what ruff reports; never add ignores.
+line-length = 200
+required-version = ">=0.17.3"
+force-exclude = true
+show-fixes = true
+unsafe-fixes = false
+src = ["src"]
+
+[lint]
+select = ["ALL"]
+ignore = [
+    "COM812",  # Conflicts with the formatter.
+    "ISC001",  # Conflicts with the formatter.
+    "S603",  # Flags every subprocess call; there is no fix, only review.
+    "TC001",  # Moving imports under TYPE_CHECKING breaks code that reads annotations at runtime.
+    "TC002",
+    "TC003",
+    "CPY001",  # Copyright headers are a legal decision, not a lint fix.
+    "D",  # Docstrings only where they say what code and types cannot.
+]
+
+[lint.per-file-ignores]
+"tests/**" = ["S101", "PLR2004"]
+
+[lint.isort]
+split-on-trailing-comma = false
+
+[lint.mccabe]
+max-complexity = 15
+
+[format]
+docstring-code-format = true
+skip-magic-trailing-comma = true

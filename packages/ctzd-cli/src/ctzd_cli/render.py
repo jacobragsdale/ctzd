@@ -1,0 +1,115 @@
+"""`ctzd ci render`: turn app.toml into Helm values for the dashboard and an Airflow spec for the jobs."""
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from ctzd_cli.appconfig import AppConfig
+from ctzd_cli.config import PlatformConfig, dag_id
+
+PORT = 8080
+_STREAMLIT = ("streamlit", "run", "src/app/ui/main.py", f"--server.port={PORT}", "--server.address=0.0.0.0", "--server.headless=true", "--browser.gatherUsageStats=false")
+_DASH = ("gunicorn", "app.ui.main:server", f"--bind=0.0.0.0:{PORT}", "--workers=2", "--threads=4", "--timeout=120")
+
+
+class _Model(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, validate_default=True, revalidate_instances="always", allow_inf_nan=False, populate_by_name=True)
+
+
+class Quantities(_Model):
+    cpu: str
+    memory: str
+
+
+class Resources(_Model):
+    requests: Quantities
+    limits: Quantities
+
+
+class HelmValues(_Model):
+    """Values for the ctzd-app chart. `enabled` is false for apps without a dashboard."""
+
+    enabled: bool
+    app: str
+    sbu: str
+    fullname: str
+    image: str
+    release: int | None
+    host: str
+    port: int
+    command: tuple[str, ...]
+    readiness_path: str = Field(serialization_alias="readinessPath")
+    resources: Resources
+    env: dict[str, str]
+
+
+class JobSpec(_Model):
+    dag_id: str
+    name: str
+    schedule: str
+    retries: int
+    timeout_minutes: int
+    command: tuple[str, ...]
+    resources: Resources
+
+
+class AirflowSpec(_Model):
+    """The file Jenkins commits to ctzd-dags as `specs/<sbu>/<app>.json`; the factory DAG reads it."""
+
+    version: int = 1
+    sbu: str
+    app: str
+    image: str
+    release: int | None
+    owners: tuple[str, ...]
+    env: dict[str, str]
+    jobs: tuple[JobSpec, ...]
+
+
+def runtime_env(platform: PlatformConfig, app: AppConfig) -> dict[str, str]:
+    return {"CTZD_APP": app.app.name, "CTZD_SBU": app.app.sbu, "CTZD_ENV": "cluster", "CTZD_STORE_URL": platform.platform.store_url}
+
+
+def _resources(platform: PlatformConfig, size: str) -> Resources:
+    chosen = platform.sizes[size]
+    return Resources(requests=Quantities(cpu=chosen.cpu_request, memory=chosen.memory_request), limits=Quantities(cpu=chosen.cpu_limit, memory=chosen.memory_limit))
+
+
+def helm_values(platform: PlatformConfig, app: AppConfig, *, image: str, release: int | None) -> HelmValues:
+    ui = app.app.ui
+    fullname = platform.repo_name(app.app.sbu, app.app.name)
+    return HelmValues(
+        enabled=ui != "none",
+        app=app.app.name,
+        sbu=app.app.sbu,
+        fullname=fullname,
+        image=image,
+        release=release,
+        host=f"{fullname}.{platform.platform.apps_domain}",
+        port=PORT,
+        command=_STREAMLIT if ui == "streamlit" else _DASH if ui == "dash" else (),
+        readiness_path="/_stcore/health" if ui == "streamlit" else "/healthz",
+        resources=_resources(platform, app.app.size),
+        env=runtime_env(platform, app),
+    )
+
+
+def airflow_spec(platform: PlatformConfig, app: AppConfig, *, image: str, release: int | None) -> AirflowSpec:
+    return AirflowSpec(
+        sbu=app.app.sbu,
+        app=app.app.name,
+        image=image,
+        release=release,
+        owners=app.app.owners,
+        env=runtime_env(platform, app),
+        jobs=tuple(
+            JobSpec(
+                dag_id=dag_id(app.app.sbu, app.app.name, job.name),
+                name=job.name,
+                schedule=job.schedule,
+                retries=job.retries,
+                timeout_minutes=job.timeout_minutes,
+                command=("python", "-m", f"app.jobs.{job.name}"),
+                resources=_resources(platform, job.size),
+            )
+            for job in app.jobs
+        ),
+    )

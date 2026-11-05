@@ -1,0 +1,26 @@
+[project]
+name = "ctzd-core"
+version = "0.1.0"
+description = "Runtime library for ctzd apps: data sources, caching, the table store, and notifications"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "httpx>=0.28",
+    "mssql-python[pyarrow]>=1.17",
+    "openpyxl>=3.1",
+    "oracledb>=26.1",
+    "pandas>=3.1",
+    "pyarrow>=26",
+    "pydantic>=2.14",
+    "pydantic-settings>=2.16",
+]
+
+[project.optional-dependencies]
+dash = ["dash>=4.5"]
+
+[build-system]
+requires = ["uv_build>=0.13.6,<0.14"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "ctzd"
