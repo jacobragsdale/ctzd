@@ -173,7 +173,8 @@ use = ["fi_pricing"]      # sources ctzd env writes into .env
 
 [[jobs]]
 name = "sector_summary"
-schedule = "0 7 * * 1-5"  # cron, UTC
+schedule = "0 7 * * 1-5"  # cron, in the time zone below
+timezone = "Europe/London" # IANA name; daylight saving included; default UTC
 size = "m"
 retries = 1
 timeout_minutes = 60
@@ -192,9 +193,10 @@ driver or HTTP client directly.
 | `ctzd login --start`, `ctzd login --wait` | GitHub device-flow login in two steps, because agents see output only when a command ends: `--start` returns the code to show the person, `--wait` blocks until they approve it. The token goes into the OS credential store. |
 | `ctzd new NAME --sbu SBU --ui streamlit\|dash\|none` | Creates the GitHub repo through the platform API and writes the current platform release's starter app into a new folder. `--offline` writes the files only. |
 | `ctzd open NAME --sbu SBU` | Clones an existing app into a new folder. |
-| `ctzd dev` | Runs the dashboard locally against real data. |
+| `ctzd dev [--port N]`, `ctzd dev --stop` | Starts the dashboard locally against real data in the background, on 8501 or the next free port, and returns its URL; run again, it restarts it. `--stop` stops it, so an agent never has to find and kill processes. |
+| `ctzd exec -- COMMAND` | Runs a command in the app's environment with its source credentials, as `ctzd dev` does, such as a look at what a loader returns from the live source. Agents never read or load `.env` themselves. |
 | `ctzd run JOB [--local] [--wait]` | Runs a job in Airflow and prints the run link, `--wait` follows it to success or failure; `--local` runs it on the laptop. |
-| `ctzd add job NAME --schedule CRON` | Adds a job module, its test, and its `app.toml` entry. |
+| `ctzd add job NAME --schedule CRON [--timezone ZONE]` | Adds a job module, its test, and its `app.toml` entry; the schedule runs in ZONE (default UTC). |
 | `ctzd check [--fast]` | Runs every gate, fixing formatting and simple lint locally; `--fast` skips the tests. |
 | `ctzd sources` | Lists the data sources the platform has, by name. |
 | `ctzd env` | Writes the app's read-only source credentials into `.env`. |
@@ -396,11 +398,13 @@ use. Dropping an old format is a deliberate, announced change.
 ## 10. Jobs on Airflow
 
 Jenkins renders `app.toml` into `specs/<sbu>/<app>.json` (image, release, owners,
-and each job's schedule, size, retries, and timeout) and commits it to the
+and each job's schedule, time zone, size, retries, and timeout) and commits it to the
 `ctzd-dags` repo. The factory DAG in that repo reads every spec and generates
-one DAG per job, named `<sbu>__<app>__<job>`, each running
-`python -m app.jobs.<job>` in the app's image with KubernetesPodOperator and
-only the app's own sources.
+one DAG per job, named `<sbu>__<app>__<job>`, scheduled in the job's time zone
+and each calling the job module's `main()` in the app's image with
+KubernetesPodOperator and only the app's own sources. Calling `main()` rather
+than running the module means a job without an `if __name__ == "__main__"`
+guard still runs, and its exit code is the run's result.
 A failed run emails the app's owners through the SMTP provider's
 `SmtpNotifier`, which needs Airflow's `smtp_default` connection. A spec that
 fails to parse is logged and skipped so the other apps' jobs keep running.
@@ -546,4 +550,3 @@ readiness, the factory DAG's pods), and every real service listed above.
   apps join the pilot channel by being listed in `channels.toml`; a platform
   release is cut by tagging and promoted by a commit to `channels.toml`; and
   without the platform the CLI uses its cache and the seed release it bundles.
-- The open decisions in [validation-plan.md](validation-plan.md) section 6.
