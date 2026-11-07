@@ -58,3 +58,10 @@ def test_pods_get_one_secret_per_listed_source_and_no_others() -> None:
     assert spec.source_secrets == values.source_secrets
     assert spec.version == 2
     assert render.helm_values(config.load(), app_config(), image="i", release=1).source_secrets == ()
+
+
+def test_rendered_values_read_back_as_written() -> None:
+    values = render.helm_values(config.load(), app_config(sources=("fi_pricing",)), image="i", release=1)
+    written = values.model_dump_json(by_alias=True)
+    assert '"readinessPath"' in written
+    assert render.HelmValues.model_validate_json(written) == values

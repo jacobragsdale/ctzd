@@ -1,0 +1,341 @@
+"""Stage 3: agent trials against the local platform.
+
+    uv run python -m validation.trials probe ROOT                      # the real flow, scripted, no agent
+    uv run python -m validation.trials run ROOT SCENARIO[:PERSONA] ... [--model M] [--reps N] [--parallel P]
+
+ROOT holds data.json from `validation.platform.serve data`. Each trial gets its
+own platform, a fresh folder holding only the bootstrap `ctzd` skill, and a
+headless Claude Code agent. A second model plays the person, turn by turn.
+"""
+
+import argparse
+import contextlib
+import json
+import os
+import shutil
+import signal
+import subprocess
+import sys
+import time
+import uuid
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
+
+import httpx
+
+from validation.harness import REPO, Report, tool
+from validation.scenarios import CANARY, PERSONAS, SCENARIOS, Scenario
+
+TOOL_BIN = "tool/bin"
+BOOTSTRAP = REPO / "bootstrap" / "skills" / "ctzd" / "SKILL.md"
+AGENT_TIMEOUT = 2700.0
+PERSON_TIMEOUT = 300.0
+AGENT_BUDGET_USD = 4.0
+TRIAL_BUDGET_USD = 12.0
+SECOND_RELEASE = 2
+DONE = "[[DONE]]"
+GIVE_UP = "[[GIVE UP]]"
+ALLOWED = (
+    *(f"Bash({command}:*)" for command in ("ctzd", "uv", "git", "ls", "cat", "head", "tail", "grep", "find", "mkdir", "cd", "echo", "python", "python3", "curl", "sleep", "wc", "sort", "timeout")),
+    "Bash(pwd)",
+    "Read(./**)",
+    "Edit(./**)",
+    "Write(./**)",
+    "Glob",
+    "Grep",
+    "Skill",
+    "TodoWrite",
+)
+PERSON_PROMPT = """You are role-playing a business user who is talking to an AI assistant. The assistant builds dashboards and scheduled
+reports for you on your company's internal platform, ctzd. {persona}
+
+What you want: {goal}
+What only you know (share it when asked, or when it matters): {facts}
+
+Rules:
+- Reply as this person, in one to three sentences, in plain language. Never write code, commands, or file names you would not know.
+- If the assistant asks you to run a command, open a terminal, use git, or edit a file, say you do not know how and ask it to do it.
+- If the assistant asks you to approve a login in the browser, say you did.
+- When the assistant has done what you want (it says it is live or sent, and gives you the link or result), say thanks and end your
+  message with {done}. If the assistant is stuck after several attempts, end with {give_up}.
+"""
+
+
+@dataclass
+class Platform:
+    root: Path
+    process: subprocess.Popen[bytes]
+    port: int
+    env: dict[str, str]
+    profile: dict[str, str]
+    mailpit: str
+
+    def api(self, path: str) -> object:
+        response = httpx.get(f"http://127.0.0.1:{self.port}{path}", headers={"Authorization": f"Bearer {self.env['CTZD_GITHUB_TOKEN']}"}, timeout=30)
+        return response.json() if response.is_success else {"status": response.status_code, "body": response.text[:500]}
+
+    def stop(self) -> None:
+        if self.process.poll() is None:
+            self.process.send_signal(signal.SIGTERM)
+            try:
+                self.process.wait(timeout=60)
+            except subprocess.TimeoutExpired:
+                self.process.kill()
+
+
+def start_platform(root: Path, *, fail_first_build: bool = False) -> Platform:
+    root.mkdir(parents=True, exist_ok=True)
+    log = (root / "platform.log").open("wb")
+    env = os.environ | ({"CTZD_TRIAL_FAIL_FIRST_BUILD": "1"} if fail_first_build else {})
+    process = subprocess.Popen([tool("uv"), "run", "python", "-m", "validation.platform.serve", "platform", str(root / "platform")], cwd=REPO, stdout=log, stderr=subprocess.STDOUT, env=env)
+    settings = root / "platform" / "platform.json"
+    deadline = time.monotonic() + 180
+    while not settings.is_file():
+        if process.poll() is not None or time.monotonic() > deadline:
+            msg = f"the platform did not start; see {root / 'platform.log'}"
+            raise RuntimeError(msg)
+        time.sleep(1)
+    saved = json.loads(settings.read_text())
+    return Platform(root=root, process=process, port=int(saved["port"]), env=dict(saved["env"]), profile=dict(saved["profile"]), mailpit=str(saved["mailpit"]))
+
+
+def person_env(base: Path, platform: Platform, home: Path) -> dict[str, str]:
+    """The laptop: the trial ctzd on PATH, logged in, its own ctzd home, git pointed at the local repos."""
+    home.mkdir(parents=True, exist_ok=True)
+    (home / "profile.json").write_text(json.dumps(platform.profile))
+    keep = {key: value for key, value in os.environ.items() if not key.startswith(("CTZD_", "VIRTUAL_ENV", "UV_", "GIT_"))}
+    return keep | platform.env | {"CTZD_HOME": str(home), "PATH": f"{base / TOOL_BIN}:{os.environ['PATH']}"}
+
+
+def ctzd(argv: list[str], *, cwd: Path, env: dict[str, str], timeout: float = 900) -> dict[str, object]:
+    executable = shutil.which("ctzd", path=env["PATH"])
+    if executable is None:
+        msg = "the trial ctzd is not installed; see validation/README.md"
+        raise RuntimeError(msg)
+    done = subprocess.run([executable, *argv, "--json"], cwd=cwd, env=env, capture_output=True, text=True, timeout=timeout, check=False)
+    try:
+        parsed: object = json.loads(done.stdout)
+    except json.JSONDecodeError:
+        parsed = {"ok": False, "raw": done.stdout + done.stderr}
+    return {str(key): value for key, value in parsed.items()} if isinstance(parsed, dict) else {}
+
+
+# ---------------------------------------------------------------- the scripted probe
+
+
+def probe(base: Path) -> int:
+    """The flow of plan section 1 on a fresh local platform, scripted: what an agent should manage."""
+    report = Report("stage 3 probe (local platform, scripted)")
+    root = base / "probe"
+    shutil.rmtree(root, ignore_errors=True)
+    platform = start_platform(root)
+    try:
+        env = person_env(base, platform, root / "home")
+        work = root / "work"
+        work.mkdir()
+        setup = ctzd(["setup"], cwd=work, env=env)
+        report.expect("setup is ready and hands over the served start guide", ok=setup.get("ok") is True and "Start a new app" in str(setup.get("guide")), seen=setup)
+        created = ctzd(["new", "probe-app", "--sbu", "fi"], cwd=work, env=env)
+        app = work / "probe-app"
+        report.expect("new creates the repo and the app on the channel's release", ok=created.get("ok") is True and (app / ".ctzd" / "version").read_text() == "2\n", seen=created)
+        first = ctzd(["status", "--wait"], cwd=app, env=env)
+        report.expect("the starter app builds, deploys, and is released as v1", ok=first.get("ok") is True and first.get("release") == 1, seen=first)
+        dashboards = platform.api("/local/dashboards")
+        report.expect("the dashboard runs", ok=isinstance(dashboards, dict) and "fi-probe-app" in dashboards, seen=dashboards)
+        (app / "src" / "app" / "ui" / "main.py").write_text((app / "src" / "app" / "ui" / "main.py").read_text().replace("st.title(", 'st.caption("probe")\nst.title('))
+        deployed = ctzd(["deploy"], cwd=app, env=env)
+        report.expect("a change deploys as v2 with a screenshot", ok=deployed.get("ok") is True and deployed.get("release") == SECOND_RELEASE and deployed.get("screenshot") is not None, seen=deployed)
+        added = ctzd(["add", "job", "refresh", "--schedule", "0 6 * * 1-5"], cwd=app, env=env)
+        job = app / "src" / "app" / "jobs" / "refresh.py"
+        report.expect("add job writes a module", ok=added.get("ok") is True and job.is_file(), seen=added)
+        shipped = ctzd(["deploy"], cwd=app, env=env)
+        report.expect("the job deploys", ok=shipped.get("ok") is True and "refresh" in str(shipped.get("dags")), seen=shipped)
+        ran = ctzd(["run", "refresh", "--wait"], cwd=app, env=env)
+        report.expect("the job runs in the local Airflow", ok=ran.get("ok") is True and ran.get("state") == "success", seen=ran)
+        rolled = ctzd(["rollback"], cwd=app, env=env, timeout=400)
+        report.expect("rollback restores the release before the live one", ok=rolled.get("ok") is True and rolled.get("done") is True, seen=rolled)
+        (app / "README.md").write_text("# Probe\n\nFixed.\n")
+        resumed = ctzd(["deploy"], cwd=app, env=env)
+        report.expect("the next deploy clears the pause and goes live", ok=resumed.get("ok") is True and isinstance(resumed.get("release"), int), seen=resumed)
+        state = platform.api("/v1/apps/fi/probe-app")
+        report.expect("auto-deploy is no longer paused", ok=isinstance(state, dict) and state.get("paused") is False, seen=state)
+        (app / "src" / "app" / "ui" / "main.py").write_text((app / "src" / "app" / "ui" / "main.py").read_text() + '\nst.metric("Broken", frame["no_such_column"].sum())\n')
+        (app / "tests" / "test_ui.py").write_text("def test_nothing() -> None:\n    pass\n")
+        broken = ctzd(["deploy"], cwd=app, env=env)
+        report.expect("a page that raises fails the smoke test and production keeps the previous release", ok=broken.get("ok") is False and "smoke" in str(broken.get("summary")).lower(), seen=broken)
+    finally:
+        platform.stop()
+    return report.finish()
+
+
+# ---------------------------------------------------------------- trials
+
+
+@dataclass
+class Turn:
+    agent: str
+    person: str
+    cost_usd: float
+    seconds: float
+    agent_turns: int
+    stopped: str | None = None
+
+
+@dataclass
+class Trial:
+    key: str
+    scenario: str
+    persona: str
+    model: str
+    turns: list[Turn] = field(default_factory=list)
+    outcome: str = "incomplete"
+    error: str | None = None
+
+    @property
+    def cost_usd(self) -> float:
+        return sum(turn.cost_usd for turn in self.turns)
+
+
+def _result(stream: Path) -> dict[str, object]:
+    found: dict[str, object] = {}
+    for line in stream.read_text(errors="replace").splitlines():
+        with contextlib.suppress(json.JSONDecodeError):
+            event: object = json.loads(line)
+            if isinstance(event, dict) and event.get("type") == "result":
+                found = {str(key): value for key, value in event.items()}
+    return found
+
+
+@dataclass(frozen=True)
+class Conversation:
+    """One side of a trial's conversation: a headless Claude Code session resumed turn by turn."""
+
+    trial_dir: Path
+    session: str
+    model: str
+
+    def agent(self, message: str, *, env: dict[str, str], number: int) -> tuple[str, float, int, str | None]:
+        settings = self.trial_dir / "agent-settings.json"
+        if number == 1:
+            settings.write_text(json.dumps({"permissions": {"allow": list(ALLOWED), "deny": ["Read(**/.env)", "Read(//**/.env)"], "defaultMode": "dontAsk"}}))
+        args = [tool("claude"), "-p", message, "--model", self.model, "--output-format", "stream-json", "--verbose", "--setting-sources", "project,local", "--strict-mcp-config"]
+        args += ["--settings", str(settings), "--permission-mode", "dontAsk", "--max-budget-usd", str(AGENT_BUDGET_USD)]
+        args += ["--session-id", self.session] if number == 1 else ["--resume", self.session]
+        stream = self.trial_dir / f"agent-{number:02d}.jsonl"
+        with stream.open("wb") as out:
+            try:
+                subprocess.run(args, cwd=self.trial_dir / "work", env=env, stdout=out, stderr=subprocess.STDOUT, timeout=AGENT_TIMEOUT, check=False)
+            except subprocess.TimeoutExpired:
+                return "", 0.0, 0, "the agent turn timed out"
+        result = _result(stream)
+        cost = result.get("total_cost_usd")
+        turns = result.get("num_turns")
+        stopped = None if result.get("subtype") == "success" else str(result.get("subtype") or "no result")
+        return str(result.get("result") or ""), float(cost) if isinstance(cost, (int, float)) else 0.0, int(turns) if isinstance(turns, int) else 0, stopped
+
+    def person(self, message: str, *, prompt: str, number: int) -> str:
+        folder = self.trial_dir / "person"
+        folder.mkdir(exist_ok=True)
+        args = [tool("claude"), "-p", f"The assistant said:\n\n{message}" if message else "(The assistant said nothing.)", "--model", self.model, "--output-format", "json"]
+        args += ["--setting-sources", "project", "--strict-mcp-config", "--tools", "", "--system-prompt", prompt]
+        args += ["--session-id", self.session] if number == 1 else ["--resume", self.session]
+        done = subprocess.run(args, cwd=folder, capture_output=True, text=True, timeout=PERSON_TIMEOUT, check=False)
+        (folder / f"person-{number:02d}.json").write_text(done.stdout + done.stderr)
+        try:
+            parsed: object = json.loads(done.stdout)
+        except json.JSONDecodeError:
+            return GIVE_UP
+        return str(parsed.get("result", GIVE_UP)) if isinstance(parsed, dict) else GIVE_UP
+
+
+@dataclass(frozen=True)
+class Job:
+    scenario: Scenario
+    persona: str
+    rep: int
+    model: str
+    person_model: str
+
+
+def run_trial(base: Path, job: Job) -> Trial:
+    scenario = job.scenario
+    key = f"{scenario.key}-{job.persona}-{job.model.removeprefix('claude-')}-{job.rep}"
+    trial_dir = base / "runs" / key
+    shutil.rmtree(trial_dir, ignore_errors=True)
+    (trial_dir / "work" / ".claude" / "skills" / "ctzd").mkdir(parents=True)
+    shutil.copy(BOOTSTRAP, trial_dir / "work" / ".claude" / "skills" / "ctzd" / "SKILL.md")
+    trial = Trial(key=key, scenario=scenario.key, persona=job.persona, model=job.model)
+    platform = start_platform(trial_dir, fail_first_build=scenario.fail_first_build)
+    try:
+        env = person_env(base, platform, trial_dir / "home")
+        prompt = PERSON_PROMPT.format(persona=PERSONAS[job.persona], goal=scenario.goal, facts=scenario.facts, done=DONE, give_up=GIVE_UP)
+        agent = Conversation(trial_dir, str(uuid.uuid4()), job.model)
+        person = Conversation(trial_dir, str(uuid.uuid4()), job.person_model)
+        message = scenario.opening
+        for number in range(1, scenario.max_turns + 1):
+            began = time.monotonic()
+            text, cost, turns, stopped = agent.agent(message, env=env, number=number)
+            reply = person.person(text, prompt=prompt, number=number)
+            trial.turns.append(Turn(agent=text, person=reply, cost_usd=cost, seconds=round(time.monotonic() - began, 1), agent_turns=turns, stopped=stopped))
+            if DONE in reply or GIVE_UP in reply or trial.cost_usd > TRIAL_BUDGET_USD:
+                trial.outcome = "done" if DONE in reply else "gave up" if GIVE_UP in reply else "over budget"
+                break
+            message = reply
+        collect(trial_dir, platform)
+    except (OSError, RuntimeError, subprocess.SubprocessError, httpx.HTTPError) as err:
+        trial.error = repr(err)
+    finally:
+        platform.stop()
+        (trial_dir / "trial.json").write_text(json.dumps(asdict(trial) | {"cost_usd": trial.cost_usd}, indent=2))
+    return trial
+
+
+def collect(trial_dir: Path, platform: Platform) -> None:
+    """What the scorer needs from the platform before it stops: apps, releases, runs, messages, and the last screenshots."""
+    apps = sorted(path.name.removesuffix(".git") for path in (platform.root / "platform" / "github").glob("*.git"))
+    statuses: dict[str, object] = {}
+    state: dict[str, object] = {"apps": statuses, "dashboards": platform.api("/local/dashboards"), "runs": platform.api("/local/runs"), "teams": platform.api("/local/teams")}
+    for repo in apps:
+        sbu, _, name = repo.partition("-")
+        statuses[repo] = platform.api(f"/v1/apps/{sbu}/{name}")
+        builds = sorted((platform.root / "platform" / "builds" / repo).glob("*/screenshot.png"), key=lambda path: int(path.parent.name))
+        if builds:
+            shutil.copy(builds[-1], trial_dir / f"{repo}-last-screenshot.png")
+    with contextlib.suppress(httpx.HTTPError):
+        state["mail"] = httpx.get(f"{platform.mailpit}/api/v1/messages", timeout=10).json()
+    (trial_dir / "platform-state.json").write_text(json.dumps(state, indent=2, default=str))
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(prog="validation.trials")
+    parser.add_argument("command", choices=["probe", "run"])
+    parser.add_argument("root", type=Path)
+    parser.add_argument("scenarios", nargs="*", help="SCENARIO or SCENARIO:PERSONA")
+    parser.add_argument("--model", default="claude-haiku-5-5")
+    parser.add_argument("--person-model", default="claude-haiku-5-5")
+    parser.add_argument("--reps", type=int, default=1)
+    parser.add_argument("--parallel", type=int, default=3)
+    args = parser.parse_args()
+    base = Path(str(args.root)).resolve()
+    if str(args.command) == "probe":
+        return probe(base)
+    model, person_model, reps, parallel = str(args.model), str(args.person_model), int(args.reps), int(args.parallel)
+    known = {scenario.key: scenario for scenario in (*SCENARIOS, CANARY)}
+    jobs: list[Job] = []
+    for entry in [str(item) for item in args.scenarios]:
+        key, _, persona = entry.partition(":")
+        matches = [scenario for name, scenario in known.items() if name.startswith(key)]
+        if len(matches) != 1:
+            sys.stderr.write(f"unknown scenario {key}\n")
+            return 2
+        jobs += [Job(matches[0], persona or list(PERSONAS)[rep % len(PERSONAS)], rep, model, person_model) for rep in range(1, reps + 1)]
+    with ThreadPoolExecutor(max_workers=parallel) as pool:
+        results = list(pool.map(lambda job: run_trial(base, job), jobs))
+    for trial in results:
+        sys.stdout.write(f"{trial.key}: {trial.outcome}, {len(trial.turns)} turns, ${trial.cost_usd:.2f}{'' if trial.error is None else ' ERROR ' + trial.error}\n")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

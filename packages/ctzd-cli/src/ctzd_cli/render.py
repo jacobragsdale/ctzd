@@ -45,11 +45,11 @@ class HelmValues(_Model):
     host: str
     port: int
     command: tuple[str, ...]
-    readiness_path: str = Field(serialization_alias="readinessPath")
+    readiness_path: str = Field(alias="readinessPath")
     resources: Resources
     env: dict[str, str]
     # One Kubernetes secret per source the app lists; the pod gets no other source's credentials.
-    source_secrets: tuple[str, ...] = Field(serialization_alias="sourceSecrets")
+    source_secrets: tuple[str, ...] = Field(alias="sourceSecrets")
 
 
 class JobSpec(_Model):
