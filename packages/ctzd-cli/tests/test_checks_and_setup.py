@@ -34,3 +34,16 @@ def test_no_claude_md_means_nothing_blocks(tmp_path: Path) -> None:
     work = tmp_path / "apps"
     work.mkdir()
     assert [path for path in setup_checks.blocking_claude_files(work) if path.is_relative_to(tmp_path)] == []
+
+
+def test_the_users_own_claude_md_does_not_block_even_under_claude_config_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    config_dir = tmp_path / ".claude"
+    config_dir.mkdir()
+    (config_dir / "CLAUDE.md").write_text("# mine\n")
+    app = tmp_path / "work" / "app"
+    app.mkdir(parents=True)
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", str(config_dir))
+    assert setup_checks.blocking_claude_files(app) == []
+    monkeypatch.delenv("CLAUDE_CONFIG_DIR")
+    monkeypatch.setenv("HOME", str(tmp_path / "elsewhere"))
+    assert setup_checks.blocking_claude_files(app) == [config_dir / "CLAUDE.md"]

@@ -61,3 +61,11 @@ def test_release_arguments(text: str | None, number: int | None) -> None:
 def test_dotenv_values_survive_quotes() -> None:
     assert commands._dotenv_value('{"kind":"rest"}') == """'{"kind":"rest"}'"""  # noqa: SLF001 - the quoting rule is the unit under test.
     assert commands._dotenv_value("it's") == '"it\'s"'  # noqa: SLF001 - the quoting rule is the unit under test.
+
+
+def test_an_app_made_offline_says_it_is_not_on_the_platform(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    make_app(tmp_path)
+    code, out = run(["env"], tmp_path, capsys)
+    assert code == main.EXIT_USAGE
+    assert "not on the platform" in str(out["summary"])
+    assert "ctzd new bond-prices --sbu fi" in str(out["next"])

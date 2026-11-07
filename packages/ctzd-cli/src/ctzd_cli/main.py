@@ -74,7 +74,7 @@ def _app_parsers(sub: "argparse._SubParsersAction[argparse.ArgumentParser]", com
     new.add_argument("--ui", choices=["streamlit", "dash", "none"], default="streamlit")
     new.add_argument("--dir", type=Path, help="parent folder; default: the current folder")
     new.add_argument("--owner", help="owner email; default: the GitHub login's email")
-    new.add_argument("--offline", action="store_true", help="only write the files locally; no repo, no push")
+    new.add_argument("--offline", action="store_true", help="for platform tests only: write the files with no repository, so the app can never be deployed")
     open_ = sub.add_parser("open", parents=[common], help="clone an existing app")
     open_.add_argument("name")
     open_.add_argument("--sbu", required=True)

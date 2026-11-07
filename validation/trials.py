@@ -43,10 +43,7 @@ ALLOWED = ("Bash", "Read(./**)", "Edit(./**)", "Write(./**)", "Glob", "Grep", "S
 DENIED = (
     "Read(**/.env)",
     "Read(//**/.env)",
-    "Read(~/.ssh/**)",
-    "Read(~/.claude/**)",
-    "Read(~/.config/**)",
-    "Read(~/dev/**)",
+    *(f"Read(/{Path.home() / folder}/**)" for folder in (".ssh", ".claude", ".config", "dev")),
     "Bash(sudo:*)",
     "Bash(rm -rf /:*)",
     "Bash(rm -rf ~:*)",
@@ -57,6 +54,7 @@ DENIED = (
 )
 PERSON_PROMPT = """You are role-playing a business user who is talking to an AI assistant. The assistant builds dashboards and scheduled
 reports for you on your company's internal platform, ctzd. {persona}
+You are Ann Lee (ann.lee@contoso.com, GitHub login ann.lee). This is your own work laptop, and ctzd on it is already logged in as you.
 
 What you want: {goal}
 What only you know (share it when asked, or when it matters): {facts}
@@ -111,11 +109,24 @@ def start_platform(root: Path, *, fail_first_build: bool = False) -> Platform:
 
 
 def person_env(base: Path, platform: Platform, home: Path) -> dict[str, str]:
-    """The laptop: the trial ctzd on PATH, logged in, its own ctzd home, git pointed at the local repos."""
+    """The laptop: the trial ctzd on PATH, logged in, its own ctzd home, git pointed at the local repos.
+
+    HOME is a fresh folder, so tools such as gh see none of the operator's accounts. Claude Code still finds
+    the operator's login through CLAUDE_CONFIG_DIR, and uv keeps its shared cache and Python builds.
+    """
     home.mkdir(parents=True, exist_ok=True)
     (home / "profile.json").write_text(json.dumps(platform.profile))
-    keep = {key: value for key, value in os.environ.items() if not key.startswith(("CTZD_", "VIRTUAL_ENV", "UV_", "GIT_"))}
-    return keep | platform.env | {"CTZD_HOME": str(home), "PATH": f"{base / TOOL_BIN}:{os.environ['PATH']}"}
+    user = home.parent / "user-home"
+    user.mkdir(exist_ok=True)
+    real = Path.home()
+    keep = {key: value for key, value in os.environ.items() if not key.startswith(("CTZD_", "VIRTUAL_ENV", "UV_", "GIT_", "GH_", "GITHUB_", "XDG_"))}
+    isolation = {
+        "HOME": str(user),
+        "CLAUDE_CONFIG_DIR": os.environ.get("CLAUDE_CONFIG_DIR", str(real / ".claude")),
+        "UV_CACHE_DIR": str(real / ".cache" / "uv"),
+        "UV_PYTHON_INSTALL_DIR": str(real / ".local" / "share" / "uv" / "python"),
+    }
+    return keep | platform.env | isolation | {"CTZD_HOME": str(home), "PATH": f"{base / TOOL_BIN}:{os.environ['PATH']}"}
 
 
 def ctzd(argv: list[str], *, cwd: Path, env: dict[str, str], timeout: float = 900) -> dict[str, object]:
@@ -300,7 +311,7 @@ def arrange(base: Path, trial_dir: Path, platform: Platform, scenario: Scenario)
         app = colleague_app(base, trial_dir, platform, "sector-prices", "fi_pricing")
         env = person_env(base, platform, trial_dir / "colleague-home")
         logic, test = app / "src" / "app" / "logic" / "summary.py", app / "tests" / "test_logic.py"
-        logic.write_text(logic.read_text().replace('["clean_price"].mean()', '["clean_price"].sum()').replace("its average clean price", "its total clean price"))
+        logic.write_text(logic.read_text().replace('("clean_price", "mean")', '("clean_price", "sum")').replace("its average clean price", "its total clean price"))
         test.write_text(test.read_text().replace('["Utilities", "Energy"]', '["Energy", "Utilities"]').replace("[99.0, 95.0]", "[190.0, 99.0]"))
         broken = ctzd(["deploy", "--message", "Show totals per sector"], cwd=app, env=env)
         if broken.get("ok") is not True:
@@ -355,8 +366,13 @@ def collect(trial_dir: Path, platform: Platform) -> None:
         builds = sorted((platform.root / "platform" / "builds" / repo).glob("*/screenshot.png"), key=lambda path: int(path.parent.name))
         if builds:
             shutil.copy(builds[-1], trial_dir / f"{repo}-last-screenshot.png")
-    with contextlib.suppress(httpx.HTTPError):
-        state["mail"] = httpx.get(f"{platform.mailpit}/api/v1/messages", timeout=10).json()
+    with contextlib.suppress(httpx.HTTPError, ValueError):
+        listing = httpx.get(f"{platform.mailpit}/api/v1/messages", params={"limit": 1000}, timeout=10).json()
+        sender = f"ctzd-{platform.port}@contoso.com"
+        mine = [message for message in listing.get("messages", []) if str(message.get("From", {}).get("Address", "")) == sender]
+        state["mail"] = [
+            {"subject": message.get("Subject"), "to": [to.get("Address") for to in message.get("To", [])], "attachments": message.get("Attachments"), "at": message.get("Created")} for message in mine
+        ]
     (trial_dir / "platform-state.json").write_text(json.dumps(state, indent=2, default=str))
 
 

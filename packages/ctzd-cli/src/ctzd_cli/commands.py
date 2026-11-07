@@ -203,6 +203,16 @@ def _app(ctx: Context) -> tuple[Path, AppConfig]:
     return root, appconfig.load(root)
 
 
+def _platform_app(ctx: Context) -> tuple[Path, AppConfig]:
+    """The app, for a command that needs it on the platform: one made with `ctzd new --offline` is not."""
+    root, app = _app(ctx)
+    if not (root / ".git").exists() or not gitops.open_repo(root, token=None, identity=None).has_remote():
+        msg = f"{app.app.name} is not on the platform: it has no repository, as when it was made with `ctzd new --offline`."
+        hint = f"Run `ctzd new {app.app.name} --sbu {app.app.sbu} --dir PARENT` in another folder, copy this app's src/, tests/, app.toml, and README.md into it, and work there."
+        raise UsageError(msg, hint=hint)
+    return root, app
+
+
 def local_env(root: Path, app: AppConfig) -> dict[str, str]:
     env = {"CTZD_APP": app.app.name, "CTZD_SBU": app.app.sbu, "CTZD_ENV": "local", "CTZD_STORE_URL": str(root / ".ctzd" / "out" / "store")}
     if _env_file_has(root, "CTZD_SHARED_STORE_SAS"):
@@ -244,6 +254,7 @@ def run_job(ctx: Context, *, job: str, local: bool, wait: bool, timeout: float) 
         return Outcome(
             summary=f"Job {job} {'finished' if result.ok else 'failed'} locally (exit {result.code}).", data={"exit_code": result.code, "output": proc.tail(result.output, 40)}, ok=result.ok
         )
+    _platform_app(ctx)
     platform = ctx.platform_factory()
     created = platform.run_job(app.app.sbu, app.app.name, job)
     if not wait:
@@ -309,7 +320,7 @@ def _dotenv_value(value: str) -> str:
 
 
 def env(ctx: Context) -> Outcome:
-    root, app = _app(ctx)
+    root, app = _platform_app(ctx)
     variables = ctx.platform_factory().env(app.app.sbu, app.app.name, app.sources.use).variables
     lines = ["# Written by `ctzd env`. Read-only credentials: never open, print, or commit this file."]
     lines += [f"{key}={_dotenv_value(value)}" for key, value in sorted(variables.items())]
@@ -422,7 +433,7 @@ def platform_commit_message(root: Path, paths: list[str]) -> str:
 
 
 def deploy(ctx: Context, *, message: str | None, detach: bool, timeout: float) -> Outcome:
-    root, app = _app(ctx)
+    root, app = _platform_app(ctx)
     steps = ctx.run_checks(_target(ctx, root, app), mode="local", fast=False)
     gate = _check_outcome(steps)
     if not gate.ok:
@@ -452,7 +463,7 @@ def deploy(ctx: Context, *, message: str | None, detach: bool, timeout: float) -
 
 
 def status(ctx: Context, *, wait: bool, timeout: float) -> Outcome:
-    root, app = _app(ctx)
+    root, app = _platform_app(ctx)
     platform = ctx.platform_factory()
     if wait:
         commit = gitops.open_repo(root, token=None, identity=None).head()
@@ -467,7 +478,7 @@ def status(ctx: Context, *, wait: bool, timeout: float) -> Outcome:
 
 
 def logs(ctx: Context, *, job: str | None, tail: int) -> Outcome:
-    _root, app = _app(ctx)
+    _root, app = _platform_app(ctx)
     if job is not None:
         app.job(job)
     text = ctx.platform_factory().logs(app.app.sbu, app.app.name, job=job, tail=tail).text
@@ -475,7 +486,7 @@ def logs(ctx: Context, *, job: str | None, tail: int) -> Outcome:
 
 
 def list_releases(ctx: Context) -> Outcome:
-    root, _app_config = _app(ctx)
+    root, _app_config = _platform_app(ctx)
     git = gitops.open_repo(root, token=ctx.token(), identity=None)
     git.fetch_tags()
     found = release.parse_tags(git.tags(release.TAG_PREFIX))
@@ -494,7 +505,7 @@ def parse_release(text: str | None) -> int | None:
 
 
 def rollback(ctx: Context, *, target: str | None, timeout: float) -> Outcome:
-    _root, app = _app(ctx)
+    _root, app = _platform_app(ctx)
     platform = ctx.platform_factory()
     accepted = platform.rollback(app.app.sbu, app.app.name, parse_release(target))
     deadline = ctx.clock() + timeout
@@ -526,6 +537,7 @@ def delete(ctx: Context, *, confirmed: bool) -> Outcome:
     if not confirmed:
         msg = "Deleting an app removes its dashboard and jobs; its tables go after 30 days."
         raise UsageError(msg, hint="Confirm with the person, then run `ctzd delete --yes`.")
+    _platform_app(ctx)
     ctx.platform_factory().delete(app.app.sbu, app.app.name)
     return Outcome(summary=f"Deleted {app.app.name}. Its tables are removed in 30 days.")
 

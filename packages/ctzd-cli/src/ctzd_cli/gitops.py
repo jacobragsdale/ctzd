@@ -91,6 +91,9 @@ class Git:
         self.run("commit", "--quiet", "--message", message, "--", *paths)
         return True
 
+    def has_remote(self) -> bool:
+        return self.run("remote", "get-url", REMOTE, check=False).ok
+
     def remote_has_main(self) -> bool:
         result = self.run("ls-remote", "--exit-code", "--heads", REMOTE, BRANCH, check=False)
         return result.ok

@@ -122,7 +122,8 @@ def run_platform(root: Path, base: Path) -> None:
     github.root.mkdir(parents=True, exist_ok=True)
 
     def runtime_env(secret_names: list[str]) -> dict[str, str]:
-        env = {"CTZD_SMTP_HOST": "127.0.0.1", "CTZD_SMTP_PORT": str(data.SMTP_PORT), "CTZD_SMTP_SENDER": "ctzd@contoso.com"}
+        # One sender per platform, so each trial finds its own email among everyone's in the shared Mailpit.
+        env = {"CTZD_SMTP_HOST": "127.0.0.1", "CTZD_SMTP_PORT": str(data.SMTP_PORT), "CTZD_SMTP_SENDER": f"ctzd-{port}@contoso.com"}
         for name in secret_names:
             if name in secret_values:
                 env["CTZD_SOURCE_" + name.removeprefix("ctzd-source-").replace("-", "_").upper()] = secret_values[name]

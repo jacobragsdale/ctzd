@@ -88,11 +88,21 @@ def check_claude(cwd: Path) -> Check:
     return Check("claude code", "ok", "Claude Code reads AGENTS.md.")
 
 
+def user_memory_files() -> set[Path]:
+    """The person's own CLAUDE.md, which Claude Code reads as user memory and does not count against AGENTS.md."""
+    found = {Path.home() / ".claude" / "CLAUDE.md"}
+    config_dir = os.environ.get("CLAUDE_CONFIG_DIR", "")
+    if config_dir:
+        found.add(Path(config_dir) / "CLAUDE.md")
+    return {path.resolve() for path in found}
+
+
 def blocking_claude_files(cwd: Path) -> list[Path]:
     """CLAUDE.md files at or above `cwd`; any of them makes Claude Code ignore AGENTS.md."""
+    personal = user_memory_files()
     found: list[Path] = []
     for folder in (cwd, *cwd.parents):
-        found += [folder / name for name in _CLAUDE_FILES if (folder / name).is_file() and (folder / name) != Path.home() / ".claude" / "CLAUDE.md"]
+        found += [folder / name for name in _CLAUDE_FILES if (folder / name).is_file() and (folder / name).resolve() not in personal]
     return found
 
 
