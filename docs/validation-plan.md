@@ -116,7 +116,8 @@ rotate: a terse manager, a detailed analyst, someone who uses the wrong words
   work for larger models.
 - **Reference:** one Sonnet 5.5 run per scenario, to tell a skill gap from a
   model limit.
-- **Person:** Haiku 5.5. Section 7 recommends a stronger model next time.
+- **Person:** Haiku 5.5 in rounds 1 to 3. It sometimes stalled, so rounds 4
+  and 5 used Sonnet 5.5, which kept the conversations moving.
 - **Grader:** the operator's model, in subagents that read each trial's digest,
   code, screenshots, and platform state.
 
@@ -171,9 +172,10 @@ The plan's open decisions, as taken:
    input to changes, not a gate.
 3. **Authentication and cost:** trials use the operator's Claude Code login
    through `CLAUDE_CONFIG_DIR` with everything else of the operator's hidden.
-   Claude Code reported $10.84 for round 1, $12.15 for round 2, and $2.67 for
-   round 3; a Haiku trial costs a few cents to about $0.80, a Sonnet trial
-   $0.20 to $1.70. The graders ran on the operator's model and are not counted.
+   The agents cost $10.84 in round 1, $12.15 in round 2, $2.67 in round 3, and
+   $0.55 in rounds 4 and 5, as Claude Code reported it; a Haiku trial costs a
+   few cents to about $0.80, a Sonnet trial $0.20 to $1.70. The simulated person
+   and the graders are not counted.
 
 ## 7. Results
 
@@ -204,6 +206,8 @@ without the platform could not fall back to its cached release.
 | 2 | Sonnet 5.5 | 10 | 9 | 10 | 3 |
 | 3 (targeted) | Haiku 5.5 | 10 | 10 | 10 | 0 |
 | 3 (targeted) | Sonnet 5.5 | 3 | 2 | 3 | 0 |
+| 4 (targeted) | Haiku 5.5 | 6 | 6 | 6 | 0 |
+| 5 (targeted) | Haiku 5.5 | 6 | 6 | 6 | 0 |
 
 Round 1 found mostly CLI and harness faults (the s05 setup failed before its
 agents started), fixed before round 2. The round-2 graders scored 39 trials:
@@ -226,7 +230,9 @@ What the trials changed:
   `__main__` guard no longer "succeeds" without running. `ctzd dev` starts the
   dashboard in the background on a free port and `ctzd dev --stop` stops it,
   so agents no longer reach for `pkill`. The smoke test's screenshot covers the
-  whole Streamlit page, not the first screen. `--json` works before the
+  whole Streamlit page, not the first screen, up to a height an agent can still
+  read. `ctzd new` and `ctzd open` name the app's `AGENTS.md` in their next
+  step. `--json` works before the
   subcommand. `ctzd open` on an app that does not exist says so instead of
   "git clone failed". An app made with `--offline` explains why it cannot
   deploy, and the start guide says never to use it. Job specs publish only
@@ -238,7 +244,9 @@ What the trials changed:
   not existing yet; `st.bar_chart` sorts alphabetically and the simple charts
   start at zero; a form of date filter ty accepts; label job messages with the
   data's date; never run git, kill processes, or search the computer; and the
-  words to leave out with the person.
+  words to leave out with the person. The bootstrap skill's description now
+  covers changing and fixing an existing app, so agents load it before they
+  look for the app anywhere else.
 
 Round 3 reran the scenarios those changes aimed at, before the last guidance
 edits above. All three Haiku email trials scheduled the job at 07:00
@@ -250,6 +258,17 @@ led one to commit and push with git. The bootstrap skill now forbids searching
 the computer, and `AGENTS.md` forbids committing or pushing outside
 `ctzd deploy`. One session hung for ten minutes on a `ctzd dev` the agent ran in
 the foreground, the case the background `ctzd dev` removes.
+
+Rounds 4 and 5 ran Haiku on the final guidance, with Sonnet as the person.
+Round 4 showed `ctzd dev` and `ctzd dev --stop` used cleanly, a price chart
+with a fitted axis, and no `.env` access; but agents asked to fix an existing
+app still skipped the bootstrap skill and searched the disk, one fixed the app
+without reading `AGENTS.md` and so never rolled back, and the full-page
+screenshot of a page with a long table came out 12,000 pixels tall and
+unreadable. After those fixes, round 5 reran the rollback and take-over
+scenarios and the slow-query one: all six agents loaded the skill first, ran
+`ctzd setup` and `ctzd open`, and searched nothing; all three rolled back before
+fixing; none used git directly or touched `.env`.
 
 ### What the harness got wrong
 
