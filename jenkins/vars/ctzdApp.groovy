@@ -91,7 +91,6 @@ def call(Map config = [:]) {
                             '''
                         }
                     }
-                    sh 'SPEC="$WORKSPACE@tmp/out/airflow-spec.json" bash -euo pipefail "$WORKSPACE@tmp/publish-spec.sh"'
                 }
             }
             stage('Smoke test') {
@@ -104,6 +103,13 @@ def call(Map config = [:]) {
                             error('The dashboard showed an error after the rollout; the previous release is back.')
                         }
                     }
+                }
+            }
+            stage('Jobs') {
+                // After the smoke test, so Airflow only ever runs the image of a release that went live.
+                when { allOf { branch 'main'; expression { env.PAUSED != 'true' } } }
+                steps {
+                    sh 'SPEC="$WORKSPACE@tmp/out/airflow-spec.json" bash -euo pipefail "$WORKSPACE@tmp/publish-spec.sh"'
                 }
             }
             stage('Release') {

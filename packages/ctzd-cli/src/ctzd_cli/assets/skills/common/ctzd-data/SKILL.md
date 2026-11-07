@@ -93,10 +93,22 @@ def load_rating_scale() -> tuple[str, ...]:
 
 
 @ctzd.cached(ttl="10m")
-def load_sector_summary() -> pd.DataFrame:
+def _sector_summary() -> pd.DataFrame:
     frame = ctzd.read_table("sector_summary")
     return ctzd.require_columns(frame, {"sector": "str", "bonds": "int", "avg_price": "float"}, what="sector_summary")
+
+
+def load_sector_summary() -> pd.DataFrame | None:
+    """The job's latest summary; None until the job has run once, so the page can say so."""
+    try:
+        return _sector_summary()
+    except ctzd.StoreError:
+        return None  # not cached: the page shows the data as soon as the job has run
 ```
+
+Pass the column map to `ctzd.require_columns` inline, as above. Kept in a
+variable first, it is typed `dict[str, str]`, and `ctzd check`'s types step
+rejects it.
 
 Call `ctzd.rest(...)` inside the loader, never at module level, so test fakes apply.
 A bind holds one value, not a list: for "these sectors", load the day's rows
@@ -111,9 +123,12 @@ seconds. A dashboard must not wait on that. Move it:
    `ctzd.write_table(summary, "sector_summary")`. Writes are atomic: readers see
    the old version until the new one is complete.
 2. The dashboard's loader reads it with `ctzd.read_table` (as `load_sector_summary` above).
-3. Deploy the job first and run it (`ctzd run JOB --wait --json`), and only then deploy
-   the page that reads the table: a page reading a table that was never
-   written fails the post-deploy check.
+3. The page must render before the job's first run: when the loader returns
+   `None`, show a plain message such as "The first refresh runs at 06:00 UTC;
+   the figures appear after it." A page that raises fails the post-deploy
+   check, and the release does not go live.
+4. Deploy, then run the job once (`ctzd run JOB --wait --json`) so the page has
+   data straight away. Jobs only run the code of a release that went live.
 
 Locally, `ctzd run JOB --local` writes to `.ctzd/out/store/`. A table not
 written locally is read from production when `ctzd env` provided read access.

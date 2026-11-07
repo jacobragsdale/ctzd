@@ -426,9 +426,10 @@ connection.
   the build files against the app's recorded platform release), builds and pushes
   `contosoctzd.azurecr.io/apps/<sbu>-<app>:<sha>`, skips deploy if the app is
   paused, runs `helm upgrade --install --atomic` with values from
-  `ctzd ci render`, commits the job specs to `ctzd-dags`, runs `ctzd ci smoke`
-  against the live URL (running `helm rollback` and failing the build if the
-  page shows an error), and finishes with `ctzd ci release`, which tags the
+  `ctzd ci render`, runs `ctzd ci smoke` against the live URL (running
+  `helm rollback` and failing the build if the page shows an error), commits
+  the job specs to `ctzd-dags` only once the page has passed, so Airflow only
+  runs the image of a release that went live, and finishes with `ctzd ci release`, which tags the
   commit `ctzd/vN`, and records the live release in the `ctzd-state-<sbu>-<app>`
   ConfigMap that the platform API reads. Branches other than `main` run the
   checks only.

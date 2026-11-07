@@ -43,14 +43,15 @@ ALLOWED = ("Bash", "Read(./**)", "Edit(./**)", "Write(./**)", "Glob", "Grep", "S
 DENIED = (
     "Read(**/.env)",
     "Read(//**/.env)",
-    *(f"Read(/{Path.home() / folder}/**)" for folder in (".ssh", ".claude", ".config", "dev")),
+    *(f"{tool}(/{Path.home() / folder}/**)" for tool in ("Read", "Edit", "Write") for folder in (".ssh", ".claude", ".config", "dev")),
+    *(f"Bash({command} {Path.home() / '.claude'}:*)" for command in ("mv", "rm", "cp", "sed -i")),
     "Bash(sudo:*)",
     "Bash(rm -rf /:*)",
     "Bash(rm -rf ~:*)",
     "Bash(git push --force:*)",
     "Bash(docker:*)",
-    "Bash(kill:*)",
-    "Bash(pkill:*)",
+    "Bash(pkill:*)",  # an agent may stop its own processes by id, not other trials' by name
+    "Bash(killall:*)",
 )
 PERSON_PROMPT = """You are role-playing a business user who is talking to an AI assistant. The assistant builds dashboards and scheduled
 reports for you on your company's internal platform, ctzd. {persona}
@@ -62,7 +63,9 @@ What only you know (share it when asked, or when it matters): {facts}
 Rules:
 - Reply as this person, in one to three sentences, in plain language. Never write code, commands, or file names you would not know.
 - If the assistant asks you to run a command, open a terminal, use git, or edit a file, say you do not know how and ask it to do it.
-- If the assistant asks you to approve a login in the browser, say you did.
+- You can open every link the assistant gives you: what it says is live is what you see, unless it tells you something is broken.
+  Do not pause the work to check things yourself later; when one request is done, ask for the next one right away.
+- You are already logged in; if the assistant asks about logins or accounts, tell it to use the one it has.
 - When the assistant has done what you want (it says it is live or sent, and gives you the link or result), say thanks and end your
   message with {done}. If the assistant is stuck after several attempts, end with {give_up}.
 """
@@ -257,9 +260,13 @@ class Conversation:
         return str(result.get("result") or ""), float(cost) if isinstance(cost, (int, float)) else 0.0, int(turns) if isinstance(turns, int) else 0, stopped
 
     def person(self, message: str, *, prompt: str, number: int) -> str:
-        folder = self.trial_dir / "person"
-        folder.mkdir(exist_ok=True)
-        args = [tool("claude"), "-p", f"The assistant said:\n\n{message}" if message else "(The assistant said nothing.)", "--model", self.model, "--output-format", "json"]
+        folder = self.cwd
+        folder.mkdir(parents=True, exist_ok=True)
+        framed = (
+            f"Ann, this is the assistant's latest message to you:\n\n<assistant_message>\n{message}\n</assistant_message>\n\n"
+            "Write Ann's reply to the assistant: answer its questions as Ann would. Do not repeat or rephrase its message."
+        )
+        args = [tool("claude"), "-p", framed if message else "(The assistant said nothing.) Write Ann's reply.", "--model", self.model, "--output-format", "json"]
         args += ["--setting-sources", "project", "--strict-mcp-config", "--tools", "", "--system-prompt", prompt]
         args += ["--session-id", self.session] if number == 1 else ["--resume", self.session]
         done = subprocess.run(args, cwd=folder, capture_output=True, text=True, timeout=PERSON_TIMEOUT, check=False)
@@ -280,10 +287,10 @@ class Job:
     person_model: str
 
 
-def colleague_app(base: Path, trial_dir: Path, platform: Platform, name: str, source: str) -> Path:
+def colleague_app(base: Path, aux: Path, platform: Platform, name: str, source: str) -> Path:
     """An app someone else made and deployed: the starter, replaced by a fixture, live as v2."""
-    env = person_env(base, platform, trial_dir / "colleague-home")
-    work = trial_dir / "colleague"
+    env = person_env(base, platform, aux / "colleague-home")
+    work = aux / "colleague"
     work.mkdir(parents=True, exist_ok=True)
     created = ctzd(["new", name, "--sbu", "fi"], cwd=work, env=env)
     if created.get("ok") is not True:
@@ -299,17 +306,17 @@ def colleague_app(base: Path, trial_dir: Path, platform: Platform, name: str, so
     return app
 
 
-def arrange(base: Path, trial_dir: Path, platform: Platform, scenario: Scenario) -> Path:
+def arrange(base: Path, trial_dir: Path, aux: Path, platform: Platform, scenario: Scenario) -> Path:
     """Put the platform in the scenario's starting state; return the folder the agent starts in."""
     work = trial_dir / "work"
     if scenario.setup == "app-folder":
         ctzd(["new", "canary-app", "--sbu", "fi"], cwd=work, env=person_env(base, platform, trial_dir / "home"))
         return work / "canary-app"
     if scenario.setup == "colleague-app":
-        shutil.rmtree(colleague_app(base, trial_dir, platform, "desk-trades", "fi_trading"))
+        shutil.rmtree(colleague_app(base, aux, platform, "desk-trades", "fi_trading"))
     if scenario.setup == "deployed-chart":
-        app = colleague_app(base, trial_dir, platform, "sector-prices", "fi_pricing")
-        env = person_env(base, platform, trial_dir / "colleague-home")
+        app = colleague_app(base, aux, platform, "sector-prices", "fi_pricing")
+        env = person_env(base, platform, aux / "colleague-home")
         logic, test = app / "src" / "app" / "logic" / "summary.py", app / "tests" / "test_logic.py"
         logic.write_text(logic.read_text().replace('("clean_price", "mean")', '("clean_price", "sum")').replace("its average clean price", "its total clean price"))
         test.write_text(test.read_text().replace('["Utilities", "Energy"]', '["Energy", "Utilities"]').replace("[99.0, 95.0]", "[190.0, 99.0]"))
@@ -329,13 +336,17 @@ def run_trial(base: Path, job: Job) -> Trial:
     (trial_dir / "work" / ".claude" / "skills" / "ctzd").mkdir(parents=True)
     shutil.copy(BOOTSTRAP, trial_dir / "work" / ".claude" / "skills" / "ctzd" / "SKILL.md")
     trial = Trial(key=key, scenario=scenario.key, persona=job.persona, model=job.model)
-    platform = start_platform(trial_dir, fail_first_build=scenario.fail_first_build)
+    # Everything the agent must not find by searching upward lives outside its trial folder: the platform's
+    # repositories and builds, the person's instructions, and the colleague's copy of an app.
+    aux = base / "aux" / key
+    shutil.rmtree(aux, ignore_errors=True)
+    platform = start_platform(aux, fail_first_build=scenario.fail_first_build)
     try:
         env = person_env(base, platform, trial_dir / "home")
         prompt = PERSON_PROMPT.format(persona=PERSONAS[job.persona], goal=scenario.goal, facts=scenario.facts, done=DONE, give_up=GIVE_UP)
-        cwd = arrange(base, trial_dir, platform, scenario)
+        cwd = arrange(base, trial_dir, aux, platform, scenario)
         agent = Conversation(trial_dir, str(uuid.uuid4()), job.model, cwd)
-        person = Conversation(trial_dir, str(uuid.uuid4()), job.person_model, trial_dir / "person")
+        person = Conversation(trial_dir, str(uuid.uuid4()), job.person_model, aux / "person")
         message = scenario.opening
         for number in range(1, scenario.max_turns + 1):
             began = time.monotonic()

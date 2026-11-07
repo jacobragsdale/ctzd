@@ -29,9 +29,12 @@ and rename it only with their agreement.
 
 ## Start a new app
 
-1. Ask what they want, in their words: what it shows or sends, from which
-   data, for whom, and how often. One app is one dashboard plus any number of
-   scheduled jobs that share its data.
+1. Ask what they want, in their words: what it shows or sends, for whom, and
+   how often. One app is one dashboard plus any number of scheduled jobs that
+   share its data. Do not ask where the data lives, which database or table, or
+   how to connect: they do not know. Create the app first; its SBU skill lists
+   the business unit's sources and tables, and `ctzd sources --json` lists every
+   source by name.
 2. Their business unit: `fi` (Fixed Income) is the one known today. If
    `ctzd new` says "Unknown business unit", its `next` lists the known ones.
 3. The kind of app: `--ui streamlit` (default, for most dashboards),
@@ -44,7 +47,8 @@ and rename it only with their agreement.
 5. Run `ctzd new NAME --sbu SBU --ui UI --json`. It creates the repository and
    the app folder under the current folder (`--dir PARENT` puts it elsewhere).
    It returns `path`, `repo`, and `url`; the starter app goes live at `url`
-   within a few minutes.
+   within a few minutes. Never add `--offline`: it is for platform tests, and
+   an app made with it can never be deployed.
 6. Errors: "already exists and is not empty" means choose another name or
    `--dir`; "does not know the owner's email" means log in first or pass
    `--owner EMAIL`.

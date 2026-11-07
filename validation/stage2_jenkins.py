@@ -223,6 +223,8 @@ def check_dashboard_app(report: Report, client: JenkinsClient, work: Path) -> No
         ok=build is not None and build.result == "FAILURE" and build.failed_stage == "Smoke test" and "helm rollback fi-dry-page" in calls(work),
         seen=(build, None if build is None else client.console_tail(build, 30)),
     )
+    listing = git(work, "--git-dir", str(work / "repos" / "ctzd-dags.git"), "ls-tree", "-r", "--name-only", "main")
+    report.expect("a build that failed its smoke test publishes no job spec", ok="specs/fi/dry-page.json" not in listing, seen=listing)
 
 
 def check_platform_jobs(report: Report, client: JenkinsClient, work: Path) -> None:

@@ -173,7 +173,8 @@ def score_platform(score: Score, trial_dir: Path) -> None:
     mail = state.get("mail")
     if isinstance(mail, dict):
         # A full Mailpit listing: keep this trial's messages, sent from its platform's own address.
-        settings = trial_dir / "platform" / "platform.json"
+        moved = trial_dir.parent.parent / "aux" / trial_dir.name / "platform" / "platform.json"
+        settings = moved if moved.is_file() else trial_dir / "platform" / "platform.json"
         sender = f"ctzd-{json.loads(settings.read_text())['port']}@contoso.com" if settings.is_file() else ""
         messages = mail.get("messages")
         mail = [message for message in messages if isinstance(message, dict) and str((message.get("From") or {}).get("Address", "")) == sender] if isinstance(messages, list) else []

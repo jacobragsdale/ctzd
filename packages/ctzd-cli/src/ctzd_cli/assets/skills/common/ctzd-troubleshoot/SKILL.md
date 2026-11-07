@@ -43,8 +43,9 @@ previous release. Read `log_tail` for the real cause; by what the stage does:
   functions. Reproduce with `ctzd env --json` and `ctzd dev --json`.
 - **Smoke test.** The live page showed an error box, and the release was
   rolled back. `log_tail` holds `The dashboard shows errors: URL: TEXT`.
-  Common causes: a table the page reads was never written in production (deploy
-  and run its job first), or an exception on empty data. Reproduce locally with
+  Common causes: a table the page reads was never written in production (the
+  page must show a message when its loader returns `None`, see `ctzd-data`;
+  deploy, then `ctzd run JOB --wait --json`), or an exception on empty data. Reproduce locally with
   real data (`ctzd env`, `ctzd dev`, open every page), add a test for the case,
   fix it. `the page did not finish loading within N s` means the page never
   rendered: usually a slow query on page load (move it into a job) or code that
