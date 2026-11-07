@@ -47,8 +47,10 @@ spec:
               value: {{ $value | quote }}
             {{- end }}
           envFrom:
+            {{- range .Values.sourceSecrets }}
             - secretRef:
-                name: {{ .Values.sourcesSecretName }}
+                name: {{ . }}
+            {{- end }}
             - configMapRef:
                 name: {{ .Values.smtpConfigMapName }}
                 optional: true

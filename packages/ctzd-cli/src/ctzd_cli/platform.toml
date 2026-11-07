@@ -1,7 +1,9 @@
-# Platform settings baked into the ctzd CLI. Every value is a contoso placeholder:
-# the company copy of this repository replaces them, or CTZD_PLATFORM_CONFIG
-# points at another file with the same shape.
-version = 1
+# Platform settings baked into the ctzd CLI: where the platform's services are.
+# Every value is a contoso placeholder: the company copy of this repository
+# replaces them, or CTZD_PLATFORM_CONFIG points at another file with the same
+# shape. What goes into apps (build files, guidance, starter code, tool pins)
+# is not here: it ships in platform releases, see assets/release.toml.
+version = 2
 
 [github]
 host = "github.contoso.com"
@@ -18,19 +20,7 @@ base_image = "contosoctzd.azurecr.io/ctzd/base:py3.13"
 store_url = "abfs://ctzd@contosoctzdstore.dfs.core.windows.net"
 mingit_url = "https://ctzd.contoso.com/downloads/MinGit-64-bit.zip"
 
-[python]
-requires = ">=3.13"
-build_backend = "uv_build>=0.13.6,<0.14"
-dev = [
-    "import-linter==2.15",
-    "pandas-stubs==3.1.0.261029",
-    "pre-commit==4.7.0",
-    "pytest==9.2.0",
-    "pytest-cov==7.1.0",
-    "ruff==0.17.3",
-    "ty==0.0.95",
-]
-
+# The package index every app installs from; written into each app's pyproject.toml.
 [[python.index]]
 name = "internal"
 url = "https://pypi.contoso.com/simple"
@@ -54,15 +44,6 @@ cpu_request = "250m"
 cpu_limit = "2"
 memory_request = "2Gi"
 memory_limit = "8Gi"
-
-[ui.streamlit]
-dependencies = ["streamlit>=1.66"]
-
-[ui.dash]
-dependencies = ["dash[ag-grid]>=4.5", "gunicorn>=26.2"]
-
-[ui.none]
-dependencies = []
 
 [sbus.fi]
 name = "Fixed Income"

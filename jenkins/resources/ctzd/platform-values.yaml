@@ -1,6 +1,10 @@
 # Platform settings for the ctzd-app chart (proposal for the infrastructure owner).
 ingressClassName: nginx
 tlsSecretName: ctzd-wildcard-tls
-sourcesSecretName: ctzd-sources
 smtpConfigMapName: ctzd-smtp
 serviceAccountName: ctzd-app
+# Company sign-in: set enabled to true once an oauth2-proxy for Entra ID serves these URLs.
+auth:
+  enabled: false
+  url: "https://auth.ctzd.contoso.com/oauth2/auth"
+  signin: "https://auth.ctzd.contoso.com/oauth2/start?rd=$scheme://$host$escaped_request_uri"

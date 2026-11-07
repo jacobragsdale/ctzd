@@ -13,7 +13,7 @@ them. Never pass on a raw error, and never ask them to run anything.
 
 | Step | Failure means | Fix |
 |---|---|---|
-| `platform files` | `fixed`: an edited platform file was put back; nothing to do. `failed` with "upgrade ctzd": the app is newer than this ctzd. | `uv tool upgrade ctzd`, then run the command again. |
+| `platform files` | `fixed`: platform files were put back or moved to the current platform release; nothing to do, `ctzd deploy` commits them separately. `failed` with "needs ctzd X or newer": this ctzd is too old for the app's platform release. "not on this computer": the platform could not be reached to fetch the app's release. | Too old: `uv tool upgrade ctzd`, then run the command again. Not on this computer: check the network and `ctzd setup`, then retry. |
 | `environment` | `uv sync` failed; `detail` is uv's error. | A package name or version that the internal index does not have: correct it with `uv add` or `uv remove`. A network error: retry. |
 | `format` | The formatter could not parse a file. | The syntax error at the file and line in `detail`. |
 | `lint` | ruff findings it could not fix: `CODE message --> file:line`. | Fix each one (`python-standards`). Never add an ignore. |
@@ -86,7 +86,9 @@ behind the page answers with a server error, such as a Dash callback that raised
 | `You are not logged in to GitHub` / `did not accept your GitHub login` | The two-step login in `ctzd-workflow`. |
 | `You do not have access` | The app's owner or the SBU champion must add the person to the app's repository; tell them. |
 | `This folder is not inside a ctzd app` | Run from the app folder (the one with `app.toml`). |
-| `This app uses platform version X, newer than the installed ctzd Y` | `uv tool upgrade ctzd`, then run the command again. |
+| `Platform release N needs ctzd X or newer` | `uv tool upgrade ctzd`, then run the same command again. Any command can say this when the platform moves on. |
+| `next` says a newer ctzd is available | Optional: `uv tool upgrade ctzd` when the person is not waiting on you. |
+| `The agent guidance could not be refreshed` | Carry on; `AGENTS.md` and these skills may be a little out of date until the platform is reachable again. |
 | `The ctzd platform could not be reached` / `A network request failed` | Retry in a minute; if it keeps failing, tell the person the platform is unreachable. |
 
 **"Someone else changed this app and their changes conflict with yours."**

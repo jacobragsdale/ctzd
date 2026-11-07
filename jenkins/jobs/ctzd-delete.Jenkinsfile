@@ -1,5 +1,6 @@
 // Proposal: the job the platform API triggers for `ctzd delete`. The API archives the repo itself.
-// Tables under <sbu>/<app>/ in the store are removed 30 days later by a separate janitor job.
+// It removes the app's job spec from ctzd-dags and records the deletion in deleted/<sbu>/<app>.json there;
+// the ctzd_table_janitor DAG removes the app's tables from the store 30 days after that.
 pipeline {
     agent { label 'ctzd' }
     parameters { string(name: 'REPO', description: 'app repo, such as fi-bond-prices') }
@@ -21,9 +22,12 @@ pipeline {
                     sbu=${REPO%%-*}; app=${REPO#*-}
                     if [ -f "dags-repo/specs/$sbu/$app.json" ]; then
                         git -C dags-repo rm --quiet "specs/$sbu/$app.json"
-                        git -C dags-repo -c user.name=ctzd -c user.email=ctzd@localhost commit --quiet -m "Remove $REPO"
-                        git -C dags-repo -c "http.https://$host/.extraheader=$auth" push --quiet origin HEAD:main
                     fi
+                    mkdir -p "dags-repo/deleted/$sbu"
+                    printf '{"sbu": "%s", "app": "%s", "deleted_at": "%s"}\n' "$sbu" "$app" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "dags-repo/deleted/$sbu/$app.json"
+                    git -C dags-repo add "deleted/$sbu/$app.json"
+                    git -C dags-repo -c user.name=ctzd -c user.email=ctzd@localhost commit --quiet -m "Remove $REPO"
+                    git -C dags-repo -c "http.https://$host/.extraheader=$auth" push --quiet origin HEAD:main
                 '''
             }
         }

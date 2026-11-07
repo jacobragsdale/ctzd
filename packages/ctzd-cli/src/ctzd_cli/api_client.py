@@ -10,6 +10,8 @@ from ctzd_cli import api_models as m
 from ctzd_cli.errors import CliError
 
 _TIMEOUT = 60.0
+# Every command in an app asks for the current platform release; an unreachable platform must not stall it.
+_CURRENT_TIMEOUT = 5.0
 _DETAIL: TypeAdapter[dict[str, object]] = TypeAdapter(dict[str, object])
 
 
@@ -27,15 +29,17 @@ class Platform(Protocol):
     def logs(self, sbu: str, name: str, *, job: str | None, tail: int) -> m.LogText: ...
     def env(self, sbu: str, name: str, sources: tuple[str, ...]) -> m.EnvVars: ...
     def delete(self, sbu: str, name: str) -> None: ...
+    def current_release(self, sbu: str | None, name: str | None) -> m.CurrentRelease: ...
+    def release(self, number: int) -> m.PlatformRelease: ...
 
 
 class PlatformClient:
     def __init__(self, base_url: str, token: str, *, transport: httpx.BaseTransport | None = None) -> None:
         self._http = httpx.Client(base_url=base_url.rstrip("/") + "/v1", timeout=_TIMEOUT, transport=transport, headers={"Authorization": f"Bearer {token}", "Accept": "application/json"})
 
-    def _call(self, method: str, path: str, *, body: BaseModel | None = None, params: dict[str, str | int] | None = None) -> httpx.Response:
+    def _call(self, method: str, path: str, *, body: BaseModel | None = None, params: dict[str, str | int] | None = None, timeout: float = _TIMEOUT) -> httpx.Response:
         try:
-            response = self._http.request(method, path, json=None if body is None else body.model_dump(mode="json"), params=params)
+            response = self._http.request(method, path, json=None if body is None else body.model_dump(mode="json"), params=params, timeout=timeout)
         except httpx.TransportError as err:
             msg = "The ctzd platform could not be reached."
             raise CliError(msg, hint="Check the network connection and try again in a minute.") from err
@@ -44,12 +48,7 @@ class PlatformClient:
         return response
 
     def _get[T: BaseModel](self, model: type[T], method: str, path: str, *, body: BaseModel | None = None, params: dict[str, str | int] | None = None) -> T:
-        response = self._call(method, path, body=body, params=params)
-        try:
-            return model.model_validate_json(response.content)
-        except ValidationError as err:
-            msg = f"The platform returned an unexpected reply to {method} {path}."
-            raise CliError(msg) from err
+        return _parse(model, self._call(method, path, body=body, params=params), method, path)
 
     def me(self) -> m.Me:
         return self._get(m.Me, "GET", "/me")
@@ -92,6 +91,23 @@ class PlatformClient:
 
     def delete(self, sbu: str, name: str) -> None:
         self._call("DELETE", f"/apps/{sbu}/{name}")
+
+    def current_release(self, sbu: str | None, name: str | None) -> m.CurrentRelease:
+        """The release of an app's channel; with no app, the general channel's."""
+        path = "/releases/current"
+        params: dict[str, str | int] = {} if sbu is None or name is None else {"sbu": sbu, "app": name}
+        return _parse(m.CurrentRelease, self._call("GET", path, params=params, timeout=_CURRENT_TIMEOUT), "GET", path)
+
+    def release(self, number: int) -> m.PlatformRelease:
+        return self._get(m.PlatformRelease, "GET", f"/releases/{number}")
+
+
+def _parse[T: BaseModel](model: type[T], response: httpx.Response, method: str, path: str) -> T:
+    try:
+        return model.model_validate_json(response.content)
+    except ValidationError as err:
+        msg = f"The platform returned an unexpected reply to {method} {path}."
+        raise CliError(msg) from err
 
 
 def _error(response: httpx.Response) -> CliError:

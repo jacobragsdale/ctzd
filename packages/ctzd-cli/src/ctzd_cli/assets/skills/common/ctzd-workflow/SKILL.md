@@ -91,7 +91,7 @@ Every result has `ok`, `command`, `summary`, and `next`, plus:
 | `env` | `variables` (names only) |
 | `add job` | `job`, `files` |
 | `dev` | `url`, `exit_code` (when it stops) |
-| `sync` | `changed` |
+| `sync` | `release`, `changed` |
 
 A failure the command caught itself has only `ok: false`, `summary` (what went
 wrong), and `next` (what to do).
@@ -105,6 +105,7 @@ Jenkins, lint, tests, or rebase.
 |---|---|
 | Release live | "Your dashboard is updated: URL." Add the screenshot. |
 | Build failed | "The update did not go out because REASON. What people see is unchanged. I am fixing it now." |
+| Built but not deployed (`summary` says nothing was deployed) | Nothing yet: follow `next`, then report the outcome. |
 | Checks failed | Nothing yet: fix it, then report the outcome. |
 | Rollback done | "I put the previous version back; it is live now. Next I will fix the change and send it again." |
 | Job started | "The job is running. You can follow it here: URL." |
@@ -112,3 +113,9 @@ Jenkins, lint, tests, or rebase.
 `ctzd delete --yes` removes the dashboard and jobs (tables go after 30 days).
 Run it only when the person clearly asks, after confirming with them. `ctzd sync`
 is rarely needed: `ctzd check` restores platform files itself.
+
+The platform keeps this app's `AGENTS.md` and skills current on its own: any
+`ctzd` command may rewrite them, and they are not part of the app's history.
+When the platform's build files change, `ctzd deploy` commits them first, as
+"Upgrade platform files to platform release N", then the person's change.
+Neither needs explaining unless the person asks.

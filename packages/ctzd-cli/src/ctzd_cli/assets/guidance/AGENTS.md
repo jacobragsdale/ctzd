@@ -29,7 +29,7 @@ Use the `ctzd` command for everything, always with `--json`:
 ## Rules
 
 - Never open, print, or copy `.env`; it holds credentials. `ctzd` loads it for you.
-- Never edit platform-owned files: this file, `.agents/`, `Dockerfile`, `Jenkinsfile`,
+- Never edit platform-owned files: this file, `.agents/`, `.claude/`, `Dockerfile`, `Jenkinsfile`,
   `ruff.toml`, `ty.toml`, `.importlinter`, `pytest.toml`, `.pre-commit-config.yaml`,
   `.gitignore`, `.gitattributes`, `.dockerignore`, `.python-version`, `.ctzd/`. Fix the code instead.
 - Never add `# noqa`, `# ty: ignore`, or lint exclusions to make a check pass.

@@ -1,9 +1,23 @@
-// Proposal for the infrastructure owner: not yet run on a real Jenkins.
+// Proposal for the infrastructure owner.
 // Every app repo's Jenkinsfile is `@Library('ctzd') _` followed by `ctzdApp()`.
 // Needs: Pipeline Utility Steps (readJSON), an agent labelled `ctzd` with uv, git, docker (or buildkit),
 // helm, kubectl, and Playwright's Chromium; credentials `ctzd-github` (token) and `ctzd-acr`.
+// The defaults below are production's; another environment (a throwaway namespace, a local copy of the
+// platform) overrides them through the library's global properties or `ctzdApp(registry: ...)`.
 
 def call(Map options = [:]) {
+    // The one ctzd version every build uses, released together with the chart it renders values for.
+    def defaults = [
+        cliVersion: '0.2.0',
+        registry: 'contosoctzd.azurecr.io',
+        baseImage: 'contosoctzd.azurecr.io/ctzd/base:py3.13',
+        namespace: 'ctzd-apps',
+        chart: 'oci://contosoctzd.azurecr.io/helm/ctzd-app',
+        chartVersion: '0.2.0',
+        dagsRepo: 'https://github.contoso.com/ctzd-platform/ctzd-dags.git',
+        appScheme: 'https',
+    ]
+    def settings = defaults.collectEntries { key, value -> [key, options.get(key, env."CTZD_${key.replaceAll(/([A-Z])/, '_$1').toUpperCase()}" ?: value)] }
     pipeline {
         agent { label options.get('agent', 'ctzd') }
         options {
@@ -12,20 +26,22 @@ def call(Map options = [:]) {
             buildDiscarder(logRotator(numToKeepStr: '30'))
         }
         environment {
-            REGISTRY = 'contosoctzd.azurecr.io'
-            BASE_IMAGE = 'contosoctzd.azurecr.io/ctzd/base:py3.13'
-            NAMESPACE = 'ctzd-apps'
-            CHART = 'oci://contosoctzd.azurecr.io/helm/ctzd-app'
-            CHART_VERSION = '0.1.0'
-            DAGS_REPO = 'https://github.contoso.com/ctzd-platform/ctzd-dags.git'
+            CTZD_VERSION = "${settings.cliVersion}"
+            REGISTRY = "${settings.registry}"
+            BASE_IMAGE = "${settings.baseImage}"
+            NAMESPACE = "${settings.namespace}"
+            CHART = "${settings.chart}"
+            CHART_VERSION = "${settings.chartVersion}"
+            DAGS_REPO = "${settings.dagsRepo}"
+            APP_SCHEME = "${settings.appScheme}"
             CTZD_GITHUB_TOKEN = credentials('ctzd-github')
         }
         stages {
             stage('Prepare') {
                 steps {
                     script {
-                        // The CLI at the version the app's platform files came from, in a venv outside the workspace.
-                        env.CTZD_VERSION = readFile('.ctzd/version').trim()
+                        // The platform's CLI, in a venv outside the workspace; it checks the build files against
+                        // the platform release the app records in .ctzd/version.
                         env.CTZD_VENV = "${env.WORKSPACE}@tmp/ctzd-${env.CTZD_VERSION}"
                         env.CTZD = "${env.CTZD_VENV}/bin/ctzd"
                         sh 'test -x "$CTZD" || { uv venv --quiet "$CTZD_VENV" && uv pip install --quiet --python "$CTZD_VENV" "ctzd[ci]==$CTZD_VERSION"; }'
@@ -81,7 +97,7 @@ def call(Map options = [:]) {
                 when { allOf { branch 'main'; expression { env.PAUSED != 'true' && env.HAS_DASHBOARD == 'true' } } }
                 steps {
                     script {
-                        def status = sh(script: '"$CTZD" ci smoke --url "https://$HOST" --screenshot screenshot.png --json', returnStatus: true)
+                        def status = sh(script: '"$CTZD" ci smoke --url "$APP_SCHEME://$HOST" --screenshot screenshot.png --json', returnStatus: true)
                         if (status != 0) {
                             sh 'helm rollback "$FULLNAME" --namespace "$NAMESPACE" --wait --timeout 5m'
                             error('The dashboard showed an error after the rollout; the previous release is back.')

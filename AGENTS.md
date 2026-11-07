@@ -10,9 +10,11 @@ in the same change.
   company, team, or personal names.
 - Python follows the house standard as configured in `pyproject.toml` (ruff with every rule, ty with
   every rule as an error). Fix findings; do not add ignores.
-- `packages/ctzd-cli/src/ctzd_cli/assets/` is the app template. Files under `locked/` and `skills/`
-  are copied byte-for-byte into every app and drift-checked, so a change there is a platform release.
-  Template Python must already be in ruff-format output; `scripts/e2e.sh` proves it.
+- `packages/ctzd-cli/src/ctzd_cli/assets/` is the platform release folder: `locked/` (build files,
+  committed in apps and drift-checked), `guidance/` and `skills/` (written into apps, gitignored),
+  `starter/`, and `start/`. Apps get a change there only through a new platform release: raise
+  `release` in `assets/release.toml`, commit, and tag `platform-release/<n>`. Template Python must
+  already be in ruff-format output; `scripts/e2e.sh` proves it.
 - The CLI and API share request and response models in `ctzd_cli/api_models.py`.
 - Gateways to outside systems (`ctzd_api/clients.py`, drivers in `ctzd-core`) stay thin; logic lives
   in code that tests can drive with the fakes in `ctzd_api/fakes.py` and `ctzd.testing`.

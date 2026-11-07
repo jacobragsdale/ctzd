@@ -16,11 +16,19 @@ command: []
 readinessPath: /healthz
 resources: {}
 env: {}
+# One Kubernetes secret per source the app lists, such as ctzd-source-fi-pricing.
+sourceSecrets: []
 
 # --- platform settings (platform-values.yaml) ---
 ingressClassName: nginx
 tlsSecretName: ctzd-wildcard-tls
-# Every data source's secret, synced from Key Vault, mounted as environment variables.
-sourcesSecretName: ctzd-sources
+# Each source's Key Vault secret is synced into a Kubernetes secret of the same name, holding one
+# key CTZD_SOURCE_<NAME>; a pod mounts only the ones in sourceSecrets.
 smtpConfigMapName: ctzd-smtp
 serviceAccountName: ctzd-app
+# Company sign-in at the ingress: off until an oauth2-proxy for Entra ID exists. When on, nginx asks
+# `url` (the proxy's /oauth2/auth) before every request and sends people without a session to `signin`.
+auth:
+  enabled: false
+  url: ""
+  signin: ""

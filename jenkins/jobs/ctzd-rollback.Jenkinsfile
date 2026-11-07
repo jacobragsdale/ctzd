@@ -11,7 +11,9 @@ pipeline {
         ORG_URL = 'https://github.contoso.com/ctzd-apps'
         NAMESPACE = 'ctzd-apps'
         CHART = 'oci://contosoctzd.azurecr.io/helm/ctzd-app'
-        CHART_VERSION = '0.1.0'
+        CHART_VERSION = '0.2.0'
+        // The platform's CLI, the same version ctzdApp() pins.
+        CTZD_VERSION = '0.2.0'
         DAGS_REPO = 'https://github.contoso.com/ctzd-platform/ctzd-dags.git'
         CTZD_GITHUB_TOKEN = credentials('ctzd-github')
     }
@@ -28,7 +30,6 @@ pipeline {
                     writeFile(file: 'app/app.toml', text: record.app_toml)
                     env.IMAGE = record.image
                     dir('app') {
-                        env.CTZD_VERSION = readFile('.ctzd/version').trim()
                         env.CTZD_VENV = "${env.WORKSPACE}@tmp/ctzd-${env.CTZD_VERSION}"
                         env.CTZD = "${env.CTZD_VENV}/bin/ctzd"
                         sh 'test -x "$CTZD" || { uv venv --quiet "$CTZD_VENV" && uv pip install --quiet --python "$CTZD_VENV" "ctzd[ci]==$CTZD_VERSION"; }'

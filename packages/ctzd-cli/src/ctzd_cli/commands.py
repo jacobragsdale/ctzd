@@ -3,20 +3,25 @@
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Protocol
 
 from pydantic import ValidationError
 
-from ctzd_cli import api_client, appconfig, assets, auth, checks, config, gitops, proc, release, render, scaffold, setup_checks, sync
+from ctzd_cli import api_client, appconfig, auth, checks, config, gitops, proc, release, render, scaffold, setup_checks, sync
 from ctzd_cli import api_models as m
 from ctzd_cli.appconfig import AppConfig, AppSection, Job, SourcesSection, Ui
+from ctzd_cli.assets import start_guide
 from ctzd_cli.errors import CliError, UsageError
+from ctzd_cli.releases import ReleaseSource, require_usable, upgrade_hint
 
 ENV_FILE = ".env"
 SCREENSHOTS = ".ctzd/screenshots"
 _POLL_SECONDS = 10.0
 _DEFAULT_JOB = Job(name="refresh", schedule="0 6 * * *")
+# Commands that work inside an app; each refreshes the app's guidance before it runs.
+APP_COMMANDS = frozenset({"dev", "run", "add job", "check", "env", "deploy", "status", "logs", "releases", "rollback", "sync", "delete"})
 
 
 @dataclass
@@ -41,10 +46,52 @@ class Context:
     run_checks: "CheckRunner" = checks.run_all
     sleep: Callable[[float], None] = time.sleep
     clock: Callable[[], float] = time.monotonic
+    now: Callable[[], datetime] = auth.utc_now
+    releases: ReleaseSource = field(default_factory=lambda: ReleaseSource(None))
 
 
 def default_platform() -> api_client.Platform:
     return api_client.PlatformClient(config.load().platform.api_url, auth.require_token())
+
+
+# ---------------------------------------------------------------- guidance
+
+
+def refresh_guidance(ctx: Context, root: Path, app: AppConfig, *, force: bool = False) -> list[str]:
+    """Bring AGENTS.md and the skills to the channel's current release; return hints for the agent."""
+    stamp = sync.read_stamp(root)
+    now = ctx.now()
+    if not force and stamp is not None and now - stamp.checked_at < sync.GUIDANCE_REFRESH and (root / "AGENTS.md").is_file():
+        return []
+    current = ctx.releases.current(app.app.sbu, app.app.name)
+    hints: list[str] = []
+    if ctx.releases.unreachable is not None:
+        hints.append(f"The agent guidance could not be refreshed ({ctx.releases.unreachable}); it may be out of date.")
+    if current is not None:
+        chosen = require_usable(ctx.releases.get(current.release))
+        hint = upgrade_hint(current)
+        if hint is not None:
+            hints.append(hint)
+    elif stamp is None or not (root / "AGENTS.md").is_file():
+        chosen = require_usable(ctx.releases.newest_local())
+    else:
+        # Without the platform, keep the guidance that is there and ask again on the next command.
+        return hints
+    sync.write_guidance(root, chosen, app.app.sbu)
+    sync.write_stamp(root, chosen.release, now)
+    return hints
+
+
+def prepare(ctx: Context, command: str) -> list[str]:
+    """Run before every command: inside an app, refresh its guidance. Returns hints to add to `next`."""
+    if command not in APP_COMMANDS:
+        return []
+    try:
+        root = appconfig.find_root(ctx.cwd)
+        app = appconfig.load(root)
+    except CliError:
+        return []  # The command itself reports a missing or broken app.toml.
+    return refresh_guidance(ctx, root, app)
 
 
 # ---------------------------------------------------------------- setup and login
@@ -54,13 +101,12 @@ def setup(ctx: Context) -> Outcome:
     with auth.http_client() as client:
         results = setup_checks.run(ctx.cwd, client=client)
     missing = [check for check in results if check.state == "missing"]
-    next_steps = [check.detail for check in missing] or ["Ask the person what they want to build, then run `ctzd new NAME --sbu SBU --ui streamlit`."]
-    return Outcome(
-        summary="ctzd is ready." if not missing else "ctzd needs attention: " + ", ".join(check.name for check in missing),
-        data={"checks": [{"name": check.name, "state": check.state, "detail": check.detail} for check in results]},
-        next_steps=next_steps,
-        ok=not missing,
-    )
+    data: dict[str, object] = {"checks": [{"name": check.name, "state": check.state, "detail": check.detail} for check in results]}
+    if missing:
+        return Outcome(summary="ctzd needs attention: " + ", ".join(check.name for check in missing), data=data, next_steps=[check.detail for check in missing], ok=False)
+    # The guide comes from the platform's current release, so starting an app is taught by served text.
+    data["guide"] = start_guide(require_usable(ctx.releases.for_app()))
+    return Outcome(summary="ctzd is ready.", data=data, next_steps=["Read `guide`: it says how to start a new app or open an existing one."])
 
 
 def login_start(_ctx: Context, *, open_browser: bool) -> Outcome:
@@ -105,15 +151,17 @@ def new(ctx: Context, *, name: str, sbu: str, ui: Ui, directory: Path | None, ow
         msg = f"{root} already exists and is not empty."
         raise UsageError(msg, hint="Choose another name or folder.")
     created = None if offline else ctx.platform_factory().create_app(m.CreateAppRequest(sbu=sbu, name=name, ui=ui, owners=app.app.owners))
+    chosen = require_usable(ctx.releases.newest_local() if offline else ctx.releases.for_app(sbu, name))
     root.mkdir(parents=True, exist_ok=True)
-    scaffold.scaffold(root, platform=platform, app=app, version=assets.version())
+    scaffold.scaffold(root, platform=platform, app=app, release=chosen)
+    sync.write_stamp(root, chosen.release, ctx.now())
     locked = _uv(root, "sync")
     if not locked.ok:
         msg = "The new app's packages could not be installed."
         raise CliError(msg, hint=proc.tail(locked.output, 20))
     git = gitops.open_repo(root, token=None if offline else ctx.token(), identity=auth.identity() or ("ctzd", "ctzd@localhost"))
     git.init(None if created is None else created.clone_url)
-    git.commit_all(f"Create {name} with ctzd {assets.version()}")
+    git.commit_all(f"Create {name} on platform release {chosen.release}")
     if created is not None:
         git.push_main()
     url = platform.app_url(sbu, name)
@@ -132,20 +180,20 @@ def open_app(ctx: Context, *, name: str, sbu: str, directory: Path | None) -> Ou
         raise UsageError(msg, hint="Choose another folder with --dir.")
     url = f"https://{platform.github.host}/{platform.github.org}/{platform.repo_name(sbu, name)}.git"
     gitops.open_repo(ctx.cwd, token=ctx.token(), identity=auth.identity()).clone(url, root)
-    sync.mirror_skills_for_claude(root)
+    hints = refresh_guidance(ctx, root, appconfig.load(root), force=True)
     installed = _uv(root, "sync")
     return Outcome(
         summary=f"Opened {name} in {root}.",
         data={"path": str(root), "url": platform.app_url(sbu, name)},
-        next_steps=[f"Work inside {root}."] + ([] if installed.ok else ["`uv sync` failed; run `ctzd check` to see why."]),
+        next_steps=[f"Work inside {root}.", *hints] + ([] if installed.ok else ["`uv sync` failed; run `ctzd check` to see why."]),
     )
 
 
 # ---------------------------------------------------------------- working locally
 
 
-def _target(root: Path, app: AppConfig) -> checks.Target:
-    return checks.Target(root=root, app=app, platform=config.load(), version=assets.version())
+def _target(ctx: Context, root: Path, app: AppConfig) -> checks.Target:
+    return checks.Target(root=root, app=app, platform=config.load(), releases=ctx.releases)
 
 
 def _app(ctx: Context) -> tuple[Path, AppConfig]:
@@ -227,8 +275,10 @@ def add_job(ctx: Context, *, name: str, schedule: str, size: appconfig.Size) -> 
     except ValidationError as err:
         problems = "; ".join(str(error["msg"]).removeprefix("Value error, ") for error in err.errors(include_url=False))
         raise UsageError(problems) from None
+    recorded = sync.recorded_release(root)
+    chosen = ctx.releases.newest_local() if recorded is None else ctx.releases.get(recorded)
     appconfig.add_job(root, job)
-    files = scaffold.add_job_files(root, job)
+    files = scaffold.add_job_files(root, require_usable(chosen), job)
     return Outcome(
         summary=f"Added job {name} on schedule {schedule!r} (UTC).", data={"job": name, "files": files}, next_steps=[f"Write the job in src/app/jobs/{name}.py, then run `ctzd run {name} --local`."]
     )
@@ -236,7 +286,7 @@ def add_job(ctx: Context, *, name: str, schedule: str, size: appconfig.Size) -> 
 
 def check(ctx: Context, *, fast: bool) -> Outcome:
     root, app = _app(ctx)
-    steps = ctx.run_checks(_target(root, app), mode="local", fast=fast)
+    steps = ctx.run_checks(_target(ctx, root, app), mode="local", fast=fast)
     return _check_outcome(steps)
 
 
@@ -299,6 +349,14 @@ def _build_outcome(root: Path, platform: api_client.Platform, app: AppConfig, co
         )
     if build.state != "succeeded":
         return Outcome(summary=f"The build is still {build.state}.", data=data, next_steps=["Run `ctzd status --wait` to keep waiting."])
+    if build.release is None:
+        # Jenkins passes the checks but skips the deploy while the app is paused after a rollback.
+        return Outcome(
+            summary="The build passed its checks but nothing was deployed; production still runs the previous release.",
+            data=data,
+            next_steps=["Run `ctzd status`: if auto-deploy is still paused after a rollback, run `ctzd deploy` again, which clears the pause before it pushes."],
+            ok=False,
+        )
     status = platform.status(app.app.sbu, app.app.name)
     data |= {"release": build.release, "url": status.url if app.app.ui != "none" else None, "dags": status.dags}
     where = status.url if app.app.ui != "none" else ", ".join(status.dags.values()) or "Airflow"
@@ -317,24 +375,34 @@ def commit_message(changed: list[str], message: str | None) -> str:
     return "Update " + ", ".join(changed[:_NAMES_IN_MESSAGE]) + more
 
 
+def platform_commit_message(root: Path, paths: list[str]) -> str:
+    recorded = sync.recorded_release(root)
+    verb = "Upgrade" if sync.VERSION_FILE in paths else "Restore"
+    return f"{verb} platform files to platform release {recorded}"
+
+
 def deploy(ctx: Context, *, message: str | None, detach: bool, timeout: float) -> Outcome:
     root, app = _app(ctx)
-    steps = ctx.run_checks(_target(root, app), mode="local", fast=False)
+    steps = ctx.run_checks(_target(ctx, root, app), mode="local", fast=False)
     gate = _check_outcome(steps)
     if not gate.ok:
         gate.summary = "Not deployed. " + gate.summary
         return gate
     git = gitops.open_repo(root, token=ctx.token(), identity=auth.identity() or ("ctzd", "ctzd@localhost"))
     platform = ctx.platform_factory()
+    # The platform's own changes go in a commit of their own, before the person's change.
+    platform_paths = sorted({path for step in steps for path in step.paths})
+    upgraded = git.commit_paths(platform_paths, platform_commit_message(root, platform_paths))
     changed = git.changed_paths()
-    # After a rollback, a deploy with no new changes still needs a new build to put main back in production.
-    paused = not changed and platform.status(app.app.sbu, app.app.name).paused
+    paused = platform.status(app.app.sbu, app.app.name).paused
+    # Clear a rollback pause before pushing, so the build this push starts deploys.
+    platform.resume(app.app.sbu, app.app.name)
     summary = commit_message(changed, message)
-    committed = git.commit_all(summary, allow_empty=paused)
+    # After a rollback, a deploy with no new changes still needs a new build to put main back in production.
+    committed = git.commit_all(summary, allow_empty=paused and not upgraded) or upgraded
     git.rebase_onto_remote()
     git.push_main()
     commit = git.head() or ""
-    platform.resume(app.app.sbu, app.app.name)
     if detach:
         return Outcome(summary="Pushed; Jenkins is building it.", data={"commit": commit, "committed": committed}, next_steps=["Run `ctzd status --wait`."])
     build = wait_for_build(ctx, platform, app, commit, timeout=timeout)
@@ -364,7 +432,7 @@ def logs(ctx: Context, *, job: str | None, tail: int) -> Outcome:
     return Outcome(summary=text or "No log lines yet.", data={"text": text})
 
 
-def releases(ctx: Context) -> Outcome:
+def list_releases(ctx: Context) -> Outcome:
     root, _app_config = _app(ctx)
     git = gitops.open_repo(root, token=ctx.token(), identity=None)
     git.fetch_tags()
@@ -403,9 +471,12 @@ def rollback(ctx: Context, *, target: str | None, timeout: float) -> Outcome:
 
 def sync_files(ctx: Context) -> Outcome:
     root, app = _app(ctx)
-    sync.require_not_ahead(root, assets.version())
-    changed = sync.write(root, app, config.load(), assets.version())
-    return Outcome(summary=f"Platform files are at version {assets.version()}." + (f" Updated {len(changed)} file(s)." if changed else ""), data={"changed": changed})
+    step = checks.platform_files(_target(ctx, root, app), "local")
+    if step.state == "failed":
+        raise CliError(step.detail)
+    refresh_guidance(ctx, root, app, force=True)
+    recorded = sync.recorded_release(root)
+    return Outcome(summary=f"Platform files are at platform release {recorded}." + (f" {step.detail}" if step.detail else ""), data={"release": recorded, "changed": list(step.paths)})
 
 
 def delete(ctx: Context, *, confirmed: bool) -> Outcome:
@@ -422,7 +493,7 @@ def delete(ctx: Context, *, confirmed: bool) -> Outcome:
 
 def ci_check(ctx: Context) -> Outcome:
     root, app = _app(ctx)
-    return _check_outcome(ctx.run_checks(_target(root, app), mode="ci", fast=False))
+    return _check_outcome(ctx.run_checks(_target(ctx, root, app), mode="ci", fast=False))
 
 
 def ci_render(ctx: Context, *, image: str, release_number: int | None, out: Path) -> Outcome:

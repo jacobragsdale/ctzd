@@ -1,0 +1,33 @@
+# The platform release this folder makes up: build files (locked/ and the
+# [python] values below), agent guidance (guidance/ and skills/), and starter
+# code (starter/). To cut a release, raise `release`, commit, and tag that
+# commit `platform-release/<release>`; then point a channel at it in
+# channels.toml. A published release never changes.
+release = 1
+format = 1
+requires_cli = "0.2.0"
+min_ctzd_core = "0.1.0"
+
+# The managed tables of every app's pyproject.toml.
+[python]
+requires = ">=3.13"
+build_backend = "uv_build>=0.13.6,<0.14"
+dev = [
+    "import-linter==2.15",
+    "pandas-stubs==3.1.0.261029",
+    "pre-commit==4.7.0",
+    "pytest==9.2.0",
+    "pytest-cov==7.1.0",
+    "ruff==0.17.3",
+    "ty==0.0.95",
+]
+
+# What `ctzd new` adds to [project].dependencies for each kind of app.
+[ui.streamlit]
+dependencies = ["streamlit>=1.66"]
+
+[ui.dash]
+dependencies = ["dash[ag-grid]>=4.5", "gunicorn>=26.2"]
+
+[ui.none]
+dependencies = []

@@ -3,6 +3,7 @@
 import base64
 import os
 import shutil
+from collections.abc import Sequence
 from pathlib import Path
 
 from ctzd_cli import config, proc
@@ -73,6 +74,16 @@ class Git:
             self.run("commit", "--quiet", "--allow-empty", "--message", message)
             return True
         self.run("commit", "--quiet", "--message", message)
+        return True
+
+    def commit_paths(self, paths: Sequence[str], message: str) -> bool:
+        """Commit only `paths`, including deletions; return False when none of them changed."""
+        if not paths:
+            return False
+        self.run("add", "--all", "--", *paths)
+        if not self.run("diff", "--cached", "--quiet", "--", *paths, check=False).code:
+            return False
+        self.run("commit", "--quiet", "--message", message, "--", *paths)
         return True
 
     def remote_has_main(self) -> bool:

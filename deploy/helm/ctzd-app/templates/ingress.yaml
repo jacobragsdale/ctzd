@@ -9,6 +9,11 @@ metadata:
     # Streamlit talks to the browser over a websocket; keep idle connections open.
     nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
     nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    {{- if .Values.auth.enabled }}
+    # Company sign-in at the ingress (oauth2-proxy for Entra ID); apps never handle identity.
+    nginx.ingress.kubernetes.io/auth-url: {{ required "auth.url is required when auth.enabled" .Values.auth.url | quote }}
+    nginx.ingress.kubernetes.io/auth-signin: {{ required "auth.signin is required when auth.enabled" .Values.auth.signin | quote }}
+    {{- end }}
 spec:
   ingressClassName: {{ .Values.ingressClassName }}
   tls:

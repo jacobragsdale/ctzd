@@ -12,7 +12,7 @@ All hostnames and organisation names in this repository are `contoso` placeholde
 
 | Path | What it is |
 |---|---|
-| `packages/ctzd-cli` | The `ctzd` CLI (distribution `ctzd`, module `ctzd_cli`), including the app template and agent skills it copies into every app (`src/ctzd_cli/assets`). |
+| `packages/ctzd-cli` | The `ctzd` CLI (distribution `ctzd`, module `ctzd_cli`), and the platform release folder (`src/ctzd_cli/assets`): the build files, agent guidance, and starter code the platform API serves from `platform-release/<n>` tags. |
 | `packages/ctzd-core` | The runtime library apps import as `ctzd`: sources, caching, the table store, notifications, test fakes. |
 | `packages/ctzd-api` | The platform API the CLI calls: repo creation, build status, rollback, job runs, logs, credentials. |
 | `kits/fi` | `ctzd-fi`, the Fixed Income business unit's library. One such library per business unit. |

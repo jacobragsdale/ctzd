@@ -12,7 +12,7 @@ from typing import Literal
 import httpx
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from ctzd_cli import assets, commands, proc
+from ctzd_cli import assets, commands, proc, releases
 from ctzd_cli.commands import Context, Outcome
 from ctzd_cli.errors import CliError, UsageError
 
@@ -171,7 +171,7 @@ HANDLERS: dict[str, Handler] = {
     "deploy": lambda a, ctx: commands.deploy(ctx, message=a.message, detach=a.detach, timeout=a.timeout),
     "status": lambda a, ctx: commands.status(ctx, wait=a.wait, timeout=a.timeout),
     "logs": lambda a, ctx: commands.logs(ctx, job=a.job, tail=a.tail),
-    "releases": lambda _a, ctx: commands.releases(ctx),
+    "releases": lambda _a, ctx: commands.list_releases(ctx),
     "rollback": lambda a, ctx: commands.rollback(ctx, target=a.target, timeout=a.timeout),
     "sync": lambda _a, ctx: commands.sync_files(ctx),
     "delete": lambda a, ctx: commands.delete(ctx, confirmed=a.yes),
@@ -214,9 +214,10 @@ def main(argv: Sequence[str] | None = None, *, ctx: Context | None = None) -> in
     except ValidationError as err:
         sys.stderr.write(f"ctzd: {err}\n")
         return EXIT_USAGE
-    context = ctx or Context(cwd=Path.cwd(), platform_factory=commands.default_platform)
+    context = ctx or Context(cwd=Path.cwd(), platform_factory=commands.default_platform, releases=releases.ReleaseSource(commands.default_platform))
     command = " ".join(part for part in (args.command, args.action) if part is not None)
     try:
+        hints = commands.prepare(context, command)
         outcome = dispatch(command, args, context)
     except CliError as err:
         failure = Outcome(summary=err.message, next_steps=[] if err.hint is None else [err.hint], ok=False)
@@ -225,6 +226,7 @@ def main(argv: Sequence[str] | None = None, *, ctx: Context | None = None) -> in
     except httpx.HTTPError as err:
         emit(command, Outcome(summary=f"A network request failed: {err}", ok=False), as_json=args.as_json)
         return EXIT_FAILED
+    outcome.next_steps += hints
     emit(command, outcome, as_json=args.as_json)
     return EXIT_OK if outcome.ok else EXIT_FAILED
 

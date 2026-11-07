@@ -11,7 +11,7 @@ uv build --quiet --package ctzd-core --out-dir "$work/wheels"
 uv build --quiet --package ctzd-fi --out-dir "$work/wheels"
 
 # The bundled platform config with the internal index swapped for local wheels plus PyPI.
-python3 - "$repo/packages/ctzd-cli/src/ctzd_cli/assets/platform.toml" "$work" <<'PY'
+python3 - "$repo/packages/ctzd-cli/src/ctzd_cli/platform.toml" "$work" <<'PY'
 import pathlib, re, sys
 source, work = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
 text = re.sub(
@@ -27,11 +27,18 @@ for ui in streamlit dash none; do
     app="e2e-$ui"
     rm -rf "${work:?}/apps/$app"
     uv run ctzd new "$app" --sbu fi --ui "$ui" --offline --owner e2e@contoso.com --dir "$work/apps" >/dev/null
-    if (cd "$work/apps/$app" && "$repo/.venv/bin/ctzd" check); then
-        echo "e2e: $ui app passed every check"
-    else
+    if ! (cd "$work/apps/$app" && "$repo/.venv/bin/ctzd" check); then
         echo "e2e: $ui app FAILED" >&2
         status=1
+        continue
     fi
+    # Guidance and its stamp are gitignored, and a passing check leaves nothing else to commit.
+    left=$(git -C "$work/apps/$app" status --porcelain)
+    if [ -n "$left" ] || [ ! -f "$work/apps/$app/AGENTS.md" ] || [ ! -d "$work/apps/$app/.claude/skills/ctzd-workflow" ]; then
+        echo "e2e: $ui app left changes or is missing its guidance: $left" >&2
+        status=1
+        continue
+    fi
+    echo "e2e: $ui app passed every check"
 done
 exit $status

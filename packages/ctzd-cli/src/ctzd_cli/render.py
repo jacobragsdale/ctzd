@@ -3,7 +3,7 @@
 from pydantic import BaseModel, ConfigDict, Field
 
 from ctzd_cli.appconfig import AppConfig
-from ctzd_cli.config import PlatformConfig, dag_id
+from ctzd_cli.config import PlatformConfig, dag_id, source_secret
 
 PORT = 8080
 _STREAMLIT = (
@@ -48,6 +48,8 @@ class HelmValues(_Model):
     readiness_path: str = Field(serialization_alias="readinessPath")
     resources: Resources
     env: dict[str, str]
+    # One Kubernetes secret per source the app lists; the pod gets no other source's credentials.
+    source_secrets: tuple[str, ...] = Field(serialization_alias="sourceSecrets")
 
 
 class JobSpec(_Model):
@@ -63,18 +65,23 @@ class JobSpec(_Model):
 class AirflowSpec(_Model):
     """The file Jenkins commits to ctzd-dags as `specs/<sbu>/<app>.json`; the factory DAG reads it."""
 
-    version: int = 1
+    version: int = 2
     sbu: str
     app: str
     image: str
     release: int | None
     owners: tuple[str, ...]
     env: dict[str, str]
+    source_secrets: tuple[str, ...]
     jobs: tuple[JobSpec, ...]
 
 
 def runtime_env(platform: PlatformConfig, app: AppConfig) -> dict[str, str]:
     return {"CTZD_APP": app.app.name, "CTZD_SBU": app.app.sbu, "CTZD_ENV": "cluster", "CTZD_STORE_URL": platform.platform.store_url}
+
+
+def source_secrets(app: AppConfig) -> tuple[str, ...]:
+    return tuple(source_secret(source) for source in app.sources.use)
 
 
 def _resources(platform: PlatformConfig, size: str) -> Resources:
@@ -98,6 +105,7 @@ def helm_values(platform: PlatformConfig, app: AppConfig, *, image: str, release
         readiness_path="/_stcore/health" if ui == "streamlit" else "/healthz",
         resources=_resources(platform, app.app.size),
         env=runtime_env(platform, app),
+        source_secrets=source_secrets(app),
     )
 
 
@@ -109,6 +117,7 @@ def airflow_spec(platform: PlatformConfig, app: AppConfig, *, image: str, releas
         release=release,
         owners=app.app.owners,
         env=runtime_env(platform, app),
+        source_secrets=source_secrets(app),
         jobs=tuple(
             JobSpec(
                 dag_id=dag_id(app.app.sbu, app.app.name, job.name),

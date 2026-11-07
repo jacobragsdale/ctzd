@@ -1,8 +1,10 @@
 """Request and response bodies of the platform API, shared by the CLI and the API server."""
 
+from pathlib import PurePosixPath
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from packaging.version import InvalidVersion, Version
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from ctzd_cli.appconfig import Ui
 
@@ -12,6 +14,68 @@ class _Model(BaseModel):
 
 
 BuildState = Literal["queued", "running", "succeeded", "failed", "not_found"]
+Channel = Literal["pilot", "general"]
+# The folders of a platform release; see ctzd_cli/assets.
+RELEASE_FOLDERS = ("locked/", "guidance/", "skills/", "starter/", "start/")
+
+
+def _version(value: str) -> str:
+    try:
+        Version(value)
+    except InvalidVersion:
+        msg = f"{value!r} is not a version"
+        raise ValueError(msg) from None
+    return value
+
+
+class ReleasePython(_Model):
+    requires: str
+    build_backend: str
+    dev: tuple[str, ...]
+
+
+class ReleaseUi(_Model):
+    dependencies: tuple[str, ...]
+
+
+class PlatformRelease(_Model):
+    """A platform release: the build files, agent guidance, and starter code `ctzd` writes into apps."""
+
+    release: int = Field(ge=1)
+    format: int = Field(ge=1)
+    requires_cli: str
+    min_ctzd_core: str
+    python: ReleasePython
+    ui: dict[Ui, ReleaseUi]
+    files: dict[str, str]
+
+    @field_validator("requires_cli", "min_ctzd_core")
+    @classmethod
+    def _versions(cls, value: str) -> str:
+        return _version(value)
+
+    @field_validator("files")
+    @classmethod
+    def _paths(cls, value: dict[str, str]) -> dict[str, str]:
+        for path in value:
+            parts = PurePosixPath(path).parts
+            if not path.startswith(RELEASE_FOLDERS) or ".." in parts or path.startswith("/") or "\\" in path:
+                msg = f"release file {path!r} is outside {', '.join(RELEASE_FOLDERS)}"
+                raise ValueError(msg)
+        return value
+
+
+class CurrentRelease(_Model):
+    """The platform release an app's channel runs, and the newest published ctzd."""
+
+    release: int = Field(ge=1)
+    channel: Channel
+    cli: str | None = None
+
+    @field_validator("cli")
+    @classmethod
+    def _cli(cls, value: str | None) -> str | None:
+        return None if value is None else _version(value)
 
 
 class Me(_Model):

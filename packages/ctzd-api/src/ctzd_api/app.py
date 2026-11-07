@@ -72,6 +72,30 @@ def create_app(services: Services) -> FastAPI:
     def me(login: Login) -> m.Me:
         return m.Me(login=login)
 
+    _platform_routes(api, services)
+    _app_routes(api, services)
+    return api
+
+
+def _platform_routes(api: FastAPI, services: Services) -> None:
+    """Calls that are not about one app."""
+
+    @api.get("/v1/releases/current")
+    def current_release(_login: Login, sbu: str | None = None, app: str | None = None) -> m.CurrentRelease:
+        if (sbu is None) != (app is None):
+            raise HTTPException(status_code=400, detail="Pass both sbu and app, or neither for the general channel.")
+        return service.current_release(services, None if sbu is None or app is None else AppRef(sbu, app))
+
+    @api.get("/v1/releases/{number}")
+    def platform_release(_login: Login, number: int) -> m.PlatformRelease:
+        return service.platform_release(services, number)
+
+    @api.get("/v1/sources")
+    def sources(_login: Login) -> m.SourceList:
+        return service.sources(services)
+
+
+def _app_routes(api: FastAPI, services: Services) -> None:
     @api.post("/v1/apps", status_code=201)
     def create(login: Login, request: m.CreateAppRequest) -> m.CreatedApp:
         return service.create_app(services, login, request)
@@ -105,10 +129,6 @@ def create_app(services: Services) -> FastAPI:
     def job_run(login: Login, sbu: str, name: str, job: str, run_id: str) -> m.JobRunState:
         return service.job_run(services, login, AppRef(sbu, name), job, run_id)
 
-    @api.get("/v1/sources")
-    def sources(_login: Login) -> m.SourceList:
-        return service.sources(services)
-
     @api.get("/v1/apps/{sbu}/{name}/logs")
     def logs(login: Login, sbu: str, name: str, tail: int = 200, job: str | None = None) -> m.LogText:
         return service.logs(services, login, AppRef(sbu, name), job=job, tail=max(1, min(tail, 5_000)))
@@ -121,5 +141,3 @@ def create_app(services: Services) -> FastAPI:
     def delete(login: Login, sbu: str, name: str) -> Response:
         service.delete(services, login, AppRef(sbu, name))
         return Response(status_code=204)
-
-    return api

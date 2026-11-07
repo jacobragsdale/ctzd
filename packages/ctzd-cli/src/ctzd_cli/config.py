@@ -1,4 +1,4 @@
-"""Platform settings: the bundled `assets/platform.toml`, or the file named by CTZD_PLATFORM_CONFIG."""
+"""Platform settings: where the platform's services are. The bundled `platform.toml`, or the file named by CTZD_PLATFORM_CONFIG."""
 
 import functools
 import os
@@ -6,7 +6,8 @@ import tomllib
 from importlib import resources
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict, Field
+from packaging.requirements import InvalidRequirement, Requirement
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from ctzd_cli.errors import CliError
 
@@ -42,9 +43,8 @@ class PackageIndex(_Model):
 
 
 class PythonConfig(_Model):
-    requires: str
-    build_backend: str
-    dev: tuple[str, ...]
+    """The package index apps install from. Tool pins and the Python range ship in platform releases."""
+
     index: tuple[PackageIndex, ...] = Field(min_length=1)
     sources: dict[str, dict[str, str]] = Field(default_factory=dict)
 
@@ -56,14 +56,20 @@ class SizeConfig(_Model):
     memory_limit: str
 
 
-class UiConfig(_Model):
-    dependencies: tuple[str, ...]
-
-
 class SbuConfig(_Model):
     name: str
     library: str
     github_team: str
+
+    @field_validator("library")
+    @classmethod
+    def _requirement(cls, value: str) -> str:
+        try:
+            Requirement(value)
+        except InvalidRequirement:
+            msg = f"{value!r} is not a package requirement such as 'ctzd-fi>=0.1'"
+            raise ValueError(msg) from None
+        return value
 
 
 class PlatformConfig(_Model):
@@ -72,7 +78,6 @@ class PlatformConfig(_Model):
     platform: PlatformUrls
     python: PythonConfig
     sizes: dict[str, SizeConfig]
-    ui: dict[str, UiConfig]
     sbus: dict[str, SbuConfig]
 
     def sbu(self, key: str) -> SbuConfig:
@@ -96,6 +101,11 @@ def dag_id(sbu: str, name: str, job: str) -> str:
     return f"{sbu}__{name.replace('-', '_')}__{job}"
 
 
+def source_secret(source: str) -> str:
+    """The Key Vault secret, and the Kubernetes secret synced from it, that holds one source."""
+    return "ctzd-source-" + source.replace("_", "-")
+
+
 def parse(text: str) -> PlatformConfig:
     return PlatformConfig.model_validate(tomllib.loads(text))
 
@@ -103,7 +113,7 @@ def parse(text: str) -> PlatformConfig:
 @functools.cache
 def load() -> PlatformConfig:
     override = os.environ.get("CTZD_PLATFORM_CONFIG", "")
-    text = Path(override).read_text(encoding="utf-8") if override else resources.files("ctzd_cli").joinpath("assets/platform.toml").read_text(encoding="utf-8")
+    text = Path(override).read_text(encoding="utf-8") if override else resources.files("ctzd_cli").joinpath("platform.toml").read_text(encoding="utf-8")
     return parse(text)
 
 

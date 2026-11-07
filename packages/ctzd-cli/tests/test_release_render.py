@@ -48,3 +48,13 @@ def test_airflow_spec_names_each_dag_and_runs_its_module() -> None:
     assert job.command == ("python", "-m", "app.jobs.refresh")
     assert job.resources.limits.memory == "8Gi"
     assert spec.owners == ("ann.lee@contoso.com",)
+
+
+def test_pods_get_one_secret_per_listed_source_and_no_others() -> None:
+    app = app_config(sources=("fi_pricing", "fi_api"), jobs=(Job(name="refresh", schedule="0 6 * * *"),))
+    values = render.helm_values(config.load(), app, image="i", release=1)
+    spec = render.airflow_spec(config.load(), app, image="i", release=1)
+    assert values.model_dump(by_alias=True)["sourceSecrets"] == ("ctzd-source-fi-pricing", "ctzd-source-fi-api")
+    assert spec.source_secrets == values.source_secrets
+    assert spec.version == 2
+    assert render.helm_values(config.load(), app_config(), image="i", release=1).source_secrets == ()

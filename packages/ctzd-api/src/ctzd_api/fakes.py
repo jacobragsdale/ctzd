@@ -1,5 +1,7 @@
 """In-memory gateways for tests and for running the API locally without GitHub, Jenkins, Airflow, or a cluster."""
 
+import io
+import tarfile
 from dataclasses import dataclass, field
 
 from ctzd_api.gateways import AppState, JenkinsBuild, Permission
@@ -106,3 +108,29 @@ class FakeSecrets:
 
     def names(self, prefix: str) -> list[str]:
         return sorted(name for name in self.values if name.startswith(prefix))
+
+
+def archive(files: dict[str, str], *, path: str = "packages/ctzd-cli/src/ctzd_cli/assets", top: str = "ctzd-platform-ctzd-0000000") -> bytes:
+    """A repository tarball the way GitHub serves one, holding `files` under `path`."""
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:gz") as tar:
+        for relative, text in sorted(files.items()):
+            data = text.encode()
+            member = tarfile.TarInfo(f"{top}/{path}/{relative}")
+            member.size = len(data)
+            tar.addfile(member, io.BytesIO(data))
+    return buffer.getvalue()
+
+
+@dataclass
+class FakeReleases:
+    channels: str
+    archives: dict[int, bytes] = field(default_factory=dict)
+    reads: int = 0
+
+    def channels_text(self) -> str:
+        self.reads += 1
+        return self.channels
+
+    def release_archive(self, number: int) -> bytes | None:
+        return self.archives.get(number)

@@ -1,6 +1,6 @@
 import subprocess
-from dataclasses import dataclass, field
 from pathlib import Path
+from typing import override
 
 import pytest
 
@@ -8,7 +8,7 @@ from ctzd_cli import api_models as m
 from ctzd_cli import checks, commands, gitops
 from ctzd_cli.errors import CliError
 
-from .conftest import make_app
+from .conftest import FakePlatform, make_app
 
 GIT = gitops.find_git()
 
@@ -16,59 +16,6 @@ GIT = gitops.find_git()
 def git(cwd: Path, *args: str) -> str:
     result = subprocess.run([GIT, "-c", "user.name=t", "-c", "user.email=t@contoso.com", *args], cwd=cwd, capture_output=True, text=True, check=True)
     return result.stdout.strip()
-
-
-@dataclass
-class FakePlatform:
-    builds: list[m.Build]
-    resumed: int = 0
-    asked: list[str] = field(default_factory=list)
-    paused: bool = False
-    job_states: list[m.JobState] = field(default_factory=lambda: ["queued"])
-
-    def me(self) -> m.Me:
-        return m.Me(login="ann")
-
-    def create_app(self, request: m.CreateAppRequest) -> m.CreatedApp:
-        return m.CreatedApp(repo=f"ctzd-apps/{request.sbu}-{request.name}", clone_url="unused", url="unused")
-
-    def status(self, sbu: str, name: str) -> m.AppStatus:
-        return m.AppStatus(sbu=sbu, name=name, url=f"https://{sbu}-{name}.ctzd.contoso.com", release=4, paused=self.paused, dags={}, last_build=None)
-
-    def resume(self, sbu: str, name: str) -> None:
-        del sbu, name
-        self.resumed += 1
-
-    def build_for_commit(self, sbu: str, name: str, commit: str) -> m.Build:
-        del sbu, name
-        self.asked.append(commit)
-        return self.builds.pop(0) if len(self.builds) > 1 else self.builds[0]
-
-    def screenshot(self, sbu: str, name: str, number: int) -> bytes:
-        del sbu, name, number
-        return b"\x89PNG fake"
-
-    def rollback(self, sbu: str, name: str, release: int | None) -> m.RollbackAccepted:
-        raise NotImplementedError
-
-    def run_job(self, sbu: str, name: str, job: str) -> m.JobRunCreated:
-        return m.JobRunCreated(dag_id=f"{sbu}__{name.replace('-', '_')}__{job}", run_id="manual__1", url="https://airflow.ctzd.contoso.com/dags/x/runs/manual__1")
-
-    def job_run(self, sbu: str, name: str, job: str, run_id: str) -> m.JobRunState:
-        state = self.job_states.pop(0) if len(self.job_states) > 1 else self.job_states[0]
-        return m.JobRunState(dag_id=f"{sbu}__{name.replace('-', '_')}__{job}", run_id=run_id, state=state, url="https://airflow.ctzd.contoso.com/dags/x/runs/manual__1")
-
-    def sources(self) -> m.SourceList:
-        return m.SourceList(sources=("fi_pricing",))
-
-    def logs(self, sbu: str, name: str, *, job: str | None, tail: int) -> m.LogText:
-        raise NotImplementedError
-
-    def env(self, sbu: str, name: str, sources: tuple[str, ...]) -> m.EnvVars:
-        raise NotImplementedError
-
-    def delete(self, sbu: str, name: str) -> None:
-        raise NotImplementedError
 
 
 def passing(_target: checks.Target, *, mode: checks.Mode, fast: bool) -> list[checks.Step]:
@@ -189,3 +136,64 @@ def test_run_wait_reports_a_failed_run(repo: tuple[Path, Path]) -> None:
     outcome = commands.run_job(context(app, FakePlatform([m.Build(number=1, state="succeeded")], job_states=["failed"])), job="refresh", local=False, wait=True, timeout=600)
     assert not outcome.ok
     assert "ctzd logs --job refresh" in outcome.next_steps[0]
+
+
+class RecordingPlatform(FakePlatform):
+    """Records where `main` pointed on the remote when the pause was cleared."""
+
+    def __init__(self, remote: Path, builds: list[m.Build], *, paused: bool = False) -> None:
+        super().__init__(builds, paused=paused)
+        self.remote = remote
+        self.main_at_resume: str | None = None
+
+    @override
+    def resume(self, sbu: str, name: str) -> None:
+        super().resume(sbu, name)
+        self.main_at_resume = git(self.remote, "rev-parse", "main")
+
+
+def test_the_pause_is_cleared_before_the_push(repo: tuple[Path, Path]) -> None:
+    app, remote = repo
+    before = git(remote, "rev-parse", "main")
+    (app / "README.md").write_text("changed\n")
+    platform = RecordingPlatform(remote, [m.Build(number=8, state="succeeded", release=5)], paused=True)
+    commands.deploy(context(app, platform), message=None, detach=False, timeout=60)
+    assert platform.main_at_resume == before
+    assert git(remote, "rev-parse", "main") != before
+
+
+def test_a_build_that_deployed_nothing_is_not_reported_as_live(repo: tuple[Path, Path]) -> None:
+    app, _remote = repo
+    (app / "README.md").write_text("changed\n")
+    outcome = commands.deploy(context(app, FakePlatform([m.Build(number=8, state="succeeded", release=None)])), message=None, detach=False, timeout=60)
+    assert not outcome.ok
+    assert "nothing was deployed" in outcome.summary
+    assert "vNone" not in outcome.summary
+
+
+def upgrading(target: checks.Target, *, mode: checks.Mode, fast: bool) -> list[checks.Step]:
+    """A gate run in which the platform-files step moved the app to release 2."""
+    del mode, fast
+    (target.root / ".ctzd" / "version").write_text("2\n")
+    (target.root / "ruff.toml").write_text("line-length = 120\n")
+    return [checks.Step("platform files", "fixed", "Upgraded", paths=(".ctzd/version", "ruff.toml")), checks.Step("tests", "passed")]
+
+
+def test_platform_upgrades_get_their_own_commit_before_the_change(repo: tuple[Path, Path]) -> None:
+    app, remote = repo
+    (app / "src" / "app" / "logic" / "summary.py").write_text('"""changed"""\n')
+    platform = FakePlatform([m.Build(number=8, state="succeeded", release=5)])
+    outcome = commands.deploy(context(app, platform, upgrading), message=None, detach=False, timeout=60)
+    assert outcome.ok
+    log = git(app, "log", "-3", "--format=%s").splitlines()
+    assert log[0] == "Update src/app/logic/summary.py"
+    assert log[1] == "Upgrade platform files to platform release 2"
+    assert git(app, "show", "--name-only", "--format=", "HEAD~1").splitlines() == [".ctzd/version", "ruff.toml"]
+    assert git(remote, "rev-parse", "main") == git(app, "rev-parse", "HEAD")
+
+
+def test_a_platform_upgrade_alone_is_enough_to_end_a_pause(repo: tuple[Path, Path]) -> None:
+    app, _remote = repo
+    platform = FakePlatform([m.Build(number=8, state="succeeded", release=5)], paused=True)
+    commands.deploy(context(app, platform, upgrading), message=None, detach=False, timeout=60)
+    assert git(app, "log", "-1", "--format=%s") == "Upgrade platform files to platform release 2"

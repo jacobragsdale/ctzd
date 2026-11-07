@@ -86,6 +86,24 @@ class GitHubClient:
         return tags
 
 
+class GitHubReleases:
+    """The platform repo through the same bot token: release tags and channels.toml."""
+
+    def __init__(self, api_url: str, repo: str, bot_token: str) -> None:
+        self._repo = repo
+        self._http = httpx.Client(base_url=api_url.rstrip("/"), timeout=_TIMEOUT, headers={"Authorization": f"Bearer {bot_token}", "Accept": "application/vnd.github+json"})
+
+    def channels_text(self) -> str:
+        return _check(self._http.get(f"/repos/{self._repo}/contents/channels.toml", headers={"Accept": _RAW})).text
+
+    def release_archive(self, number: int) -> bytes | None:
+        # GitHub answers with a redirect to the archive; releases are small, so a longer deadline is enough.
+        response = self._http.get(f"/repos/{self._repo}/tarball/refs/tags/platform-release/{number}", follow_redirects=True, timeout=120.0)
+        if response.status_code == httpx.codes.NOT_FOUND:
+            return None
+        return _check(response).content
+
+
 class _RefObject(_Reply):
     sha: str
     type: str

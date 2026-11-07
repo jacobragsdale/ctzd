@@ -1,4 +1,6 @@
+import dataclasses
 import datetime as dt
+from pathlib import Path
 from typing import override
 
 import httpx
@@ -8,8 +10,9 @@ from fastapi.testclient import TestClient
 from ctzd_api import fakes
 from ctzd_api.app import create_app
 from ctzd_api.gateways import AppState, JenkinsBuild
+from ctzd_api.releases import BrokenReleaseError, ReleaseStore, files_in_archive
 from ctzd_api.service import ROLLBACK_JOB, Services
-from ctzd_cli import api_client, config, release
+from ctzd_cli import api_client, config, release, releases
 from ctzd_cli import api_models as m
 from ctzd_cli.errors import CliError
 
@@ -24,6 +27,15 @@ owners = ["ann.lee@contoso.com"]
 name = "refresh"
 schedule = "0 6 * * *"
 """
+CHANNELS = """
+cli = "0.9.0"
+[channels]
+pilot = 2
+general = 1
+[pilot]
+apps = ["fi-pilot-app"]
+"""
+SEED_FILES = releases.seed_files()
 ANN = {"Authorization": "Bearer ann-token"}
 BOB = {"Authorization": "Bearer bob-token"}
 
@@ -31,6 +43,11 @@ BOB = {"Authorization": "Bearer bob-token"}
 def tag(number: int) -> tuple[str, str]:
     record = release.Release(release=number, commit=f"c{number}", image=f"i:{number}", created_at=dt.datetime(2026, 11, 4, tzinfo=dt.UTC), app_toml=APP_TOML)
     return (release.tag_name(number), release.message(record))
+
+
+def renumbered(number: int, *, ruff: str | None = None) -> dict[str, str]:
+    files = SEED_FILES | {"release.toml": SEED_FILES["release.toml"].replace("release = 1\n", f"release = {number}\n", 1)}
+    return files if ruff is None else files | {"locked/ruff.toml": ruff}
 
 
 def build(number: int, *, commit: str, result: str | None, description: str | None = None, failed_stage: str | None = None) -> JenkinsBuild:
@@ -46,6 +63,12 @@ def build(number: int, *, commit: str, result: str | None, description: str | No
     )
 
 
+@pytest.fixture(autouse=True)
+def isolated_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The CLI client these tests drive caches platform releases under CTZD_HOME; keep that out of the real home folder."""
+    monkeypatch.setenv("CTZD_HOME", str(tmp_path / "ctzd-home"))
+
+
 @pytest.fixture
 def world() -> Services:
     repo = fakes.FakeRepo(permissions={"ann": "admin", "bob": "read"}, files={"app.toml": APP_TOML}, tags=[tag(1), tag(2), tag(3)])
@@ -55,6 +78,7 @@ def world() -> Services:
         airflow=fakes.FakeAirflow(),
         kube=fakes.FakeKube(states={"fi-bond-prices": AppState(release=3, paused=False)}),
         secrets=fakes.FakeSecrets(values={"ctzd-source-fi-pricing": '{"kind":"oracle"}', "ctzd-shared-store-sas": "sv=2026&sig=x"}),
+        releases=ReleaseStore(fakes.FakeReleases(channels=CHANNELS, archives={1: fakes.archive(SEED_FILES), 2: fakes.archive(renumbered(2))})),
         platform=config.load(),
     )
 
@@ -193,3 +217,59 @@ def test_a_job_runs_state_is_reported(client: TestClient, world: Services) -> No
 def test_sources_lists_names_without_values(client: TestClient) -> None:
     body = client.get("/v1/sources", headers=BOB).json()
     assert body == {"sources": ["fi_pricing"]}
+
+
+def test_each_app_gets_its_channels_release_and_the_newest_cli(client: TestClient) -> None:
+    general = client.get("/v1/releases/current", params={"sbu": "fi", "app": "bond-prices"}, headers=BOB).json()
+    pilot = client.get("/v1/releases/current", params={"sbu": "fi", "app": "pilot-app"}, headers=BOB).json()
+    assert general == {"release": 1, "channel": "general", "cli": "0.9.0"}
+    assert pilot == {"release": 2, "channel": "pilot", "cli": "0.9.0"}
+    assert client.get("/v1/releases/current", params={"sbu": "zz", "app": "x"}, headers=BOB).status_code == 404
+    assert client.get("/v1/releases/current", params={"sbu": "fi", "app": "x"}).status_code == 401
+
+
+def test_a_release_is_served_from_its_tag_and_unknown_ones_are_not_found(client: TestClient) -> None:
+    body = client.get("/v1/releases/2", headers=BOB).json()
+    assert body["release"] == 2
+    assert body["files"]["locked/Dockerfile"] == SEED_FILES["locked/Dockerfile"]
+    assert client.get("/v1/releases/7", headers=BOB).status_code == 404
+
+
+def test_the_cli_reads_releases_through_the_api(client: TestClient) -> None:
+    platform = api_client.PlatformClient("http://testserver", "ann-token", transport=InProcess(client))
+    source = releases.ReleaseSource(lambda: platform)
+    assert source.for_app("fi", "pilot-app").release == 2
+    assert source.get(1) == releases.seed()
+
+
+def test_channels_are_read_again_only_after_their_ttl() -> None:
+    gateway = fakes.FakeReleases(channels=CHANNELS)
+    clock = iter([0.0, 30.0, 61.0])
+    store = ReleaseStore(gateway, clock=lambda: next(clock), ttl=60.0)
+    for _ in range(3):
+        store.channels()
+    assert gateway.reads == 2
+
+
+def test_a_tag_whose_manifest_has_another_number_is_refused() -> None:
+    store = ReleaseStore(fakes.FakeReleases(channels=CHANNELS, archives={3: fakes.archive(renumbered(4))}))
+    with pytest.raises(BrokenReleaseError, match="says release 4"):
+        store.release(3)
+
+
+def test_a_broken_channels_file_is_a_bad_gateway(world: Services) -> None:
+    broken = dataclasses.replace(world, releases=ReleaseStore(fakes.FakeReleases(channels="[channels]\npilot = 0\n")))
+    reply = TestClient(create_app(broken)).get("/v1/releases/current", params={"sbu": "fi", "app": "bond-prices"}, headers=BOB)
+    assert reply.status_code == 502
+
+
+def test_only_text_files_under_the_release_folder_are_taken_from_the_tarball() -> None:
+    data = fakes.archive({"release.toml": "x", "locked/a": "a"})
+    other = fakes.archive({"README.md": "not part of it"}, path="docs")
+    assert files_in_archive(data) == {"release.toml": "x", "locked/a": "a"}
+    assert files_in_archive(other) == {}
+
+
+def test_without_an_app_the_general_channel_answers(client: TestClient) -> None:
+    assert client.get("/v1/releases/current", headers=BOB).json()["channel"] == "general"
+    assert client.get("/v1/releases/current", params={"sbu": "fi"}, headers=BOB).status_code == 400

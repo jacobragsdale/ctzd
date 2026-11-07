@@ -12,13 +12,14 @@ RESOURCES = {"requests": {"cpu": "100m", "memory": "1Gi"}, "limits": {"cpu": "1"
 
 def spec(app: str, *jobs: str) -> dict[str, object]:
     return {
-        "version": 1,
+        "version": 2,
         "sbu": "fi",
         "app": app,
         "image": f"contosoctzd.azurecr.io/apps/fi-{app}:abc123",
         "release": 4,
         "owners": ["ann.lee@contoso.com"],
         "env": {"CTZD_APP": app, "CTZD_SBU": "fi", "CTZD_ENV": "cluster", "CTZD_STORE_URL": "abfs://ctzd@x.dfs.core.windows.net"},
+        "source_secrets": ["ctzd-source-fi-pricing"],
         "jobs": [
             {
                 "dag_id": f"fi__{app.replace('-', '_')}__{job}",
@@ -53,12 +54,14 @@ def test_each_job_becomes_a_dag_running_its_module(tmp_path: Path) -> None:
     assert task.image == "contosoctzd.azurecr.io/apps/fi-bond-prices:abc123"
     assert task.cmds == ["python", "-m", "app.jobs.refresh"]
     assert task.retries == 2
+    secrets = [source.secret_ref.name for source in task.env_from if source.secret_ref is not None]
+    assert secrets == ["ctzd-source-fi-pricing"]
     assert dag.max_active_runs == 1
     assert not dag.catchup
 
 
 def test_a_broken_spec_leaves_the_other_apps_jobs_running(tmp_path: Path) -> None:
-    bag = load(tmp_path, {"bond-prices": spec("bond-prices", "refresh"), "broken": "{not json", "missing-field": {"version": 1}})
+    bag = load(tmp_path, {"bond-prices": spec("bond-prices", "refresh"), "broken": "{not json", "missing-field": {"version": 2}, "old-shape": {**spec("old-shape", "refresh"), "version": 1}})
     assert bag.import_errors == {}
     assert bag.dag_ids == ["fi__bond_prices__refresh"]
 

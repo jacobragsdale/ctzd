@@ -5,10 +5,11 @@ from dataclasses import dataclass
 from typing import Literal
 
 from ctzd_api.gateways import Airflow, GitHub, Jenkins, JenkinsBuild, Kube, Permission, Secrets
+from ctzd_api.releases import BrokenReleaseError, ReleaseStore
 from ctzd_cli import api_models as m
 from ctzd_cli import appconfig, release
 from ctzd_cli.appconfig import AppSection
-from ctzd_cli.config import PlatformConfig, dag_id
+from ctzd_cli.config import PlatformConfig, dag_id, source_secret
 from ctzd_cli.errors import CliError
 
 ROLLBACK_JOB = "ctzd-rollback"
@@ -41,6 +42,10 @@ class ConflictError(ApiError):
     status = 409
 
 
+class UpstreamError(ApiError):
+    status = 502
+
+
 @dataclass(frozen=True)
 class AppRef:
     sbu: str
@@ -54,6 +59,7 @@ class Services:
     airflow: Airflow
     kube: Kube
     secrets: Secrets
+    releases: ReleaseStore
     platform: PlatformConfig
 
 
@@ -213,7 +219,7 @@ def job_run(services: Services, login: str, app: AppRef, job: str, run_id: str) 
     return m.JobRunState(dag_id=dag, run_id=run_id, state=state, url=f"{services.platform.dag_url(app.sbu, app.name, job)}/runs/{run_id}")
 
 
-SOURCE_PREFIX = "ctzd-source-"
+SOURCE_PREFIX = source_secret("")
 
 
 def sources(services: Services) -> m.SourceList:
@@ -228,10 +234,6 @@ def logs(services: Services, login: str, app: AppRef, *, job: str | None, tail: 
     return m.LogText(text=text)
 
 
-def secret_name(source: str) -> str:
-    return SOURCE_PREFIX + source.replace("_", "-")
-
-
 def env(services: Services, login: str, app: AppRef, sources: tuple[str, ...]) -> m.EnvVars:
     repo = _repo(services, app)
     require(services, login, repo, "write")
@@ -240,7 +242,7 @@ def env(services: Services, login: str, app: AppRef, sources: tuple[str, ...]) -
         if appconfig.SOURCE.fullmatch(source) is None:
             msg = f"Invalid source name {source!r}."
             raise ApiError(msg)
-        value = services.secrets.get(secret_name(source))
+        value = services.secrets.get(source_secret(source))
         if value is None:
             msg = f"Source {source!r} does not exist. Ask the platform team to add it."
             raise NotFoundError(msg)
@@ -256,3 +258,23 @@ def delete(services: Services, login: str, app: AppRef) -> None:
     require(services, login, repo, "admin")
     services.jenkins.trigger(DELETE_JOB, {"REPO": repo})
     services.github.archive_repo(repo)
+
+
+def current_release(services: Services, app: AppRef | None) -> m.CurrentRelease:
+    """Any logged-in person may ask; `ctzd new` asks before the app's repo exists, `ctzd setup` without an app."""
+    repo = None if app is None else _repo(services, app)
+    try:
+        return services.releases.channels().current(repo)
+    except BrokenReleaseError as err:
+        raise UpstreamError(str(err)) from None
+
+
+def platform_release(services: Services, number: int) -> m.PlatformRelease:
+    try:
+        found = services.releases.release(number)
+    except BrokenReleaseError as err:
+        raise UpstreamError(str(err)) from None
+    if found is None:
+        msg = f"There is no platform release {number}."
+        raise NotFoundError(msg)
+    return found

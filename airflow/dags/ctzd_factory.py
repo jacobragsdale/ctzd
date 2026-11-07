@@ -9,6 +9,7 @@ image with KubernetesPodOperator; citizen developers never write DAG code.
 import logging
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Literal
 
 from airflow.providers.cncf.kubernetes.operators.pod import KubernetesPodOperator
 from airflow.providers.smtp.notifications.smtp import SmtpNotifier
@@ -18,7 +19,6 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 
 SPECS = Path(__file__).parent / "specs"
 NAMESPACE = "ctzd-apps"
-SOURCES_ENV_FROM = "ctzd-sources"
 SMTP_CONFIG_MAP = "ctzd-smtp"
 SERVICE_ACCOUNT = "ctzd-app"
 START = datetime(2026, 1, 1, tzinfo=UTC)
@@ -52,13 +52,15 @@ class JobSpec(_Spec):
 class AppSpec(_Spec):
     """The shape `ctzd ci render` writes; see packages/ctzd-cli/src/ctzd_cli/render.py."""
 
-    version: int
+    version: Literal[2]
     sbu: str
     app: str
     image: str
     release: int | None
     owners: tuple[str, ...]
     env: dict[str, str]
+    # The app's own sources: one Kubernetes secret each, holding CTZD_SOURCE_<NAME>.
+    source_secrets: tuple[str, ...]
     jobs: tuple[JobSpec, ...]
 
 
@@ -90,7 +92,7 @@ def build_dags(spec: AppSpec) -> list[DAG]:
                 cmds=list(job.command),
                 env_vars=dict(spec.env),
                 env_from=[
-                    k8s.V1EnvFromSource(secret_ref=k8s.V1SecretEnvSource(name=SOURCES_ENV_FROM)),
+                    *(k8s.V1EnvFromSource(secret_ref=k8s.V1SecretEnvSource(name=secret)) for secret in spec.source_secrets),
                     k8s.V1EnvFromSource(config_map_ref=k8s.V1ConfigMapEnvSource(name=SMTP_CONFIG_MAP, optional=True)),
                 ],
                 container_resources=_resources(job.resources),

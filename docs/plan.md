@@ -5,11 +5,11 @@ scheduled jobs by talking to an AI coding agent, and get back a link to the
 running app. The agent writes the code, runs the checks, and deploys. The user
 never touches git, a pull request, a Dockerfile, or a terminal.
 
-This page records the plan agreed on 2026-11-04: what users experience, how the
-pieces fit, every decision with its reason, and the rollout. The Jenkins and
-Kubernetes sections are proposals for the infrastructure owner to confirm or
-change. All hostnames and organisation names here are `contoso` placeholders.
-Version 0.1.0 of everything described here is implemented in this repository;
+This page records the plan agreed on 2026-11-04 and revised on 2026-11-06:
+what users experience, how the pieces fit, every decision with its reason, and
+the rollout. The Jenkins and Kubernetes sections are proposals for the
+infrastructure owner to confirm or change. All hostnames and organisation names
+here are `contoso` placeholders. Version 0.2.0 of the CLI implements this plan;
 section 14 says what has and has not been run.
 
 ## 1. What a citizen developer experiences
@@ -44,9 +44,10 @@ flowchart LR
     agent[AI agent] --> cli[ctzd CLI]
     cli --> git[git / MinGit]
   end
-  subgraph ghe[GitHub Enterprise: ctzd-apps org]
-    repo[(one repo per app)]
+  subgraph ghe[GitHub Enterprise]
+    repo[(ctzd-apps:<br/>one repo per app)]
     dags[(ctzd-dags)]
+    releases[(platform repo:<br/>platform release tags)]
   end
   subgraph aks[AKS citizen cluster]
     api[ctzd platform API]
@@ -72,7 +73,7 @@ flowchart LR
 | `ctzd-core` runtime library (`import ctzd`) | inside every app | platform team | `packages/ctzd-core` |
 | `ctzd-<sbu>` libraries | inside that SBU's apps | SBU champion | `kits/<sbu>` |
 | Platform API | AKS | platform team | `packages/ctzd-api` |
-| App template and skills | copied into every app repo | platform team, SBU champion for SBU skills | `packages/ctzd-cli/src/ctzd_cli/assets` |
+| Platform releases: build files, agent guidance, starter code | served by the platform API from release tags | platform team, SBU champion for SBU skills | `packages/ctzd-cli/src/ctzd_cli/assets` |
 | Bootstrap skill for the skills app | laptops | platform team | `bootstrap/` |
 | Install script | laptops | platform team | `install/install.ps1` |
 | Base image | ACR | platform team | `images/base` |
@@ -86,16 +87,21 @@ flowchart LR
 |---|---|---|
 | Users | Business users with no coding experience, on Windows laptops without admin rights or git, using any AI agent. Claude Code is the primary agent. | That is the audience. Everything below assumes the agent does every technical step. |
 | Repos | One repo per app. An app is at most one dashboard plus any number of scheduled jobs that share its data and logic code. | Clear ownership, small agent context, and the job-plus-dashboard pair is the main speed tool. |
-| Template | No Copier. Platform files are byte-identical in every repo and `ctzd sync` overwrites them. The app's Python package is always `app`. | Locked files never need a merge, so a template engine adds nothing. One platform version per repo. |
-| Locked files | CI fails when a platform-owned file differs from the platform version recorded in `.ctzd/version`. Agents edit only `src/`, `tests/`, `app.toml`, `README.md`, and the dependency list. | Stops an agent from "fixing" a lint error by editing the Dockerfile or the linter config. |
+| Template | No Copier. Platform files are byte-identical in every app on the same platform release, and `ctzd sync` overwrites them. The app's Python package is always `app`. | Locked files never need a merge, so a template engine adds nothing. |
+| Platform releases | Build files, agent guidance, and starter code ship together as numbered platform releases, separate from the CLI. A platform release never changes once published; its manifest names the minimum CLI and the minimum `ctzd-core`. Section 9 says how they are served and when each part moves. | Templates and skills change often, and reaching apps must not depend on people upgrading the CLI. |
+| Build files | The locked files and the managed tables of `pyproject.toml` are pinned per app: `.ctzd/version` records the platform release they came from, and CI fails when they differ from it. They move to the channel's current platform release, newer or, after a revert, older, only when someone works on the app. Agents edit only `src/`, `tests/`, `app.toml`, `README.md`, and the dependency list. | Stops an agent from "fixing" a lint error by editing the Dockerfile or the linter config. A platform release cannot break the next build of an app nobody is working on. |
+| Agent guidance | `AGENTS.md` and the skills are always the current platform release of the app's channel. `ctzd` writes them into the app folder, gitignored, and they are not drift-checked. | Guidance changes what the agent knows, not what is built, so a skill fix reaches every app within minutes with no commit and no deploy. |
+| Platform release rollout | Two channels, pilot and general, each pointing at one platform release. Reverting a platform release moves the pointer back. | A bad skill reaches every agent at once; the pointer is the one-step undo. |
+| Untouched apps | No bot commits and no scheduled rebuilds. An app nobody deploys keeps its platform release and its image; a patched base image reaches an app on its next build. | Accepted for v1; scheduled rebuilds would deploy changes nobody asked for. |
+| CLI upgrades | The CLI never replaces itself. When the current platform release needs a newer CLI, commands stop and tell the agent to run `uv tool upgrade ctzd`. Jenkins uses one CLI version that the platform pins next to the chart version. | Replacing a running `ctzd.exe` on Windows is unproven, and the agent upgrading in a separate process avoids it. The platform's CLI always matches the chart and factory DAG it deploys with. |
 | SBU stacks | One `ctzd-<sbu>` library per SBU, depending on `ctzd-core`, declaring the SBU's package stack and shared loaders. All published to the internal PyPI. | SBU differences live in packages, not in templates. |
 | Dependencies | Agents may add any package from the internal PyPI. No cooldown, no allowlist. | The internal PyPI is the control point. |
 | Deploy | `ctzd deploy` runs the checks, commits, pushes to `main`, follows the Jenkins build, and prints the URL. Nothing is built on the laptop. | Laptops have no Docker or registry access; CI is the only path to production. |
 | Lanes | One lane: `main` is production. Only builds that pass every gate deploy. | Simplest model for people who will never review a pull request. |
-| Rollback | Every successful deploy is a numbered release (`ctzd/vN` git tag holding the image and config). `ctzd rollback` restores an earlier release in seconds and pauses auto-deploy until the next `ctzd deploy`. | Instant recovery without a rebuild; the pause stops the next push from bringing the bug back. |
+| Rollback | Every successful deploy is a numbered release (`ctzd/vN` git tag holding the image and config). `ctzd rollback` restores an earlier release in seconds and pauses auto-deploy until the next `ctzd deploy`, which clears the pause after its checks pass and before it pushes. A successful build that produced no release is reported as not deployed. | Instant recovery without a rebuild; the pause stops the next push from bringing the bug back. Clearing it before the push means the build that push starts always deploys. |
 | Failed rollouts | Helm `--atomic` with readiness probes; a release that never becomes ready is undone automatically. | Users never see a broken rollout. |
-| Identity | One service identity for the whole platform. One read-only account per data source, mounted into every app pod. | Simplicity; the cluster is internal and isolated. Any app can read any SBU's data, so the SBU data boundary is a convention. |
-| Dashboard access | No SSO and no auth on dashboards. | Internal network only; keep auth light. |
+| Identity | One service identity for the whole platform. One read-only account per data source. An app's dashboard and job pods receive only the sources listed in its `[sources].use`, and an app may list any SBU's sources. | Simplicity, with a small blast radius: agent-written code on an open URL holds only its own sources' credentials. The SBU data boundary stays a convention, now visible in each `app.toml`. |
+| Dashboard access | No sign-in on dashboards or the Airflow UI in v1. The Helm chart has an `auth` block, off by default, that adds ingress-nginx auth annotations for an oauth2-proxy set up for Entra ID; Airflow's ingress gets the same. App code never handles identity. | Internal network only; keep auth light. Company sign-in can be switched on at the ingress later without changing any app. |
 | Platform login | GitHub device flow (`ctzd login`, one **Authorize** click). The token authenticates git and the platform API. Push access to a repo authorises every action on that app. | One login people already have. |
 | Local credentials | `ctzd env` writes the read-only credentials of the app's sources into a gitignored `.env`. | Lets the agent run the app against real data locally. |
 | Git on laptops | `ctzd setup` installs MinGit when git is missing. `ctzd` drives git; power users may use git directly. | Business users never see git; power users keep full control. |
@@ -105,15 +111,15 @@ flowchart LR
 | Data stack | pandas 3 is the default. Oracle through `python-oracledb` thin mode, MSSQL through `mssql-python`, both fetching through Arrow. REST through the `ctzd-core` client. Floats are fine for numbers. | Most data comes from REST, Oracle, and MSSQL. Thin mode needs no Oracle client; no source needs Native Network Encryption. |
 | Code layout | `src/app/data/` (the only I/O), `src/app/logic/` (pure functions), `src/app/ui/` and `src/app/jobs/` (entry points), enforced by import-linter. | Agents physically cannot put a query in a page callback. |
 | UI frameworks | Streamlit (default) and Dash, chosen at `ctzd new`. | Both are in use; only `ui/` differs. |
-| Python standards | ruff with every rule, ty with every rule as an error, both handled by the agent. Light data validation: loader schemas check required columns and dtypes only. 70% branch coverage on `logic/`. | Strict where the agent pays the cost, light where it would slow people down. |
+| Python standards | ruff with every rule, ty with every rule as an error, both handled by the agent. Light data validation: loader schemas check required columns and dtypes only. 70% branch coverage on `logic/`. | Strict where the agent pays the cost, light where it would slow people down. Revisit the strict rules once the agent trials in [validation-plan.md](validation-plan.md) measure what they cost. |
 | Tests | `ctzd check` runs the same gates locally and in Jenkins. Jenkins adds a post-deploy browser smoke test with a screenshot. Platform code has ordinary test suites. No agent-driven evaluations. | One definition of "green". |
-| Agent instructions | Repos carry `AGENTS.md` and `.agents/skills/` only. `ctzd` copies the skills into a gitignored `.claude/skills/` because Claude Code reads skills only from there. | Agent-neutral repos that every agent can read. |
-| Skill distribution | The internal skills app carries one bootstrap skill, `ctzd`. Everything else ships in the repo, matched to the repo's platform version. | One update channel for the skills that must match the code. |
-| Enforcement | `ctzd deploy` runs `ctzd check` first; Jenkins runs it again. An org-wide Claude managed setting denies reading `.env`. | Enforcement that works for every agent, without per-repo agent config. |
+| Agent instructions | App folders have `AGENTS.md` and `.agents/skills/`, plus a copy of the skills in `.claude/skills/` because Claude Code does not read `.agents/skills/`. `ctzd` writes all three and the app's `.gitignore` lists them. | Agent-neutral guidance that every agent can read. |
+| Skill distribution | The internal skills app carries one bootstrap skill, `ctzd`, which says only to run `ctzd setup --json` and follow `next`. Everything else is served with the platform release. | The bootstrap skill almost never changes; everything that does change has one update channel. |
+| Enforcement | `ctzd deploy` runs `ctzd check` first; Jenkins runs it again. An org-wide Claude Code managed setting denies `Read(**/.env)`. | The checks work for every agent, without per-repo agent config. The `.env` rule is a speed bump: it blocks file commands such as `cat .env`, not a script that opens the file, so the read-only accounts are the real limit. |
 | Command output | Every command prints a short summary; `--json` returns the same facts for agents. Failures name the failing step and show the last log lines. | Agents act on structured output; people read the summary. |
 | Dashboards at rest | Always on, small resource requests. Streamlit runs one process per pod; Dash runs gunicorn with 2 workers and 4 threads. | Simple; add scale-to-zero only if node costs demand it. |
 | Logs | `ctzd logs` streams pod logs through the platform API; job logs live in Airflow. No log shipping in v1. | No Datadog in this cluster yet. |
-| Lifecycle | `ctzd delete` removes the app after a 30-day grace period for its tables. Apps with no visits and no successful runs for 90 days get an owner email and are paused 30 days later. The SBU team inherits apps whose owner leaves. | Keeps the cluster from filling with abandoned apps. |
+| Lifecycle | `ctzd delete` removes the app at once and its tables 30 days later. The SBU team inherits apps whose owner leaves. Pausing idle apps comes later, once something counts visits. | Keeps the store from filling with abandoned tables. v1 ships no logs to count visits from. |
 | Repo access | Internal visibility; the creator is admin; the SBU's GitHub team has write. | Colleagues can take over an app. |
 | Folders | Users keep apps in any folder they like. | Their choice. |
 | Ownership | Platform team owns the platform; each SBU names a champion who owns its library and SBU skill; data sources are added by the platform team on the champion's request. | Agents can never add a data source themselves. |
@@ -135,18 +141,22 @@ fi-bond-prices/
 │   └── jobs/<name>.py       # one module per scheduled job, each with main() -> int
 ├── tests/
 ├── .env.example             # written by ctzd sync from [sources].use
-├── AGENTS.md                # locked
-├── .agents/skills/          # locked
+├── AGENTS.md                # guidance: written by ctzd, gitignored
+├── .agents/skills/          # guidance: written by ctzd, gitignored
+├── .claude/skills/          # guidance: a copy for Claude Code, gitignored
 ├── Dockerfile  Jenkinsfile  # locked
 ├── ruff.toml  ty.toml  .importlinter  pytest.toml  .python-version  # locked
 ├── .pre-commit-config.yaml  .gitignore  .gitattributes  .dockerignore  # locked
-└── .ctzd/version            # platform version the locked files came from
+└── .ctzd/version            # platform release the build files came from
 ```
 
-Locked files are the platform's. `ctzd sync` rewrites them and the managed
-tables of `pyproject.toml` (`build-system`, `requires-python`,
-`dependency-groups.dev`, and `tool.uv`). `ctzd check` and Jenkins fail when any
-of them differ from the recorded platform version.
+The build files are the platform's: the locked files and the managed tables of
+`pyproject.toml` (`build-system`, `requires-python`, `dependency-groups.dev`, and
+`tool.uv`). They are committed and pinned to the platform release recorded in
+`.ctzd/version`; `ctzd check` and Jenkins fail when any of them differ from that
+release. The guidance (`AGENTS.md` and the skills) is not committed: `ctzd`
+rewrites it from the channel's current platform release whenever it runs in the
+app. Section 9 says when each part moves.
 
 `app.toml` holds everything Jenkins and Airflow need:
 
@@ -178,9 +188,9 @@ driver or HTTP client directly.
 
 | Command | What it does |
 |---|---|
-| `ctzd setup` | Checks uv, git (installing MinGit on Windows when missing), the GitHub login, and the agent setup. |
+| `ctzd setup` | Checks uv, git (installing MinGit on Windows when missing), the GitHub login, and the agent setup; once all pass, returns `guide`, the start guide from the current platform release. |
 | `ctzd login --start`, `ctzd login --wait` | GitHub device-flow login in two steps, because agents see output only when a command ends: `--start` returns the code to show the person, `--wait` blocks until they approve it. The token goes into the OS credential store. |
-| `ctzd new NAME --sbu SBU --ui streamlit\|dash\|none` | Creates the GitHub repo through the platform API and writes the starter app into a new folder. `--offline` writes the files only. |
+| `ctzd new NAME --sbu SBU --ui streamlit\|dash\|none` | Creates the GitHub repo through the platform API and writes the current platform release's starter app into a new folder. `--offline` writes the files only. |
 | `ctzd open NAME --sbu SBU` | Clones an existing app into a new folder. |
 | `ctzd dev` | Runs the dashboard locally against real data. |
 | `ctzd run JOB [--local] [--wait]` | Runs a job in Airflow and prints the run link, `--wait` follows it to success or failure; `--local` runs it on the laptop. |
@@ -193,12 +203,17 @@ driver or HTTP client directly.
 | `ctzd logs [--job JOB] [--tail N]` | Recent dashboard or job log lines. |
 | `ctzd releases` | Lists releases. |
 | `ctzd rollback [vN]` | Restores a release and pauses auto-deploy. |
-| `ctzd sync` | Rewrites locked files to the installed platform version. |
+| `ctzd sync` | Brings the build files to the channel's current platform release and rewrites the guidance. |
 | `ctzd delete --yes` | Deletes the app. |
 | `ctzd ci …` | Steps Jenkins calls: `check`, `render`, `release`, `smoke`. |
 
 Every command accepts `--json`. Exit status is `0` on success, `1` on failure,
 `2` on a usage error.
+
+Every command run inside an app refreshes its guidance, asking the platform API
+for the current platform release at most every few minutes. When that release
+needs a newer CLI, the command stops with exit status `1` and its `next` step
+tells the agent to run `uv tool upgrade ctzd`.
 
 ```mermaid
 sequenceDiagram
@@ -208,9 +223,9 @@ sequenceDiagram
   participant J as Jenkins
   participant P as Platform API
   A->>C: ctzd deploy --json
-  C->>C: ctzd sync (if behind), ctzd check
-  C->>G: commit, pull --rebase, push main
+  C->>C: ctzd check (moves the build files to the current platform release if they changed)
   C->>P: resume (clears a rollback pause)
+  C->>G: commit any platform-file upgrade, commit the change, pull --rebase, push main
   G-->>J: webhook
   J->>J: ctzd ci check, image build, helm --atomic, smoke, release tag
   loop until done
@@ -224,9 +239,10 @@ sequenceDiagram
 
 **Sources.** Each data source is one Key Vault secret, `ctzd-source-<name>`,
 holding a JSON description of the source and its read-only account. The
-platform syncs the secrets into the cluster and every app pod receives them as
+platform syncs each secret into its own Kubernetes secret, and an app's
+dashboard and job pods receive the sources listed in its `[sources].use` as
 environment variables named `CTZD_SOURCE_<NAME>`. `ctzd env` writes the same
-variables into `.env` for the sources listed in `app.toml`. Supported kinds are
+variables into `.env` on the laptop. Supported kinds are
 `oracle`, `mssql`, `rest` (no auth, bearer token, header key, basic, or OAuth
 client credentials), and `teams` (a Workflows webhook). Adding a source is a
 platform-team task.
@@ -264,8 +280,9 @@ fails, so a test never reaches a real system.
 
 `ctzd check` runs, in order:
 
-1. the locked-file drift check (locally it restores changed platform files and
-   syncs an app whose platform version is older than the installed CLI);
+1. the build-file drift check against the app's recorded platform release
+   (locally it restores changed files, and moves the app to the channel's
+   current platform release when that release's build files differ);
 2. `uv sync` (`uv sync --locked` in Jenkins);
 3. `ruff format` and `ruff check --fix` (check-only in Jenkins), every rule;
 4. `ty check`, every rule an error;
@@ -281,7 +298,8 @@ back if the page is broken.
 
 ## 8. Agent instructions and skills
 
-Each repo carries a short `AGENTS.md` and these skills in `.agents/skills/`:
+Each app folder has a short `AGENTS.md` and these skills in `.agents/skills/`,
+written by `ctzd` from the channel's current platform release:
 
 | Skill | Teaches |
 |---|---|
@@ -296,17 +314,21 @@ Each repo carries a short `AGENTS.md` and these skills in `.agents/skills/`:
 | `sbu-<sbu>` | The SBU's sources, glossary, and shared loaders. |
 
 Codex, Copilot, Cursor, Gemini CLI, and OpenCode read `.agents/skills/`. Claude
-Code reads `AGENTS.md` but loads skills only from `.claude/skills/`, so
-`ctzd new`, `ctzd open`, `ctzd sync`, and every `ctzd check` refresh a
-gitignored `.claude/skills/` copy. `ctzd setup`
-warns when a `CLAUDE.md` in a parent folder would stop Claude Code from reading
-`AGENTS.md`.
+Code reads `AGENTS.md` (since version 2.1.277) unless a `CLAUDE.md` sits in the
+working folder or above it, and it does not read `.agents/skills/`, so `ctzd`
+also writes a `.claude/skills/` copy. All three are gitignored, and every `ctzd`
+command run in the app refreshes them; Claude Code picks up a change in its next
+session. `ctzd setup` warns when a `CLAUDE.md` in a parent folder would stop
+Claude Code from reading `AGENTS.md`.
 
 The internal skills app distributes only the bootstrap skill `ctzd`
-(`bootstrap/skills/ctzd`), which covers setup, starting an app, and opening an
-existing one.
+(`bootstrap/skills/ctzd`), which says to run `ctzd setup --json`, follow its
+`next` steps, and then read the `guide` it returns. That guide is
+`start/GUIDE.md` from the current platform release, and it teaches logging in,
+starting an app, and opening an existing one, so the bootstrap skill almost
+never changes.
 
-## 9. Onboarding and distribution
+## 9. Onboarding, distribution, and platform releases
 
 `install.ps1`, run by the agent, puts uv in `~/.local/bin`, writes a user
 `uv.toml` that points at the internal PyPI and an internal mirror of uv's
@@ -314,8 +336,62 @@ Python builds, runs `uv tool install ctzd`, and runs `ctzd setup`. Setup
 installs MinGit when git is missing and reports whether the person still needs
 to log in, which the agent then does with the two-step `ctzd login`. The uv,
 MinGit, and Python downloads are served from the platform host, so laptops
-need no access to github.com or pypi.org. Upgrading is `uv tool upgrade ctzd`;
-an app whose platform version is newer than the installed CLI asks for it.
+need no access to github.com or pypi.org.
+
+**Platform releases.** A platform release bundles the build files (the locked
+files and the managed `pyproject.toml` values), the agent guidance (`AGENTS.md`,
+the common skills, and every SBU's skill), the starter code, and the start guide
+`ctzd setup` returns. Its folder in the platform repo is
+`packages/ctzd-cli/src/ctzd_cli/assets`, with the manifest `release.toml`
+naming the release number, the minimum CLI, and the minimum `ctzd-core`.
+Cutting a release is raising that number, committing, and tagging the commit
+`platform-release/<n>`; a published release never changes. The CLI and Jenkins
+fetch releases only through the platform API: `GET /v1/releases/current`
+(with `sbu` and `app`, that app's channel; without, the general channel) and
+`GET /v1/releases/{n}`. The API reads each tag's tarball once, checks that its
+manifest carries the tag's number, and keeps it.
+
+**Channels.** `channels.toml` on the platform repo's main branch points the
+pilot and general channels at one platform release each, lists the apps on the
+pilot channel, and names the newest published CLI for the upgrade hint.
+Promoting or reverting a platform release is a reviewed commit that moves a
+pointer; the API rereads the file every minute.
+
+```toml
+cli = "0.2.0"
+[channels]
+pilot = 2
+general = 1
+[pilot]
+apps = ["fi-bond-prices"]
+```
+
+**Without the platform.** Every release the CLI fetches is kept under the ctzd
+home folder. With no login, no network, or `--offline`, commands use that cache
+and the seed release bundled in the CLI, which is the release folder it was
+built from. Build files of a release that is not available that way are never
+guessed at: the check fails and says to reconnect.
+
+**What moves when.**
+
+| Part | When an app moves to the channel's platform release |
+|---|---|
+| Guidance | Always the channel's current platform release. Every `ctzd` command in the app refreshes it; no commit, no deploy. |
+| Build files | Only when someone works on the app and the channel's platform release has different build files, so a guidance-only release leaves `.ctzd/version` alone. `ctzd deploy` commits the upgrade on its own ("Upgrade platform files to platform release 43") before the person's change. The same commit raises `ctzd-core` and the SBU library in `uv.lock` to the release's minimum. |
+| Starter code | Read at `ctzd new`. |
+
+An app nobody works on keeps its platform release and its image.
+
+**SBU skills** ship in the same platform release. Champions change
+`skills/sbu/<sbu>/` through pull requests guarded by CODEOWNERS, and the
+platform team cuts the release.
+
+**The CLI** never replaces itself. When the current platform release needs a
+newer CLI, commands stop and tell the agent to run `uv tool upgrade ctzd`, which
+runs as a separate process; when a newer CLI exists but is not required, they
+succeed with a hint. Jenkins uses one CLI version, pinned in its library next to
+the chart version, and that CLI reads every platform release format still in
+use. Dropping an old format is a deliberate, announced change.
 
 ## 10. Jobs on Airflow
 
@@ -323,23 +399,31 @@ Jenkins renders `app.toml` into `specs/<sbu>/<app>.json` (image, release, owners
 and each job's schedule, size, retries, and timeout) and commits it to the
 `ctzd-dags` repo. The factory DAG in that repo reads every spec and generates
 one DAG per job, named `<sbu>__<app>__<job>`, each running
-`python -m app.jobs.<job>` in the app's image with KubernetesPodOperator.
+`python -m app.jobs.<job>` in the app's image with KubernetesPodOperator and
+only the app's own sources.
 A failed run emails the app's owners through the SMTP provider's
 `SmtpNotifier`, which needs Airflow's `smtp_default` connection. A spec that
 fails to parse is logged and skipped so the other apps' jobs keep running.
 Because the specs live in the same git repository as the factory DAG, a
 GitDagBundle version pins both together. `ctzd deploy` prints each DAG's link
 and `ctzd run` triggers a run and prints its link. The Airflow UI runs the
-simple auth manager in all-admins mode. The factory is tested by loading it in
-Airflow 3.3 (`airflow/tests`).
+simple auth manager in all-admins mode until company sign-in is switched on at
+its ingress (section 11). The factory is tested by loading it in Airflow 3.3
+(`airflow/tests`). A daily platform DAG in `ctzd-dags`, `ctzd_table_janitor`,
+removes a deleted app's `<sbu>/<app>/` folder from the store 30 days after the
+delete job records the deletion as `deleted/<sbu>/<app>.json` in `ctzd-dags`.
+The record lives in git, which the delete job already writes, so Jenkins needs
+no store credentials; the DAG reaches the store through Airflow's `ctzd_store`
+connection.
 
 ## 11. Jenkins and Kubernetes (proposals for the infrastructure owner)
 
 - **Discovery.** One GitHub Organization Folder job scans `ctzd-apps` and
   builds every repo with a `Jenkinsfile`. The `Jenkinsfile` is
   `@Library('ctzd') _` plus `ctzdApp()`.
-- **Pipeline.** `ctzdApp()` installs the CLI at the app's recorded platform
-  version into a per-build venv, runs `ctzd ci check`, builds and pushes
+- **Pipeline.** `ctzdApp()` installs the CLI version the platform pins next to
+  the chart version into a per-build venv, runs `ctzd ci check` (which checks
+  the build files against the app's recorded platform release), builds and pushes
   `contosoctzd.azurecr.io/apps/<sbu>-<app>:<sha>`, skips deploy if the app is
   paused, runs `helm upgrade --install --atomic` with values from
   `ctzd ci render`, commits the job specs to `ctzd-dags`, runs `ctzd ci smoke`
@@ -356,9 +440,14 @@ Airflow 3.3 (`airflow/tests`).
   0.5 CPU / 1 GiB, 1 CPU / 4 GiB, and 2 CPU / 8 GiB limits, with requests of
   0.1 CPU and 512 MiB. One replica per dashboard.
 - **Ingress.** `https://<sbu>-<app>.ctzd.contoso.com` under one wildcard DNS
-  record and one wildcard certificate.
-- **Secrets.** Source secrets synced from Key Vault into one Kubernetes secret
-  that every app pod and job pod mounts as environment variables.
+  record and one wildcard certificate. The chart's `auth` block (`enabled`,
+  `url`, `signin`), off by default, adds ingress-nginx's `auth-url` and
+  `auth-signin` annotations for an oauth2-proxy set up for Entra ID. The
+  infrastructure owner sets it once in `platform-values.yaml`, and does the same
+  for Airflow's ingress.
+- **Secrets.** Each source's secret is synced from Key Vault into its own
+  Kubernetes secret. `ctzd ci render` lists the app's sources, so its dashboard
+  and job pods mount only those.
 - **Images.** ACR keeps the last 20 images per app, which bounds rollback.
 - **Pipeline smoke test.** Platform CI builds a sample app of each kind through
   the real pipeline into a throwaway namespace.
@@ -367,9 +456,9 @@ Airflow 3.3 (`airflow/tests`).
 
 | Who | Owns |
 |---|---|
-| Platform team | `ctzd`, `ctzd-core`, the platform API, the template and common skills, the base image, Airflow, the install script, adding data sources |
-| Infrastructure owner | Jenkins, the Helm chart, the cluster, DNS and certificates, secret sync |
-| SBU champion | `kits/<sbu>` and the `sbu-<sbu>` skill, through CODEOWNERS with platform review |
+| Platform team | `ctzd`, `ctzd-core`, the platform API, platform releases and their channels, the template and common skills, the base image, Airflow, the install script, adding data sources |
+| Infrastructure owner | Jenkins, the Helm chart, the cluster, DNS and certificates, secret sync, the sign-in proxy when it is switched on |
+| SBU champion | `kits/<sbu>` and the `sbu-<sbu>` skill, through CODEOWNERS with platform review; the skill ships in the platform release |
 | App owner | Their app, through their agent |
 
 ## 13. Rollout
@@ -387,9 +476,11 @@ Phase 0 spikes:
   against local Oracle 23 Free and SQL Server 2022 containers; see section 14);
 - Airflow 3: the UI link format (`/dags/<dag_id>/runs/<run_id>` is assumed),
   the trigger request body, and API tokens in all-admins mode;
-- a Claude Code managed deny rule that matches `.env` in every project;
+- a Claude Code managed deny rule, `Read(**/.env)`, that matches `.env` in
+  every project;
 - whether Claude Code loads `AGENTS.md` and skills when the agent works in an
-  app subfolder;
+  app subfolder, and whether it loads skills from a gitignored
+  `.claude/skills/`;
 - GitHub Enterprise device flow for the `ctzd` OAuth app;
 - MinGit and uv on a locked-down laptop, and uv's Python downloads from an
   internal mirror.
@@ -418,6 +509,17 @@ Jenkins, Airflow, Kubernetes, and Key Vault clients; the Jenkins library and
 jobs; the device-flow login; the drivers over the company network; the store on
 ADLS; `install.ps1` and MinGit on Windows.
 
+Built on 2026-11-06 (CLI 0.2.0, chart 0.2.0) and tested with the fakes and a
+real Airflow, not yet against the real services: platform releases with their
+tags, channels, cache, and seed; the API's release endpoints; guidance written
+into app folders and refreshed by every command; build-file upgrades in their
+own commit, raising `ctzd-core` and the SBU library to the release's minimum;
+commands stopping when a newer CLI is required; Jenkins using a CLI the
+platform pins; the thin bootstrap skill with the served start guide; one
+Kubernetes secret per source; the chart's `auth` block; `ctzd deploy` clearing
+the rollback pause before it pushes and reporting a build that deployed nothing;
+and the table janitor DAG with the delete job's deletion record.
+
 ## 15. Open items
 
 - The FI package stack, first sources, and pilot apps.
@@ -425,3 +527,8 @@ ADLS; `install.ps1` and MinGit on Windows.
   the cluster.
 - Whether Excel users need job outputs in a SQL table; if so, add an MSSQL
   output database.
+- Three choices were built as the simplest that works and are open to change:
+  apps join the pilot channel by being listed in `channels.toml`; a platform
+  release is cut by tagging and promoted by a commit to `channels.toml`; and
+  without the platform the CLI uses its cache and the seed release it bundles.
+- The open decisions in [validation-plan.md](validation-plan.md) section 6.

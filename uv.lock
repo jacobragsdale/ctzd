@@ -482,7 +482,7 @@ wheels = [
 
 [[package]]
 name = "ctzd"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "packages/ctzd-cli" }
 dependencies = [
     { name = "httpx" },
