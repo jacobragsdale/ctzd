@@ -170,7 +170,7 @@ def new(ctx: Context, *, name: str, sbu: str, ui: Ui, directory: Path | None, ow
     return Outcome(
         summary=f"Created {name} in {root}." + ("" if created is None else f" It will be live at {url} in a few minutes."),
         data={"path": str(root), "repo": None if created is None else created.repo, "url": url},
-        next_steps=[f"Work inside {root}.", "Run `ctzd dev` to see it locally, then `ctzd deploy` to ship changes."],
+        next_steps=[f"Work inside {root}. Read {root / 'AGENTS.md'} and the skills it names before you write code.", "Run `ctzd dev` to see it locally, then `ctzd deploy` to ship changes."],
     )
 
 
@@ -192,7 +192,8 @@ def open_app(ctx: Context, *, name: str, sbu: str, directory: Path | None) -> Ou
     return Outcome(
         summary=f"Opened {name} in {root}.",
         data={"path": str(root), "url": platform.app_url(sbu, name)},
-        next_steps=[f"Work inside {root}.", *hints] + ([] if installed.ok else ["`uv sync` failed; run `ctzd check` to see why."]),
+        next_steps=[f"Work inside {root}. Read {root / 'AGENTS.md'} before you change anything: it says what to do first when the live app is wrong.", *hints]
+        + ([] if installed.ok else ["`uv sync` failed; run `ctzd check` to see why."]),
     )
 
 

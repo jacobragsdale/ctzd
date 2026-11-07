@@ -16,11 +16,14 @@ _ERROR_SELECTORS: dict[Ui, tuple[str, ...]] = {"streamlit": ('[data-testid="stEx
 _READY_SELECTORS: dict[Ui, str] = {"streamlit": '[data-testid="stApp"]', "dash": "#react-entry-point", "none": "body"}
 _SETTLE_MS = 4_000
 _VIEWPORT = ViewportSize(width=1440, height=900)
-_MAX_HEIGHT = 12_000
+# Taller screenshots are scaled down until the agent reading them cannot make out the text.
+_MAX_HEIGHT = 2_400
 # Streamlit scrolls inside its own container, so a full-page screenshot would show only the
-# first screen; this finds the tallest scrolling content so the viewport can grow to fit it.
+# first screen. This measures the scrolling content of containers about as tall as the window;
+# smaller ones, such as a table's own scroll area, would make the page look far longer than it is.
 _CONTENT_HEIGHT_JS = """() => Math.max(document.documentElement.scrollHeight, ...Array.from(document.querySelectorAll('*'))
-    .filter((e) => ['auto', 'scroll'].includes(getComputedStyle(e).overflowY) && e.scrollHeight > e.clientHeight)
+    .filter((e) => ['auto', 'scroll'].includes(getComputedStyle(e).overflowY) && e.scrollHeight > e.clientHeight
+        && e.clientHeight >= 0.8 * window.innerHeight)
     .map((e) => e.getBoundingClientRect().top + e.scrollHeight))"""
 _SERVER_ERROR = 500
 _TIMEOUT_MS = 60_000
