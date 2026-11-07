@@ -74,7 +74,7 @@ import pandas as pd
 @ctzd.cached(ttl="15m")
 def load_trades(trade_date: dt.date, desk: str) -> pd.DataFrame:
     frame = ctzd.query("trades_db", "sql/trades.sql", {"trade_date": trade_date, "desk": desk})
-    return ctzd.require_columns(frame, {"trade_id": "str", "isin": "str", "quantity": "number"}, what="trades")
+    return ctzd.require_columns(frame, {"trade_id": "int", "isin": "str", "quantity": "number"}, what="trades")
 
 
 @ctzd.cached(ttl="1h")
@@ -109,6 +109,10 @@ def load_sector_summary() -> pd.DataFrame | None:
 Oracle returns every `NUMBER` column as `float64`, counts included (`COUNT(*)`): declare
 them `"number"` or `"float"` in `require_columns`, not `"int"`. Test frames use the same types
 as the source, or a test passes that the live data then fails.
+
+The types in these examples are illustrations: before the first deploy, print
+`frame.dtypes` from the live source (below) and declare what comes back, or the
+smoke test fails on a type the tests never saw.
 
 To see what a loader returns from the live source, without a browser:
 `ctzd exec --json -- python -c "from app.data.loaders import load_prices; print(load_prices().head())"`.

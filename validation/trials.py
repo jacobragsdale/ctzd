@@ -66,6 +66,8 @@ Rules:
 - You can open every link the assistant gives you: what it says is live is what you see, unless it tells you something is broken.
   An email the assistant says it sent is in your inbox, as it describes it.
   Do not pause the work to check things yourself later; when one request is done, ask for the next one right away.
+  When the assistant asks you to try or check something, do it now and say in this reply what you saw; never say you will
+  look and report back.
 - You are already logged in; if the assistant asks about logins or accounts, tell it to use the one it has.
 - End your message with {done} only when the assistant's latest message says that what you want is already live or sent, with
   the link or result. Never in a message where you still ask for something, such as "ship it". If the assistant is stuck after

@@ -81,6 +81,8 @@ if __name__ == "__main__":
 ```
 
 `run(as_of)` takes the date so tests can fix it; only `main()` reads the clock.
+Label messages with the date of the data they carry, not the day the job ran: a
+morning job that reports the latest prices says the previous business day.
 
 ## Messages and tables
 

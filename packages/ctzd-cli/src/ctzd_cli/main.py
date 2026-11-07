@@ -2,7 +2,6 @@
 
 import argparse
 import json
-import subprocess
 import sys
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
@@ -12,7 +11,7 @@ from typing import Literal
 import httpx
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from ctzd_cli import assets, commands, proc, releases
+from ctzd_cli import assets, commands, releases
 from ctzd_cli.commands import Context, Outcome
 from ctzd_cli.errors import CliError, UsageError
 
@@ -38,7 +37,8 @@ class Args(BaseModel):
     start: bool = False
     wait: bool = False
     no_browser: bool = False
-    port: int = 8501
+    port: int | None = None
+    stop: bool = False
     job: str | None = None
     local: bool = False
     schedule: str | None = None
@@ -81,8 +81,9 @@ def _app_parsers(sub: "argparse._SubParsersAction[argparse.ArgumentParser]", com
     open_.add_argument("name")
     open_.add_argument("--sbu", required=True)
     open_.add_argument("--dir", type=Path)
-    dev = sub.add_parser("dev", parents=[common], help="run the dashboard locally")
-    dev.add_argument("--port", type=int, default=8501)
+    dev = sub.add_parser("dev", parents=[common], help="run the dashboard locally in the background, or restart it; --stop stops it")
+    dev.add_argument("--port", type=int, help="default: 8501, or the next free port")
+    dev.add_argument("--stop", action="store_true", help="stop the local dashboard")
     exec_ = sub.add_parser("exec", parents=[common], help="run a command in the app with its credentials, as ctzd dev does: ctzd exec --json -- python -c '...'")
     exec_.add_argument("argv", nargs=argparse.REMAINDER, help="the command, after --")
     run = sub.add_parser("run", parents=[common], help="run a job in Airflow, or locally with --local")
@@ -104,7 +105,7 @@ def _app_parsers(sub: "argparse._SubParsersAction[argparse.ArgumentParser]", com
 
 
 def _ship_parsers(sub: "argparse._SubParsersAction[argparse.ArgumentParser]", common: argparse.ArgumentParser) -> None:
-    deploy = sub.add_parser("deploy", parents=[common], help="check, commit, push, and wait for the live URL")
+    deploy = sub.add_parser("deploy", parents=[common], help="check, commit, push, and wait for the live URL; also resumes auto-deploy after a rollback")
     deploy.add_argument("--message", help="commit message; default: the changed files")
     deploy.add_argument("--detach", action="store_true", help="return right after pushing")
     deploy.add_argument("--timeout", type=float, default=_DEPLOY_TIMEOUT, help="seconds to wait for Jenkins")
@@ -158,11 +159,6 @@ def _required[T](value: T | None, name: str) -> T:
     return value
 
 
-def _stream(command: list[str], cwd: Path, env: dict[str, str]) -> int:
-    """Run a long-lived command with the terminal attached, as `ctzd dev` needs."""
-    return subprocess.run(command, cwd=cwd, env=proc.child_env(env), check=False).returncode
-
-
 Handler = Callable[[Args, Context], Outcome]
 
 HANDLERS: dict[str, Handler] = {
@@ -170,7 +166,7 @@ HANDLERS: dict[str, Handler] = {
     "login": lambda a, ctx: commands.login_start(ctx, open_browser=not a.no_browser) if a.start else commands.login_wait(ctx),
     "new": lambda a, ctx: commands.new(ctx, name=_required(a.name, "NAME"), sbu=_required(a.sbu, "--sbu"), ui=a.ui, directory=a.dir, owner=a.owner, offline=a.offline),
     "open": lambda a, ctx: commands.open_app(ctx, name=_required(a.name, "NAME"), sbu=_required(a.sbu, "--sbu"), directory=a.dir),
-    "dev": lambda a, ctx: commands.dev(ctx, port=a.port, run=_stream),
+    "dev": lambda a, ctx: commands.dev(ctx, port=a.port, stop=a.stop),
     "run": lambda a, ctx: commands.run_job(ctx, job=_required(a.job, "JOB"), local=a.local, wait=a.wait, timeout=a.timeout),
     "exec": lambda a, ctx: commands.exec_command(ctx, argv=a.argv),
     "sources": lambda _a, ctx: commands.sources(ctx),

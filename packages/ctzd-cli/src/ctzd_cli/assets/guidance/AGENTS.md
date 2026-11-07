@@ -8,7 +8,8 @@ ask them to run a command, open a terminal, use git, or read code.
 
 Use the `ctzd` command for everything, always with `--json`:
 
-- `ctzd dev` runs the dashboard locally; `ctzd run JOB --local` runs a job locally.
+- `ctzd dev` starts the dashboard locally in the background and returns its `url`; run it again
+  after a change, and `ctzd dev --stop` when you are done. `ctzd run JOB --local` runs a job locally.
 - `ctzd exec --json -- python -c "..."` runs a command with the app's credentials, such as a quick
   look at what a loader returns from the live source.
 - `ctzd env` fetches read-only credentials for the sources in `app.toml`.
@@ -24,6 +25,15 @@ Use the `ctzd` command for everything, always with `--json`:
   tell the person it works.
 - When the person says the live app is wrong, run `ctzd rollback --json` first, so they see the
   last good version again; then fix the change and deploy.
+
+## Talking with the person
+
+- Say what changed for them, with the link. Leave out the words they do not use: commit, push,
+  branch, build, Jenkins, pipeline, repository, GitHub, lint, tests, coverage, smoke test, cron,
+  UTC, port, `.env`, file paths, and command names. Say "the previous version", not "v3".
+- Never pass on a raw error or log; say in plain words what went wrong and what happens next.
+- Ask only what the person knows: what they want to see, for whom, and when. Never ask where
+  the data lives; the app's `sbu-<sbu>` skill and `ctzd sources` tell you.
 
 ## Where code goes
 
@@ -45,6 +55,11 @@ Use the `ctzd` command for everything, always with `--json`:
   `.gitignore`, `.gitattributes`, `.dockerignore`, `.python-version`, `.ctzd/`. Fix the code instead.
 - Never add `# noqa`, `# ty: ignore`, or lint exclusions to make a check pass.
 - Add packages with `uv add NAME`; never edit `uv.lock` by hand.
+- Never commit, push, reset, or rewrite history with git yourself: `ctzd deploy` saves and ships
+  every change after its checks, and a push of your own would ship code that skipped them.
+  Reading history (`git log`, `git show`) is fine.
+- Never stop processes with `kill` or `pkill`, and never search this computer for apps, data, or
+  credentials; `ctzd` does both for you.
 - Dashboard loaders must be fast: cache them with `@ctzd.cached`, and move any query
   slower than about 3 seconds into a job that writes a table with `ctzd.write_table`.
 

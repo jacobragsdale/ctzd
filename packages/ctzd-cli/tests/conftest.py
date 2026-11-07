@@ -2,9 +2,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
+from pydantic import TypeAdapter
 
 from ctzd_cli import api_models as m
-from ctzd_cli import config, releases, scaffold
+from ctzd_cli import commands, config, main, releases, scaffold
 from ctzd_cli.appconfig import AppConfig, AppSection, Job
 from ctzd_cli.errors import CliError
 
@@ -15,6 +16,15 @@ def isolated_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CTZD_HOME", str(tmp_path / "ctzd-home"))
     monkeypatch.delenv("CTZD_GITHUB_TOKEN", raising=False)
     monkeypatch.delenv("CTZD_PLATFORM_CONFIG", raising=False)
+
+
+_OUTPUT: TypeAdapter[dict[str, object]] = TypeAdapter(dict[str, object])
+
+
+def run(argv: list[str], cwd: Path, capsys: pytest.CaptureFixture[str]) -> tuple[int, dict[str, object]]:
+    ctx = commands.Context(cwd=cwd, platform_factory=lambda: pytest.fail("no platform call expected"), token=lambda: "t")
+    code = main.main([*argv, "--json"], ctx=ctx)
+    return code, _OUTPUT.validate_json(capsys.readouterr().out)
 
 
 def app_config(*, ui: str = "streamlit", jobs: tuple[Job, ...] = (), sources: tuple[str, ...] = ()) -> AppConfig:

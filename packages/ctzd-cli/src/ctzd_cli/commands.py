@@ -7,11 +7,11 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, assert_never
 
 from pydantic import ValidationError
 
-from ctzd_cli import api_client, appconfig, assets, auth, checks, config, gitops, proc, release, render, scaffold, setup_checks, sync
+from ctzd_cli import api_client, appconfig, assets, auth, checks, config, devserver, gitops, proc, release, render, scaffold, setup_checks, sync
 from ctzd_cli import api_models as m
 from ctzd_cli.appconfig import AppConfig, AppSection, Job, SourcesSection, Ui
 from ctzd_cli.assets import start_guide
@@ -238,17 +238,45 @@ def _uv_run(root: Path, *command: str) -> list[str]:
     return [uv, "run", *env_file, *command]
 
 
-def dev(ctx: Context, *, port: int, run: Callable[[list[str], Path, dict[str, str]], int]) -> Outcome:
+def dev(ctx: Context, *, port: int | None, stop: bool) -> Outcome:
     root, app = _app(ctx)
+    stopped = devserver.stop(root)
+    if stop:
+        summary = "The local dashboard stopped." if stopped is not None else "No local dashboard was running."
+        return Outcome(summary=summary, data={"stopped": stopped is not None})
     if app.app.ui == "none":
         msg = "This app has no dashboard."
         raise UsageError(msg, hint="Run a job locally with `ctzd run JOB --local`.")
+    chosen = _dev_port(port, previous=None if stopped is None else stopped.port)
     if app.app.ui == "streamlit":
-        command = _uv_run(root, "streamlit", "run", "src/app/ui/main.py", "--server.port", str(port), "--server.headless", "true")
+        command = _uv_run(root, "streamlit", "run", "src/app/ui/main.py", "--server.port", str(chosen), "--server.address", "localhost", "--server.headless", "true")
     else:
-        command = _uv_run(root, "python", "-c", f"from app.ui.main import app; app.run(debug=True, port={port})")
-    code = run(command, root, local_env(root, app))
-    return Outcome(summary=f"The local dashboard stopped (exit {code}).", data={"url": f"http://localhost:{port}", "exit_code": code}, ok=code == 0)
+        command = _uv_run(root, "python", "-c", f"from app.ui.main import app; app.run(debug=True, port={chosen})")
+    match devserver.start(root, command, port=chosen, env=local_env(root, app)):
+        case devserver.Started(server, _process):
+            return Outcome(
+                summary=f"The dashboard runs at {server.url} in the background; ctzd dev restarts it, ctzd dev --stop stops it.",
+                data={"url": server.url, "port": server.port, "log": devserver.LOG.as_posix()},
+            )
+        case devserver.Failed(reason, log):
+            return Outcome(summary=f"The local dashboard {reason}.", data={"output": log, "log": devserver.LOG.as_posix()}, ok=False)
+        case unreachable:
+            assert_never(unreachable)
+
+
+def _dev_port(asked: int | None, *, previous: int | None) -> int:
+    if asked is not None:
+        if not devserver.port_free(asked):
+            msg = f"Port {asked} is in use by another program."
+            raise UsageError(msg, hint="Leave out --port and ctzd dev picks a free one.")
+        return asked
+    if previous is not None and devserver.port_free(previous):
+        return previous
+    found = devserver.free_port()
+    if found is None:
+        msg = f"Ports {devserver.FIRST_PORT} and the next ones are all in use."
+        raise CliError(msg, hint="Stop other local dashboards with `ctzd dev --stop` in their app folders.")
+    return found
 
 
 def exec_command(ctx: Context, *, argv: tuple[str, ...]) -> Outcome:

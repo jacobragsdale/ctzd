@@ -72,7 +72,10 @@ uv run python -m validation.stage2_helm PATH/TO/helm ~/.cache/ctzd-validation/he
 
 Trials run headless Claude Code with the operator's login (found through
 `CLAUDE_CONFIG_DIR`) but a fresh `HOME`, no user settings, skills, or MCP servers, and deny
-rules for `.env` and the operator's own folders. Each costs a few cents with Haiku.
+rules for `.env` and the operator's own folders, inside a bubblewrap (`bwrap`) sandbox that
+shows each agent only its own trial. A Haiku trial costs a few cents to about $0.80. Haiku
+plays the person by default and sometimes stalls or invents facts; `--person-model
+claude-sonnet-5-5` gives steadier conversations.
 
 The data containers keep running until you remove them:
 `docker rm -f ctzd-trial-oracle ctzd-trial-mssql ctzd-trial-mailpit`.

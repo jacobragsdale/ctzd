@@ -7,7 +7,9 @@ description: "Set up ctzd on this computer, start a new ctzd app (a Streamlit or
 
 ctzd builds and runs Python dashboards and scheduled jobs for people who do
 not code. You do every technical step with the `ctzd` command; the person
-never runs a command, opens a terminal, or uses git.
+never runs a command, opens a terminal, or uses git. Never search this
+computer for apps, data, or credentials: they come through `ctzd`, and the
+person's files are theirs.
 
 1. If `ctzd` is not found, install it. On Windows run
    `powershell -c "irm https://ctzd.contoso.com/install.ps1 | iex"`; if `ctzd`

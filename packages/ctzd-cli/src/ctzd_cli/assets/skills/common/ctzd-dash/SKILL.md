@@ -138,5 +138,6 @@ def test_health_endpoint_answers() -> None:
     assert server.test_client().get("/healthz").status_code == 200
 ```
 
-Locally `ctzd dev --json` serves the page at `http://localhost:8501` with Dash's
-debug tools, which show callback errors in the page.
+Locally `ctzd dev --json` serves the page at the `url` it returns
+(`http://localhost:8501` unless that port is taken) with Dash's debug tools,
+which show callback errors in the page.

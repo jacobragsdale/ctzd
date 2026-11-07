@@ -51,6 +51,8 @@ a dashboard.
 
 **`fi_issuance`**: `GET /v1/new-issues?since=YYYY-MM-DD&page_size=25` returns
 `{"items": [...], "next": URL or null}`; use `get_all_pages(..., records="items")`.
+`since` is optional: without it the feed returns every issue it holds, the last
+60 days.
 Each item has `isin`, `issuer`, `rating`, `coupon_pct`, `maturity_date`,
 `size_mm` (millions), `currency`, `priced_on`.
 

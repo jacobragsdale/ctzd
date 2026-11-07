@@ -2,19 +2,10 @@ import json
 from pathlib import Path
 
 import pytest
-from pydantic import TypeAdapter
 
 from ctzd_cli import commands, main
 
-from .conftest import make_app
-
-_OUTPUT: TypeAdapter[dict[str, object]] = TypeAdapter(dict[str, object])
-
-
-def run(argv: list[str], cwd: Path, capsys: pytest.CaptureFixture[str]) -> tuple[int, dict[str, object]]:
-    ctx = commands.Context(cwd=cwd, platform_factory=lambda: pytest.fail("no platform call expected"), token=lambda: "t")
-    code = main.main([*argv, "--json"], ctx=ctx)
-    return code, _OUTPUT.validate_json(capsys.readouterr().out)
+from .conftest import make_app, run
 
 
 def test_add_job_writes_the_module_and_app_toml(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

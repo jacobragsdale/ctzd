@@ -13,6 +13,7 @@ description: "Run, check, ship, and roll back a ctzd app with the ctzd command, 
   `--json`. Read `ok`, `summary`, and `next` first: `next` says what to do.
   Exit status 0 is success, 1 is a failure, 2 is a wrong command line.
 - Never open, print, or copy `.env`; `ctzd` loads it for you.
+- Never run git yourself: `ctzd deploy` commits and pushes after the checks pass.
 - A change is done when `ctzd check --json` passes. It is live only when
   `ctzd deploy --json` returned a `release`.
 
@@ -22,7 +23,7 @@ description: "Run, check, ship, and roll back a ctzd app with the ctzd command, 
 |---|---|---|
 | Sources | `ctzd sources --json` | Names of the data sources the platform has, for `[sources].use` in `app.toml`. |
 | Credentials | `ctzd env --json` | Once per session, and after changing `[sources].use` in `app.toml`. Needed before anything reads real data. |
-| Look | `ctzd dev --json` | Serves the dashboard at `http://localhost:8501` (`--port N`) until stopped, so start it in the background. Restart it after code changes. Show the person a screenshot or the link. |
+| Look | `ctzd dev --json` | Starts the dashboard in the background and returns its `url` (`http://localhost:8501`, or the next free port). Run it again after code changes to restart it; `ctzd dev --stop --json` stops it. Never use `kill` or `pkill`. Show the person the link. |
 | Look at live data | `ctzd exec --json -- python -c "..."` | Runs a command with the app's credentials, as `ctzd dev` does, and returns `exit_code` and `output`. For checking what a loader returns; never source `.env` yourself. |
 | Try a job | `ctzd run JOB --local --json` | Runs `src/app/jobs/JOB.py` here. Emails and Teams posts land in `.ctzd/out/outbox/`, tables in `.ctzd/out/store/`; nothing is sent. |
 | Check | `ctzd check --json` | Every gate. Fixes formatting and simple lint itself (`"state": "fixed"`). `--fast` skips tests while you iterate. |
@@ -91,7 +92,8 @@ Every result has `ok`, `command`, `summary`, and `next`, plus:
 | `rollback` | `release`, `done`, `url` |
 | `env` | `variables` (names only) |
 | `add job` | `job`, `files` |
-| `dev` | `url`, `exit_code` (when it stops) |
+| `dev` | `url`, `port`, `log` (the server's output file); on failure `output` |
+| `dev --stop` | `stopped` |
 | `sync` | `release`, `changed` |
 
 A failure the command caught itself has only `ok: false`, `summary` (what went
@@ -99,8 +101,9 @@ wrong), and `next` (what to do).
 
 ## Telling the person
 
-Say what changed for them, with the link. Do not say commit, push, build,
-Jenkins, lint, tests, or rebase.
+Say what changed for them, with the link, in the words of `AGENTS.md`'s
+"Talking with the person": no commit, push, build, Jenkins, repository, lint,
+tests, or release numbers.
 
 | Result | Say |
 |---|---|

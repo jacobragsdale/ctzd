@@ -28,8 +28,26 @@ locally. Streamlit is 1.66 or later.
   Show at most a few thousand rows; aggregate, or offer the rest with
   `st.download_button("Download CSV", frame.to_csv(index=False), file_name="prices.csv", mime="text/csv")`.
 - Charts: `st.bar_chart`, `st.line_chart`, `st.area_chart`, `st.scatter_chart`
-  take `x=` and `y=` column names. For more control `uv add plotly` and use
-  `st.plotly_chart(figure)`.
+  take `x=` and `y=` column names, plus `x_label=` and `y_label=` for the axis
+  titles the person reads.
+- `st.bar_chart` sorts the bars alphabetically: pass `sort=False` to keep the
+  frame's order (ratings best first, sectors by size).
+- These charts start the y-axis at zero, which flattens values far from it,
+  such as prices near 100. Fit the axis with `st.vega_lite_chart`:
+
+  ```python
+  st.vega_lite_chart(history, {
+      "mark": {"type": "line", "point": True},
+      "encoding": {
+          "x": {"field": "as_of_date", "type": "temporal", "title": "Date"},
+          "y": {"field": "average_price", "type": "quantitative", "title": "Average clean price", "scale": {"zero": False}},
+      },
+  })
+  ```
+
+  Altair's typed API does not pass `ctzd check`; use the spec above.
+- Look at the deploy screenshot: a flat line or bars in the wrong order are
+  mistakes to fix before you report.
 - Numbers: `st.metric(label, value)`, and `st.columns(3)` to place several side by side.
 
 ## A page

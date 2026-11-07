@@ -78,6 +78,7 @@ def with_rating(prices: pd.DataFrame, ratings: pd.DataFrame) -> pd.DataFrame:
 | `PD901`: variable named `df` | A descriptive name. |
 | `C901`, `PLR0912`, `PLR0913`: too complex, too many arguments | Split the function; move rules into small logic functions. |
 | ty `unsound-return-statement`, `invalid-assignment` with `Any` from pandas | Build the value under a declared type (a comprehension), as `_rows` in `ctzd-dash`. |
+| ty `unsound-return-statement` on `frame[frame["d"].dt.date == day]` | The `.dt` accessor is untyped; compare the column itself: `frame.loc[frame["d"] == pd.Timestamp(day)]`. |
 | ty `unresolved-attribute` | The object has no such attribute: check its type. Never reach for `getattr`. |
 
 ruff fixes some findings itself during `ctzd check` (`"state": "fixed"`): read

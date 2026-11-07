@@ -79,6 +79,8 @@ behind the page answers with a server error, such as a Dash callback that raised
 
 | Message | Do |
 |---|---|
+| `ctzd dev`: `stopped right away` | `output` holds the server's last lines: usually an import error or a crash at the top of the page. Fix it and run `ctzd dev` again. |
+| `Port N is in use by another program` | Leave out `--port`; `ctzd dev` picks a free one. |
 | `Source 'x' is not configured: CTZD_SOURCE_X is not set` | Locally: add `x` to `[sources].use` in `app.toml`, run `ctzd env --json`, restart `ctzd dev`. In the live app's logs: the platform team must add the source; tell the person. |
 | `ctzd env`: `Source 'x' does not exist` | Only the platform team adds sources. Tell the person to ask their SBU champion; do not guess other names. |
 | `is not a valid source description` | The source's stored settings are broken: a platform-team fix. Tell the person. |

@@ -10,6 +10,8 @@ __pycache__/
 .ctzd/out/
 .ctzd/screenshots/
 .ctzd/guidance.json
+.ctzd/dev.json
+.ctzd/dev.log
 # Agent guidance: ctzd writes it from the current platform release whenever it runs here.
 /AGENTS.md
 /.agents/
