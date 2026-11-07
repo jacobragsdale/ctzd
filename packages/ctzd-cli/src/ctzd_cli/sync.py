@@ -40,6 +40,10 @@ def expected_files(release: m.PlatformRelease) -> dict[str, str]:
     return assets.locked_files(release) | {VERSION_FILE: f"{release.release}\n"}
 
 
+# The tables of pyproject.toml the platform owns, as dotted keys.
+MANAGED_PYPROJECT_KEYS = ("project.requires-python", "build-system", "dependency-groups.dev", "tool.uv")
+
+
 def managed_pyproject(platform: PlatformConfig, release: m.PlatformRelease) -> dict[str, object]:
     """The parts of pyproject.toml the platform owns, as dotted keys and their values."""
     uv: dict[str, object] = {
@@ -48,12 +52,13 @@ def managed_pyproject(platform: PlatformConfig, release: m.PlatformRelease) -> d
     }
     if platform.python.sources:
         uv["sources"] = dict(platform.python.sources)
-    return {
+    values: dict[str, object] = {
         "project.requires-python": release.python.requires,
         "build-system": {"requires": [release.python.build_backend], "build-backend": "uv_build"},
         "dependency-groups.dev": list(release.python.dev),
         "tool.uv": uv,
     }
+    return {key: values[key] for key in MANAGED_PYPROJECT_KEYS}
 
 
 def same_build(platform: PlatformConfig, one: m.PlatformRelease, other: m.PlatformRelease) -> bool:

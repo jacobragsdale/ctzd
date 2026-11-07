@@ -61,6 +61,11 @@ class Git:
         result = self.run("rev-parse", "--verify", "--quiet", "HEAD", check=False)
         return result.output.strip() if result.ok else None
 
+    def show(self, path: str, revision: str = "HEAD") -> str | None:
+        """`path` as committed at `revision`; None when it is not there."""
+        result = self.run("show", f"{revision}:{path}", check=False)
+        return result.output if result.ok else None
+
     def changed_paths(self) -> list[str]:
         output = self.run("status", "--porcelain=v1", "--untracked-files=all").output
         return sorted(line[3:] for line in output.splitlines() if line.strip())
@@ -117,7 +122,8 @@ class Git:
         self.run("fetch", "--quiet", "--tags", "--force", REMOTE)
 
     def tags(self, prefix: str) -> list[tuple[str, str]]:
-        output = self.run("for-each-ref", f"refs/tags/{prefix}", f"--format=%(refname:strip=2){_FIELD}%(contents){_RECORD}").output
+        # for-each-ref matches a pattern without a wildcard only up to a slash, so `ctzd/v` alone matches nothing.
+        output = self.run("for-each-ref", f"refs/tags/{prefix}*", f"--format=%(refname:strip=2){_FIELD}%(contents){_RECORD}").output
         entries: list[tuple[str, str]] = []
         for record in output.split(_RECORD):
             if _FIELD in record:

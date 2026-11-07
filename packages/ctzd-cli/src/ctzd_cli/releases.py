@@ -19,7 +19,7 @@ from pydantic import TypeAdapter, ValidationError
 from ctzd_cli import api_models as m
 from ctzd_cli import assets, config
 from ctzd_cli.api_client import Platform
-from ctzd_cli.errors import CliError
+from ctzd_cli.errors import CliError, PlatformUnavailableError
 
 # The newest release layout this CLI understands; see assets/release.toml.
 FORMAT = 1
@@ -65,10 +65,14 @@ def seed() -> m.PlatformRelease:
     return from_files(seed_files())
 
 
+def usable(release: m.PlatformRelease) -> bool:
+    return release.format <= FORMAT and Version(release.requires_cli) <= Version(assets.version())
+
+
 def require_usable(release: m.PlatformRelease) -> m.PlatformRelease:
     """Stop when this CLI is too old for `release`; the agent upgrades it and runs the command again."""
     installed = assets.version()
-    if release.format > FORMAT or Version(release.requires_cli) > Version(installed):
+    if not usable(release):
         msg = f"Platform release {release.release} needs ctzd {release.requires_cli} or newer; this is ctzd {installed}."
         raise CliError(msg, hint="Run `uv tool upgrade ctzd`, then run the same ctzd command again.")
     return release
@@ -135,11 +139,14 @@ class ReleaseSource:
         if cached is not None:
             return cached
         client = self._client()
+        refused: CliError | None = None
         if client is not None:
             try:
                 fetched = client.release(number)
-            except CliError as err:
+            except PlatformUnavailableError as err:
                 self._unreachable = err.message
+            except CliError as err:
+                refused = err
             else:
                 if fetched.release != number:
                     msg = f"The platform sent release {fetched.release} when asked for {number}."
@@ -149,17 +156,19 @@ class ReleaseSource:
         local = self._seed_release()
         if local.release == number:
             return local
+        if refused is not None:
+            raise refused
         msg = f"Platform release {number} is not on this computer and the platform could not be asked ({self._unreachable or 'working offline'})."
         raise CliError(msg, hint="Connect to the company network, check `ctzd setup`, and run the command again.")
 
     def newest_local(self) -> m.PlatformRelease:
-        """The newest release available without the platform."""
+        """The newest release this CLI can use that is available without the platform."""
         candidates = [self._seed_release()]
         if cache_dir().is_dir():
             for path in cache_dir().glob("*.json"):
                 if path.stem.isdigit():
                     cached = _read_cache(int(path.stem))
-                    if cached is not None:
+                    if cached is not None and usable(cached):
                         candidates.append(cached)
         return max(candidates, key=lambda release: release.release)
 

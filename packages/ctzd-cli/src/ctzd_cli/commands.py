@@ -1,6 +1,8 @@
 """The ctzd commands. Each returns an Outcome; `main` prints it as text or JSON."""
 
+import contextlib
 import time
+import tomllib
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -9,7 +11,7 @@ from typing import Protocol
 
 from pydantic import ValidationError
 
-from ctzd_cli import api_client, appconfig, auth, checks, config, gitops, proc, release, render, scaffold, setup_checks, sync
+from ctzd_cli import api_client, appconfig, assets, auth, checks, config, gitops, proc, release, render, scaffold, setup_checks, sync
 from ctzd_cli import api_models as m
 from ctzd_cli.appconfig import AppConfig, AppSection, Job, SourcesSection, Ui
 from ctzd_cli.assets import start_guide
@@ -72,7 +74,7 @@ def refresh_guidance(ctx: Context, root: Path, app: AppConfig, *, force: bool = 
         hint = upgrade_hint(current)
         if hint is not None:
             hints.append(hint)
-    elif stamp is None or not (root / "AGENTS.md").is_file():
+    elif not (root / "AGENTS.md").is_file():
         chosen = require_usable(ctx.releases.newest_local())
     else:
         # Without the platform, keep the guidance that is there and ask again on the next command.
@@ -375,6 +377,44 @@ def commit_message(changed: list[str], message: str | None) -> str:
     return "Update " + ", ".join(changed[:_NAMES_IN_MESSAGE]) + more
 
 
+def _outside_managed(text: str | None) -> object:
+    """pyproject.toml without the tables the platform manages: what the person may change."""
+    if text is None:
+        return None
+    try:
+        document: dict[str, object] = dict(tomllib.loads(text))
+    except tomllib.TOMLDecodeError:
+        return None
+    for dotted in sync.MANAGED_PYPROJECT_KEYS:
+        *parents, last = dotted.split(".")
+        node: object = document
+        for part in parents:
+            node = node.get(part) if isinstance(node, dict) else None
+        if isinstance(node, dict):
+            node.pop(last, None)
+    return document
+
+
+def platform_changes(ctx: Context, root: Path, git: gitops.Git) -> list[str]:
+    """Uncommitted changes that are the platform's: build files of the recorded release or of HEAD's.
+
+    pyproject.toml and uv.lock count as the platform's only while the person
+    has changed nothing in pyproject.toml outside the managed tables.
+    """
+    changed = git.changed_paths()
+    owned = {sync.VERSION_FILE}
+    committed = git.show(sync.VERSION_FILE)
+    numbers = {sync.recorded_release(root), int(committed) if committed is not None and committed.strip().isdigit() else None}
+    for number in sorted(number for number in numbers if number is not None):
+        with contextlib.suppress(CliError):
+            owned |= assets.locked_files(ctx.releases.get(number)).keys()
+    paths = [path for path in changed if path in owned]
+    pyproject = (root / "pyproject.toml").read_text(encoding="utf-8") if (root / "pyproject.toml").is_file() else None
+    if _outside_managed(git.show("pyproject.toml")) == _outside_managed(pyproject):
+        paths += [path for path in changed if path in {"pyproject.toml", "uv.lock"}]
+    return sorted(paths)
+
+
 def platform_commit_message(root: Path, paths: list[str]) -> str:
     recorded = sync.recorded_release(root)
     verb = "Upgrade" if sync.VERSION_FILE in paths else "Restore"
@@ -391,7 +431,7 @@ def deploy(ctx: Context, *, message: str | None, detach: bool, timeout: float) -
     git = gitops.open_repo(root, token=ctx.token(), identity=auth.identity() or ("ctzd", "ctzd@localhost"))
     platform = ctx.platform_factory()
     # The platform's own changes go in a commit of their own, before the person's change.
-    platform_paths = sorted({path for step in steps for path in step.paths})
+    platform_paths = platform_changes(ctx, root, git)
     upgraded = git.commit_paths(platform_paths, platform_commit_message(root, platform_paths))
     changed = git.changed_paths()
     paused = platform.status(app.app.sbu, app.app.name).paused

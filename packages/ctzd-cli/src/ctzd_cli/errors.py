@@ -9,3 +9,7 @@ class CliError(Exception):
 
 class UsageError(CliError):
     """The command was called wrongly; exit status 2."""
+
+
+class PlatformUnavailableError(CliError):
+    """The platform API could not be asked: no network, or it did not accept the login."""

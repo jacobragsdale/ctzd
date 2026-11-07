@@ -258,3 +258,25 @@ def test_setup_with_something_missing_says_what_to_fix_and_gives_no_guide(tmp_pa
     assert not outcome.ok
     assert outcome.next_steps == ["Run `ctzd login --start`."]
     assert "guide" not in outcome.data
+
+
+def test_cached_releases_this_cli_cannot_use_are_not_offered_offline() -> None:
+    too_new = variant(SEED, 9, requires_cli="99.0")
+    source(online(too_new, current=9)).get(9)
+    assert source(None).newest_local() == SEED
+
+
+def test_offline_existing_guidance_is_kept_even_without_a_stamp(tmp_path: Path) -> None:
+    make_app(tmp_path)
+    (tmp_path / "AGENTS.md").write_text("kept\n")
+    (tmp_path / sync.GUIDANCE_STAMP).unlink(missing_ok=True)
+    commands.refresh_guidance(context(tmp_path, None), tmp_path, app_config())
+    assert (tmp_path / "AGENTS.md").read_text() == "kept\n"
+
+
+def test_a_release_the_platform_does_not_have_is_an_error_not_an_outage() -> None:
+    found = source(online(current=1))
+    with pytest.raises(CliError, match="no platform release 7"):
+        found.get(7)
+    assert found.unreachable is None
+    assert found.get(SEED.release) == SEED

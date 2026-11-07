@@ -1,4 +1,5 @@
 import subprocess
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import override
 
@@ -197,3 +198,35 @@ def test_a_platform_upgrade_alone_is_enough_to_end_a_pause(repo: tuple[Path, Pat
     platform = FakePlatform([m.Build(number=8, state="succeeded", release=5)], paused=True)
     commands.deploy(context(app, platform, upgrading), message=None, detach=False, timeout=60)
     assert git(app, "log", "-1", "--format=%s") == "Upgrade platform files to platform release 2"
+
+
+def test_an_upgrade_made_by_an_earlier_check_still_gets_its_own_commit(repo: tuple[Path, Path]) -> None:
+    app, _remote = repo
+    # What `ctzd check` leaves behind when it moved the app to a release with a new ruff.toml.
+    (app / ".ctzd" / "version").write_text("2\n")
+    (app / "ruff.toml").write_text((app / "ruff.toml").read_text() + "# release 2\n")
+    (app / "README.md").write_text("changed\n")
+    commands.deploy(context(app, FakePlatform([m.Build(number=8, state="succeeded", release=5)])), message=None, detach=False, timeout=60)
+    assert git(app, "log", "-2", "--format=%s").splitlines() == ["Update README.md", "Upgrade platform files to platform release 2"]
+
+
+def test_pyproject_is_the_platforms_only_while_the_person_changed_nothing_else_in_it(repo: tuple[Path, Path]) -> None:
+    app, _remote = repo
+    path = app / "pyproject.toml"
+    path.write_text(path.read_text().replace('"ruff==0.17.3"', '"ruff==0.17.4"'))
+    ctx = context(app, FakePlatform([m.Build(number=8, state="succeeded", release=5)]))
+    assert commands.platform_changes(ctx, app, gitops.open_repo(app, token=None, identity=None)) == ["pyproject.toml"]
+    path.write_text(path.read_text().replace('"streamlit>=1.66"]', '"streamlit>=1.66", "plotly>=6"]'))
+    assert commands.platform_changes(ctx, app, gitops.open_repo(app, token=None, identity=None)) == []
+
+
+def test_each_release_tag_gets_the_next_number_and_all_are_listed(repo: tuple[Path, Path]) -> None:
+    app, _remote = repo
+    head = git(app, "rev-parse", "HEAD")
+    ctx = context(app, FakePlatform([m.Build(number=1, state="succeeded")]))
+    moment = datetime(2026, 11, 6, 9, tzinfo=UTC)
+    first = commands.ci_release(ctx, image="reg/app:1", commit=head, now=lambda: moment)
+    second = commands.ci_release(ctx, image="reg/app:2", commit=head, now=lambda: moment)
+    assert (first.data["tag"], second.data["tag"]) == ("ctzd/v1", "ctzd/v2")
+    lines = commands.list_releases(ctx).summary.splitlines()
+    assert [line.split()[0] for line in lines] == ["v2", "v1"]
