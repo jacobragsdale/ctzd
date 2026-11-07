@@ -25,10 +25,11 @@ from pathlib import Path
 import httpx
 
 from validation.harness import REPO, Report, tool
-from validation.scenarios import CANARY, PERSONAS, SCENARIOS, Scenario
+from validation.scenarios import CANARY, CANARY_IN_APP, PERSONAS, SCENARIOS, Scenario
 
 TOOL_BIN = "tool/bin"
 BOOTSTRAP = REPO / "bootstrap" / "skills" / "ctzd" / "SKILL.md"
+FIXTURES = REPO / "validation" / "fixtures"
 AGENT_TIMEOUT = 2700.0
 PERSON_TIMEOUT = 300.0
 AGENT_BUDGET_USD = 4.0
@@ -36,16 +37,23 @@ TRIAL_BUDGET_USD = 12.0
 SECOND_RELEASE = 2
 DONE = "[[DONE]]"
 GIVE_UP = "[[GIVE UP]]"
-ALLOWED = (
-    *(f"Bash({command}:*)" for command in ("ctzd", "uv", "git", "ls", "cat", "head", "tail", "grep", "find", "mkdir", "cd", "echo", "python", "python3", "curl", "sleep", "wc", "sort", "timeout")),
-    "Bash(pwd)",
-    "Read(./**)",
-    "Edit(./**)",
-    "Write(./**)",
-    "Glob",
-    "Grep",
-    "Skill",
-    "TodoWrite",
+# A person at a laptop approves what their agent asks to run, so trials allow commands broadly. The deny
+# rules keep agents away from the operator's own files and from destructive commands.
+ALLOWED = ("Bash", "Read(./**)", "Edit(./**)", "Write(./**)", "Glob", "Grep", "Skill", "TodoWrite")
+DENIED = (
+    "Read(**/.env)",
+    "Read(//**/.env)",
+    "Read(~/.ssh/**)",
+    "Read(~/.claude/**)",
+    "Read(~/.config/**)",
+    "Read(~/dev/**)",
+    "Bash(sudo:*)",
+    "Bash(rm -rf /:*)",
+    "Bash(rm -rf ~:*)",
+    "Bash(git push --force:*)",
+    "Bash(docker:*)",
+    "Bash(kill:*)",
+    "Bash(pkill:*)",
 )
 PERSON_PROMPT = """You are role-playing a business user who is talking to an AI assistant. The assistant builds dashboards and scheduled
 reports for you on your company's internal platform, ctzd. {persona}
@@ -88,7 +96,9 @@ def start_platform(root: Path, *, fail_first_build: bool = False) -> Platform:
     root.mkdir(parents=True, exist_ok=True)
     log = (root / "platform.log").open("wb")
     env = os.environ | ({"CTZD_TRIAL_FAIL_FIRST_BUILD": "1"} if fail_first_build else {})
-    process = subprocess.Popen([tool("uv"), "run", "python", "-m", "validation.platform.serve", "platform", str(root / "platform")], cwd=REPO, stdout=log, stderr=subprocess.STDOUT, env=env)
+    # The repo's Python itself, not `uv run`, so the platform gets SIGTERM and stops its dashboards.
+    python = REPO / ".venv" / "bin" / "python"
+    process = subprocess.Popen([str(python), "-m", "validation.platform.serve", "platform", str(root / "platform")], cwd=REPO, stdout=log, stderr=subprocess.STDOUT, env=env)
     settings = root / "platform" / "platform.json"
     deadline = time.monotonic() + 180
     while not settings.is_file():
@@ -214,18 +224,19 @@ class Conversation:
     trial_dir: Path
     session: str
     model: str
+    cwd: Path
 
     def agent(self, message: str, *, env: dict[str, str], number: int) -> tuple[str, float, int, str | None]:
         settings = self.trial_dir / "agent-settings.json"
         if number == 1:
-            settings.write_text(json.dumps({"permissions": {"allow": list(ALLOWED), "deny": ["Read(**/.env)", "Read(//**/.env)"], "defaultMode": "dontAsk"}}))
+            settings.write_text(json.dumps({"permissions": {"allow": list(ALLOWED), "deny": list(DENIED), "defaultMode": "dontAsk"}}))
         args = [tool("claude"), "-p", message, "--model", self.model, "--output-format", "stream-json", "--verbose", "--setting-sources", "project,local", "--strict-mcp-config"]
         args += ["--settings", str(settings), "--permission-mode", "dontAsk", "--max-budget-usd", str(AGENT_BUDGET_USD)]
         args += ["--session-id", self.session] if number == 1 else ["--resume", self.session]
         stream = self.trial_dir / f"agent-{number:02d}.jsonl"
         with stream.open("wb") as out:
             try:
-                subprocess.run(args, cwd=self.trial_dir / "work", env=env, stdout=out, stderr=subprocess.STDOUT, timeout=AGENT_TIMEOUT, check=False)
+                subprocess.run(args, cwd=self.cwd, env=env, stdout=out, stderr=subprocess.STDOUT, timeout=AGENT_TIMEOUT, check=False)
             except subprocess.TimeoutExpired:
                 return "", 0.0, 0, "the agent turn timed out"
         result = _result(stream)
@@ -258,6 +269,47 @@ class Job:
     person_model: str
 
 
+def colleague_app(base: Path, trial_dir: Path, platform: Platform, name: str, source: str) -> Path:
+    """An app someone else made and deployed: the starter, replaced by a fixture, live as v2."""
+    env = person_env(base, platform, trial_dir / "colleague-home")
+    work = trial_dir / "colleague"
+    work.mkdir(parents=True, exist_ok=True)
+    created = ctzd(["new", name, "--sbu", "fi"], cwd=work, env=env)
+    if created.get("ok") is not True:
+        msg = f"could not create {name}: {created}"
+        raise RuntimeError(msg)
+    app = work / name
+    shutil.copytree(FIXTURES / name, app, dirs_exist_ok=True)
+    (app / "app.toml").write_text((app / "app.toml").read_text().replace("use = []", f'use = ["{source}"]'))
+    deployed = ctzd(["deploy", "--message", f"First version of {name}"], cwd=app, env=env)
+    if deployed.get("ok") is not True:
+        msg = f"could not deploy {name}: {deployed}"
+        raise RuntimeError(msg)
+    return app
+
+
+def arrange(base: Path, trial_dir: Path, platform: Platform, scenario: Scenario) -> Path:
+    """Put the platform in the scenario's starting state; return the folder the agent starts in."""
+    work = trial_dir / "work"
+    if scenario.setup == "app-folder":
+        ctzd(["new", "canary-app", "--sbu", "fi"], cwd=work, env=person_env(base, platform, trial_dir / "home"))
+        return work / "canary-app"
+    if scenario.setup == "colleague-app":
+        shutil.rmtree(colleague_app(base, trial_dir, platform, "desk-trades", "fi_trading"))
+    if scenario.setup == "deployed-chart":
+        app = colleague_app(base, trial_dir, platform, "sector-prices", "fi_pricing")
+        env = person_env(base, platform, trial_dir / "colleague-home")
+        logic, test = app / "src" / "app" / "logic" / "summary.py", app / "tests" / "test_logic.py"
+        logic.write_text(logic.read_text().replace('["clean_price"].mean()', '["clean_price"].sum()').replace("its average clean price", "its total clean price"))
+        test.write_text(test.read_text().replace('["Utilities", "Energy"]', '["Energy", "Utilities"]').replace("[99.0, 95.0]", "[190.0, 99.0]"))
+        broken = ctzd(["deploy", "--message", "Show totals per sector"], cwd=app, env=env)
+        if broken.get("ok") is not True:
+            msg = f"could not deploy the bad change: {broken}"
+            raise RuntimeError(msg)
+        shutil.rmtree(app)
+    return work
+
+
 def run_trial(base: Path, job: Job) -> Trial:
     scenario = job.scenario
     key = f"{scenario.key}-{job.persona}-{job.model.removeprefix('claude-')}-{job.rep}"
@@ -270,8 +322,9 @@ def run_trial(base: Path, job: Job) -> Trial:
     try:
         env = person_env(base, platform, trial_dir / "home")
         prompt = PERSON_PROMPT.format(persona=PERSONAS[job.persona], goal=scenario.goal, facts=scenario.facts, done=DONE, give_up=GIVE_UP)
-        agent = Conversation(trial_dir, str(uuid.uuid4()), job.model)
-        person = Conversation(trial_dir, str(uuid.uuid4()), job.person_model)
+        cwd = arrange(base, trial_dir, platform, scenario)
+        agent = Conversation(trial_dir, str(uuid.uuid4()), job.model, cwd)
+        person = Conversation(trial_dir, str(uuid.uuid4()), job.person_model, trial_dir / "person")
         message = scenario.opening
         for number in range(1, scenario.max_turns + 1):
             began = time.monotonic()
@@ -321,15 +374,15 @@ def main() -> int:
     if str(args.command) == "probe":
         return probe(base)
     model, person_model, reps, parallel = str(args.model), str(args.person_model), int(args.reps), int(args.parallel)
-    known = {scenario.key: scenario for scenario in (*SCENARIOS, CANARY)}
+    known = {scenario.key: scenario for scenario in (*SCENARIOS, CANARY, CANARY_IN_APP)}
     jobs: list[Job] = []
-    for entry in [str(item) for item in args.scenarios]:
+    for index, entry in enumerate(str(item) for item in args.scenarios):
         key, _, persona = entry.partition(":")
-        matches = [scenario for name, scenario in known.items() if name.startswith(key)]
+        matches = [scenario for name, scenario in known.items() if name == key] or [scenario for name, scenario in known.items() if name.startswith(key)]
         if len(matches) != 1:
             sys.stderr.write(f"unknown scenario {key}\n")
             return 2
-        jobs += [Job(matches[0], persona or list(PERSONAS)[rep % len(PERSONAS)], rep, model, person_model) for rep in range(1, reps + 1)]
+        jobs += [Job(matches[0], persona or list(PERSONAS)[(index + rep) % len(PERSONAS)], rep, model, person_model) for rep in range(1, reps + 1)]
     with ThreadPoolExecutor(max_workers=parallel) as pool:
         results = list(pool.map(lambda job: run_trial(base, job), jobs))
     for trial in results:

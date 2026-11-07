@@ -36,7 +36,7 @@ ctzd-fi = { workspace = true }
 
 [tool.ruff]
 line-length = 200
-extend-exclude = ["packages/ctzd-cli/src/ctzd_cli/assets"]  # app templates; checked by generating an app
+extend-exclude = ["packages/ctzd-cli/src/ctzd_cli/assets", "validation/fixtures"]  # app code; checked by generating an app
 src = ["packages/*/src", "kits/*/src", "airflow/dags"]
 required-version = ">=0.17.3"
 force-exclude = true
@@ -75,7 +75,7 @@ skip-magic-trailing-comma = true  # Collapse comma-forced multiline constructs w
 
 [tool.ty.src]
 # App templates are checked by generating an app; the Airflow DAG is checked in its own project (airflow/).
-exclude = ["packages/ctzd-cli/src/ctzd_cli/assets", "airflow"]
+exclude = ["packages/ctzd-cli/src/ctzd_cli/assets", "validation/fixtures", "airflow"]
 
 [tool.ty.rules]
 all = "error"  # Every rule is an error, including those ty leaves off by default. Opt out one rule at a time, with a reason.

@@ -437,9 +437,11 @@ def deploy(ctx: Context, *, message: str | None, detach: bool, timeout: float) -
     paused = platform.status(app.app.sbu, app.app.name).paused
     # Clear a rollback pause before pushing, so the build this push starts deploys.
     platform.resume(app.app.sbu, app.app.name)
-    summary = commit_message(changed, message)
-    # After a rollback, a deploy with no new changes still needs a new build to put main back in production.
-    committed = git.commit_all(summary, allow_empty=paused and not upgraded) or upgraded
+    # With nothing new, a deploy still needs a new build when the last one failed (a passing hiccup) or after a rollback.
+    head = git.head()
+    retry = not changed and not upgraded and not paused and head is not None and platform.build_for_commit(app.app.sbu, app.app.name, head).state == "failed"
+    summary = (message or "Deploy again after a failed build") if retry else commit_message(changed, message)
+    committed = git.commit_all(summary, allow_empty=(paused or retry) and not upgraded) or upgraded
     git.rebase_onto_remote()
     git.push_main()
     commit = git.head() or ""

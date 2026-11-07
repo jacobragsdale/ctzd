@@ -1,0 +1,11 @@
+#!/bin/sh
+# Stub: record the call. `get configmap ... {.data.paused}` answers from $CTZD_PAUSED_DIR/<configmap>;
+# `create ... -o yaml` prints a manifest for the `kubectl apply -f -` it is piped into.
+echo "kubectl $*" >> "${CTZD_CALLS:-/var/jenkins_home/calls.log}"
+case "$*" in
+  *"jsonpath={.data.paused}"*)
+    for word in "$@"; do case "$word" in ctzd-state-*) cat "${CTZD_PAUSED_DIR:-/var/jenkins_home/paused}/$word" 2>/dev/null ;; esac; done ;;
+  *"--dry-run=client"*) echo "kind: ConfigMap" ;;
+  *"apply -f -"*) cat >> "${CTZD_CALLS:-/var/jenkins_home/calls.log}" ;;
+esac
+exit 0

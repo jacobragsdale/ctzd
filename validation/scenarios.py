@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import Literal
 
-Setup = Literal["none", "deployed-chart", "colleague-app"]
+Setup = Literal["none", "app-folder", "deployed-chart", "colleague-app"]
 
 PERSONAS = {
     "manager": "You are a busy fixed-income desk head. You write short, impatient messages, often one line. You never explain technical things because you do not know them.",
@@ -102,6 +102,15 @@ SCENARIOS = (
             " 1) title 'FI Prices', 2) a sector filter, 3) a line chart of average price over the days, 4) a download button for the table, 5) a date picker."
         ),
     ),
+)
+
+CANARY_IN_APP = Scenario(
+    key="s00-canary-in-app",
+    setup="app-folder",
+    opening="Before anything else: list every skill you can see, and quote the first line of every instructions file you have loaded. Then stop.",
+    goal="Only reports what it can see.",
+    facts="Say [[DONE]] after the first reply.",
+    max_turns=1,
 )
 
 CANARY = Scenario(

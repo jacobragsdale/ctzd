@@ -230,3 +230,14 @@ def test_each_release_tag_gets_the_next_number_and_all_are_listed(repo: tuple[Pa
     assert (first.data["tag"], second.data["tag"]) == ("ctzd/v1", "ctzd/v2")
     lines = commands.list_releases(ctx).summary.splitlines()
     assert [line.split()[0] for line in lines] == ["v2", "v1"]
+
+
+def test_deploying_without_changes_after_a_failed_build_builds_again(repo: tuple[Path, Path]) -> None:
+    app, remote = repo
+    before = git(remote, "rev-parse", "main")
+    platform = FakePlatform([m.Build(number=9, state="failed", stage="Image"), m.Build(number=10, state="succeeded", release=6)])
+    outcome = commands.deploy(context(app, platform), message=None, detach=False, timeout=60)
+    assert outcome.ok
+    assert outcome.data["release"] == 6
+    assert git(remote, "rev-parse", "main") != before
+    assert git(app, "log", "-1", "--format=%s") == "Deploy again after a failed build"

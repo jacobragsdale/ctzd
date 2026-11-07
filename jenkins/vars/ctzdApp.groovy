@@ -4,8 +4,9 @@
 // helm, kubectl, and Playwright's Chromium; credentials `ctzd-github` (token) and `ctzd-acr`.
 // The defaults below are production's; another environment (a throwaway namespace, a local copy of the
 // platform) overrides them through the library's global properties or `ctzdApp(registry: ...)`.
+// The parameter is not called `options`: that name would hide the pipeline's own `options { }` section.
 
-def call(Map options = [:]) {
+def call(Map config = [:]) {
     // The one ctzd version every build uses, released together with the chart it renders values for.
     def defaults = [
         cliVersion: '0.2.0',
@@ -17,9 +18,9 @@ def call(Map options = [:]) {
         dagsRepo: 'https://github.contoso.com/ctzd-platform/ctzd-dags.git',
         appScheme: 'https',
     ]
-    def settings = defaults.collectEntries { key, value -> [key, options.get(key, env."CTZD_${key.replaceAll(/([A-Z])/, '_$1').toUpperCase()}" ?: value)] }
+    def settings = defaults.collectEntries { key, value -> [key, config.get(key, env."CTZD_${key.replaceAll(/([A-Z])/, '_$1').toUpperCase()}" ?: value)] }
     pipeline {
-        agent { label options.get('agent', 'ctzd') }
+        agent { label config.get('agent', 'ctzd') }
         options {
             disableConcurrentBuilds()
             timeout(time: 30, unit: 'MINUTES')

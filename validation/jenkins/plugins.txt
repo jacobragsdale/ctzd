@@ -1,0 +1,10 @@
+cloudbees-folder
+configuration-as-code
+credentials-binding
+git
+job-dsl
+pipeline-groovy-lib
+pipeline-stage-view
+pipeline-utility-steps
+workflow-aggregator
+workflow-multibranch

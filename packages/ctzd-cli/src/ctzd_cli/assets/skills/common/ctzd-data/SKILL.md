@@ -19,6 +19,11 @@ description: "Read data in a ctzd app: ctzd.query with SQL files and bind parame
   pandas after fetching everything.
 - Check the columns the code relies on with `ctzd.require_columns` in the loader.
 - Cache every dashboard loader with `@ctzd.cached`.
+- "Today's" or "latest" data means the newest date the source has, not the
+  clock's date: sources are stamped at close of business, skip weekends and
+  holidays, and the platform's clock is UTC, already tomorrow in the evening
+  in the Americas. Select it in SQL (`WHERE as_of_date = (SELECT MAX(as_of_date)
+  FROM ...)`), or default a date picker to it, and show the date on the page.
 
 ```toml
 [sources]
