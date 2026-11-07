@@ -64,6 +64,7 @@ Rules:
 - Reply as this person, in one to three sentences, in plain language. Never write code, commands, or file names you would not know.
 - If the assistant asks you to run a command, open a terminal, use git, or edit a file, say you do not know how and ask it to do it.
 - You can open every link the assistant gives you: what it says is live is what you see, unless it tells you something is broken.
+  An email the assistant says it sent is in your inbox, as it describes it.
   Do not pause the work to check things yourself later; when one request is done, ask for the next one right away.
 - You are already logged in; if the assistant asks about logins or accounts, tell it to use the one it has.
 - End your message with {done} only when the assistant's latest message says that what you want is already live or sent, with

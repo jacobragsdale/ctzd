@@ -491,6 +491,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "sqlglot" },
     { name = "tomlkit" },
+    { name = "tzdata", marker = "sys_platform == 'win32'" },
 ]
 
 [package.optional-dependencies]
@@ -507,6 +508,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.14" },
     { name = "sqlglot", specifier = ">=30.29" },
     { name = "tomlkit", specifier = ">=0.15" },
+    { name = "tzdata", marker = "sys_platform == 'win32'", specifier = ">=2025.2" },
 ]
 provides-extras = ["ci"]
 
@@ -537,7 +539,7 @@ requires-dist = [
 
 [[package]]
 name = "ctzd-core"
-version = "0.1.0"
+version = "0.1.1"
 source = { editable = "packages/ctzd-core" }
 dependencies = [
     { name = "httpx" },

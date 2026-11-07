@@ -29,6 +29,7 @@ def spec(app: str, *jobs: str) -> dict[str, object]:
                 "timeout_minutes": 30,
                 "command": ["python", "-m", f"app.jobs.{job}"],
                 "resources": RESOURCES,
+                "timezone": "Europe/London" if job == "summary" else "UTC",
             }
             for job in jobs
         ],
@@ -57,6 +58,8 @@ def test_each_job_becomes_a_dag_running_its_module(tmp_path: Path) -> None:
     secrets = [source.secret_ref.name for source in task.env_from if source.secret_ref is not None]
     assert secrets == ["ctzd-source-fi-pricing"]
     assert dag.max_active_runs == 1
+    assert str(bag.dags["fi__bond_prices__summary"].timezone.name) == "Europe/London"
+    assert str(dag.timezone.name) == "UTC"
     assert not dag.catchup
 
 

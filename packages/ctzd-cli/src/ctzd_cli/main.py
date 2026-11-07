@@ -55,6 +55,8 @@ class Args(BaseModel):
     out: Path | None = None
     commit: str | None = None
     url: str | None = None
+    argv: tuple[str, ...] = ()
+    timezone: str = "UTC"
     screenshot: Path | None = None
 
 
@@ -81,6 +83,8 @@ def _app_parsers(sub: "argparse._SubParsersAction[argparse.ArgumentParser]", com
     open_.add_argument("--dir", type=Path)
     dev = sub.add_parser("dev", parents=[common], help="run the dashboard locally")
     dev.add_argument("--port", type=int, default=8501)
+    exec_ = sub.add_parser("exec", parents=[common], help="run a command in the app with its credentials, as ctzd dev does: ctzd exec --json -- python -c '...'")
+    exec_.add_argument("argv", nargs=argparse.REMAINDER, help="the command, after --")
     run = sub.add_parser("run", parents=[common], help="run a job in Airflow, or locally with --local")
     run.add_argument("job")
     run.add_argument("--local", action="store_true")
@@ -90,7 +94,8 @@ def _app_parsers(sub: "argparse._SubParsersAction[argparse.ArgumentParser]", com
     add = sub.add_parser("add", parents=[common], help="add a part to the app")
     add_job = add.add_subparsers(dest="action", required=True).add_parser("job", parents=[common], help="add a scheduled job")
     add_job.add_argument("name")
-    add_job.add_argument("--schedule", required=True, help="five-field cron in UTC, such as '0 7 * * 1-5'")
+    add_job.add_argument("--schedule", required=True, help="five-field cron, such as '0 7 * * 1-5'")
+    add_job.add_argument("--timezone", default="UTC", help="IANA time zone the schedule runs in, such as Europe/London (default UTC)")
     add_job.add_argument("--size", choices=["s", "m", "l"], default="m")
     check = sub.add_parser("check", parents=[common], help="run every gate")
     check.add_argument("--fast", action="store_true", help="skip the tests")
@@ -167,8 +172,9 @@ HANDLERS: dict[str, Handler] = {
     "open": lambda a, ctx: commands.open_app(ctx, name=_required(a.name, "NAME"), sbu=_required(a.sbu, "--sbu"), directory=a.dir),
     "dev": lambda a, ctx: commands.dev(ctx, port=a.port, run=_stream),
     "run": lambda a, ctx: commands.run_job(ctx, job=_required(a.job, "JOB"), local=a.local, wait=a.wait, timeout=a.timeout),
+    "exec": lambda a, ctx: commands.exec_command(ctx, argv=a.argv),
     "sources": lambda _a, ctx: commands.sources(ctx),
-    "add job": lambda a, ctx: commands.add_job(ctx, name=_required(a.name, "NAME"), schedule=_required(a.schedule, "--schedule"), size=a.size),
+    "add job": lambda a, ctx: commands.add_job(ctx, name=_required(a.name, "NAME"), schedule=_required(a.schedule, "--schedule"), size=a.size, timezone=a.timezone),
     "check": lambda a, ctx: commands.check(ctx, fast=a.fast),
     "env": lambda _a, ctx: commands.env(ctx),
     "deploy": lambda a, ctx: commands.deploy(ctx, message=a.message, detach=a.detach, timeout=a.timeout),

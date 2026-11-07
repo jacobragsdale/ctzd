@@ -11,6 +11,7 @@ dependencies = [
     "pydantic>=2.14",
     "sqlglot>=30.29",
     "tomlkit>=0.15",
+    "tzdata>=2025.2; sys_platform == 'win32'",  # Windows has no time zone database for zoneinfo
 ]
 
 [project.optional-dependencies]

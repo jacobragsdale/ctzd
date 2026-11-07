@@ -7,7 +7,7 @@ import httpx
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from ctzd_cli import api_models as m
-from ctzd_cli.errors import CliError, PlatformUnavailableError
+from ctzd_cli.errors import CliError, NotFoundError, PlatformUnavailableError
 
 _TIMEOUT = 60.0
 # Every command in an app asks for the current platform release; an unreachable platform must not stall it.
@@ -118,4 +118,6 @@ def _error(response: httpx.Response) -> CliError:
         return PlatformUnavailableError("The platform did not accept your GitHub login.", hint="Run `ctzd login --start` to log in again.")
     if response.status_code == httpx.codes.FORBIDDEN:
         return CliError(f"You do not have access: {detail}", hint="Ask the app's owner or your SBU champion to add you to the repo.")
+    if response.status_code == httpx.codes.NOT_FOUND:
+        return NotFoundError(str(detail))
     return CliError(f"The platform refused the request ({response.status_code}): {detail}")

@@ -75,8 +75,9 @@ def price_rows() -> list[tuple[object, ...]]:
         price = rng.uniform(88, 108)
         for day in business_days(TODAY, 10):
             price = max(70.0, price + rng.gauss(0, 0.35))
-            years = max(0.5, (bond.maturity - day).days / 365.25)
-            yield_dec = round(max(0.001, bond.coupon_pct / 100 + (100 - price) / 100 / years), 6)
+            # A rough yield: coupon plus the pull to par, kept in a plausible range for the bond's rating band.
+            years = max(3.0, (bond.maturity - day).days / 365.25)
+            yield_dec = round(min(0.09, max(0.01, bond.coupon_pct / 100 + (100 - price) / 100 / years)), 6)
             rows.append((bond.isin, bond.issuer, bond.sector, bond.rating, bond.coupon_pct, bond.maturity, round(price, 4), yield_dec, day))
     return rows
 
@@ -160,7 +161,8 @@ def seed_oracle(password: str) -> None:
         cursor.execute("CREATE OR REPLACE FUNCTION fi_slow_gate RETURN NUMBER IS BEGIN DBMS_SESSION.SLEEP(6); RETURN 1; END;")
         cursor.execute(
             "CREATE OR REPLACE VIEW fi_bond_risk AS SELECT isin, as_of_date, ROUND((maturity_date - as_of_date) / 365.25 / (1 + yield_dec), 4) AS modified_duration,"
-            " ROUND(clean_price * ((maturity_date - as_of_date) / 365.25 / (1 + yield_dec)) * 100, 2) AS dv01_per_mm"
+            # DV01 per 1mm of par: duration x price/100 x 1,000,000 x 0.0001, that is duration x price.
+            " ROUND(clean_price * ((maturity_date - as_of_date) / 365.25 / (1 + yield_dec)), 2) AS dv01_per_mm"
             " FROM fi_bond_prices WHERE (SELECT fi_slow_gate() FROM dual) = 1"
         )
         connection.commit()

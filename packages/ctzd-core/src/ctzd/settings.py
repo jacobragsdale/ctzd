@@ -3,8 +3,10 @@
 import functools
 from typing import Literal
 
-from pydantic import SecretStr
+from pydantic import SecretStr, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from ctzd._errors import CtzdError
 
 
 class AppSettings(BaseSettings):
@@ -27,11 +29,23 @@ class MailSettings(BaseSettings):
     sender: str
 
 
+def _missing(err: ValidationError, prefix: str) -> str:
+    return ", ".join(sorted({prefix + str(error["loc"][0]).upper() for error in err.errors()}))
+
+
 @functools.cache
 def app_settings() -> AppSettings:
-    return AppSettings()
+    try:
+        return AppSettings()
+    except ValidationError as err:
+        msg = f"This code needs the app's settings ({_missing(err, 'CTZD_')}): run it through `ctzd dev`, `ctzd run JOB --local`, or `ctzd exec`."
+        raise CtzdError(msg) from None
 
 
 @functools.cache
 def mail_settings() -> MailSettings:
-    return MailSettings()
+    try:
+        return MailSettings()
+    except ValidationError as err:
+        msg = f"Email needs the platform's mail settings ({_missing(err, 'CTZD_SMTP_')}), which only the cluster has; locally, ctzd saves messages instead."
+        raise CtzdError(msg) from None

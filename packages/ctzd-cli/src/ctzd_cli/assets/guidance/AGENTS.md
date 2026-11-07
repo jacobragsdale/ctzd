@@ -9,11 +9,21 @@ ask them to run a command, open a terminal, use git, or read code.
 Use the `ctzd` command for everything, always with `--json`:
 
 - `ctzd dev` runs the dashboard locally; `ctzd run JOB --local` runs a job locally.
+- `ctzd exec --json -- python -c "..."` runs a command with the app's credentials, such as a quick
+  look at what a loader returns from the live source.
 - `ctzd env` fetches read-only credentials for the sources in `app.toml`.
 - `ctzd check` runs every gate. Run it before you say you are done.
 - `ctzd deploy` checks, commits, pushes, and returns the live URL.
 - `ctzd status`, `ctzd logs`, `ctzd releases`, `ctzd rollback` for running apps.
-- `ctzd add job NAME --schedule "CRON"` adds a scheduled job.
+- `ctzd add job NAME --schedule "CRON" --timezone ZONE` adds a scheduled job that runs in ZONE
+  (such as `Europe/London`), clock changes included.
+
+## Shipping
+
+- After every `ctzd deploy`, look at the screenshot named in its `screenshot` field before you
+  tell the person it works.
+- When the person says the live app is wrong, run `ctzd rollback --json` first, so they see the
+  last good version again; then fix the change and deploy.
 
 ## Where code goes
 
@@ -28,7 +38,8 @@ Use the `ctzd` command for everything, always with `--json`:
 
 ## Rules
 
-- Never open, print, or copy `.env`; it holds credentials. `ctzd` loads it for you.
+- Never open, print, copy, or source `.env`, and never pass it to a program yourself; it holds
+  credentials. `ctzd dev`, `ctzd run --local`, and `ctzd exec` load it for you.
 - Never edit platform-owned files: this file, `.agents/`, `.claude/`, `Dockerfile`, `Jenkinsfile`,
   `ruff.toml`, `ty.toml`, `.importlinter`, `pytest.toml`, `.pre-commit-config.yaml`,
   `.gitignore`, `.gitattributes`, `.dockerignore`, `.python-version`, `.ctzd/`. Fix the code instead.

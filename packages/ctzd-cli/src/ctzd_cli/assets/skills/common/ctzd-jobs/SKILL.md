@@ -1,21 +1,24 @@
 ---
 name: ctzd-jobs
-description: "Scheduled jobs in a ctzd app: ctzd add job with a UTC cron schedule, main() -> int and exit codes, ctzd.write_table, email and Teams messages, local and Airflow runs, and safe reruns. Use for 'every Monday', 'each morning', 'send me', 'email the team', or a slow query that must be precomputed."
+description: "Scheduled jobs in a ctzd app: ctzd add job with a cron schedule in the person's time zone, main() -> int and exit codes, ctzd.write_table, email and Teams messages, local and Airflow runs, and safe reruns. Use for 'every Monday', 'each morning', 'send me', 'email the team', or a slow query that must be precomputed."
 ---
 
 # Jobs in a ctzd app
 
-A job is `src/app/jobs/NAME.py` with `main() -> int`. Airflow runs
-`python -m app.jobs.NAME` in the app's image on the schedule in `app.toml`.
+A job is `src/app/jobs/NAME.py` with `main() -> int`. Airflow calls its `main()`
+in the app's image on the schedule in `app.toml`.
 
 ## Rules
 
-- Add a job with `ctzd add job NAME --schedule "CRON" --json` (`--size s|m|l`,
-  default `m`). NAME is lowercase letters, digits, and underscores. It writes
+- Add a job with `ctzd add job NAME --schedule "CRON" --timezone ZONE --json`
+  (`--size s|m|l`, default `m`). NAME is lowercase letters, digits, and underscores. It writes
   `src/app/jobs/NAME.py`, `tests/test_job_NAME.py`, and a `[[jobs]]` entry.
-- The schedule is five-field cron in UTC: minute, hour, day of month, month,
-  weekday. Convert the person's local time and tell them the run moves by an
-  hour when clocks change. 7:00 at UTC-5 is `"0 12 * * 1-5"`.
+- The schedule is five-field cron (minute, hour, day of month, month, weekday)
+  in the job's `timezone`, an IANA name such as `Europe/London` or
+  `America/New_York`; the default is `UTC`. Ask where the person is when the
+  time matters, and write their local time as it is: 07:00 in London is
+  `"0 7 * * 1-5"` with `--timezone Europe/London`, all year. Never add a second
+  run or a clock check to follow daylight saving.
 - The exit code is the contract. Return 0 only when the work is done. Return 1
   (or let the exception raise) when it is not: Airflow retries (`retries` in
   `app.toml`), then emails the app's owners. Never catch an error to return 0,
@@ -26,14 +29,14 @@ A job is `src/app/jobs/NAME.py` with `main() -> int`. Airflow runs
   previous version or depend on what the last run left.
 - Publish the table first and send messages last, so a failed run never sends
   a half result. A retry sends the messages again. Log with `logging`, not `print`.
-- Change `schedule`, `size`, `retries` (0-5), or `timeout_minutes` in the job's `[[jobs]]` entry.
+- Change `schedule`, `timezone`, `size`, `retries` (0-5), or `timeout_minutes` in the job's `[[jobs]]` entry.
 
 | Schedule | Cron |
 |---|---|
-| Weekdays 07:00 UTC | `0 7 * * 1-5` |
-| Every day 06:30 UTC | `30 6 * * *` |
-| Mondays 08:00 UTC | `0 8 * * 1` |
-| First of the month 07:00 UTC | `0 7 1 * *` |
+| Weekdays 07:00 | `0 7 * * 1-5` |
+| Every day 06:30 | `30 6 * * *` |
+| Mondays 08:00 | `0 8 * * 1` |
+| First of the month 07:00 | `0 7 1 * *` |
 | Every 4 hours | `0 */4 * * *` |
 
 ## A job

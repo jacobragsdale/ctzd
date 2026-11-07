@@ -11,6 +11,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Literal
 
+import pendulum
 from airflow.providers.cncf.kubernetes.operators.pod import KubernetesPodOperator
 from airflow.providers.smtp.notifications.smtp import SmtpNotifier
 from airflow.sdk import DAG
@@ -47,6 +48,8 @@ class JobSpec(_Spec):
     timeout_minutes: int
     command: tuple[str, ...]
     resources: Resources
+    # The schedule runs in this IANA time zone; Airflow follows its clock changes.
+    timezone: str
 
 
 class AppSpec(_Spec):
@@ -76,7 +79,7 @@ def build_dags(spec: AppSpec) -> list[DAG]:
         with DAG(
             dag_id=job.dag_id,
             schedule=job.schedule,
-            start_date=START,
+            start_date=pendulum.instance(START).in_timezone(job.timezone),
             catchup=False,
             max_active_runs=1,
             tags=["ctzd", spec.sbu, spec.app],

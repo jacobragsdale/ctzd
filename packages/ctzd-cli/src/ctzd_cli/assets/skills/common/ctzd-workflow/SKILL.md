@@ -23,6 +23,7 @@ description: "Run, check, ship, and roll back a ctzd app with the ctzd command, 
 | Sources | `ctzd sources --json` | Names of the data sources the platform has, for `[sources].use` in `app.toml`. |
 | Credentials | `ctzd env --json` | Once per session, and after changing `[sources].use` in `app.toml`. Needed before anything reads real data. |
 | Look | `ctzd dev --json` | Serves the dashboard at `http://localhost:8501` (`--port N`) until stopped, so start it in the background. Restart it after code changes. Show the person a screenshot or the link. |
+| Look at live data | `ctzd exec --json -- python -c "..."` | Runs a command with the app's credentials, as `ctzd dev` does, and returns `exit_code` and `output`. For checking what a loader returns; never source `.env` yourself. |
 | Try a job | `ctzd run JOB --local --json` | Runs `src/app/jobs/JOB.py` here. Emails and Teams posts land in `.ctzd/out/outbox/`, tables in `.ctzd/out/store/`; nothing is sent. |
 | Check | `ctzd check --json` | Every gate. Fixes formatting and simple lint itself (`"state": "fixed"`). `--fast` skips tests while you iterate. |
 | Ship | `ctzd deploy --json` | Checks again, saves and uploads the change, waits for the build. See below. |

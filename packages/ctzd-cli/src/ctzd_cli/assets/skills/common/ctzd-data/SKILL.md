@@ -106,6 +106,14 @@ def load_sector_summary() -> pd.DataFrame | None:
         return None  # not cached: the page shows the data as soon as the job has run
 ```
 
+Oracle returns every `NUMBER` column as `float64`, counts included (`COUNT(*)`): declare
+them `"number"` or `"float"` in `require_columns`, not `"int"`. Test frames use the same types
+as the source, or a test passes that the live data then fails.
+
+To see what a loader returns from the live source, without a browser:
+`ctzd exec --json -- python -c "from app.data.loaders import load_prices; print(load_prices().head())"`.
+Never source or open `.env` to do this.
+
 Pass the column map to `ctzd.require_columns` inline, as above. Kept in a
 variable first, it is typed `dict[str, str]`, and `ctzd check`'s types step
 rejects it.

@@ -2,6 +2,7 @@
 
 import re
 import tomllib
+import zoneinfo
 from pathlib import Path
 from typing import Literal
 
@@ -61,6 +62,8 @@ class Job(BaseModel):
     size: Size = "m"
     retries: int = Field(default=1, ge=0, le=5)
     timeout_minutes: int = Field(default=60, ge=1, le=24 * 60)
+    # The IANA time zone the schedule runs in, such as Europe/London; Airflow follows its clock changes.
+    timezone: str = "UTC"
 
     @field_validator("name")
     @classmethod
@@ -74,6 +77,16 @@ class Job(BaseModel):
     @classmethod
     def _schedule(cls, value: str) -> str:
         check_cron(value)
+        return value
+
+    @field_validator("timezone")
+    @classmethod
+    def _timezone(cls, value: str) -> str:
+        try:
+            zoneinfo.ZoneInfo(value)
+        except (zoneinfo.ZoneInfoNotFoundError, ValueError):
+            msg = f"timezone {value!r} is not an IANA time zone such as 'Europe/London' or 'America/New_York'"
+            raise ValueError(msg) from None
         return value
 
 
@@ -103,7 +116,7 @@ class AppConfig(BaseModel):
 def check_cron(value: str) -> None:
     fields = value.split()
     if len(fields) != _CRON_FIELDS or not all(_CRON_FIELD.fullmatch(field) for field in fields):
-        msg = f"schedule {value!r} must be a five-field cron expression such as '0 7 * * 1-5' (UTC)"
+        msg = f"schedule {value!r} must be a five-field cron expression such as '0 7 * * 1-5'"
         raise ValueError(msg)
 
 
@@ -159,7 +172,8 @@ def _job_table(job: Job) -> Table:
     table = tomlkit.table()
     table.add("name", job.name)
     table.add("schedule", job.schedule)
-    table["schedule"].comment("cron, UTC")
+    table["schedule"].comment("cron, in the time zone below")
+    table.add("timezone", job.timezone)
     table.add("size", job.size)
     table.add("retries", job.retries)
     table.add("timeout_minutes", job.timeout_minutes)

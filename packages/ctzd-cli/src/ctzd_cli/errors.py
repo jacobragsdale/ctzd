@@ -11,5 +11,9 @@ class UsageError(CliError):
     """The command was called wrongly; exit status 2."""
 
 
+class NotFoundError(CliError):
+    """The platform has no such app, release, or source."""
+
+
 class PlatformUnavailableError(CliError):
     """The platform API could not be asked: no network, or it did not accept the login."""

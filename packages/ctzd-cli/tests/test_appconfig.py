@@ -78,3 +78,17 @@ def test_find_root_walks_up_to_app_toml(tmp_path: Path) -> None:
 def test_find_root_outside_an_app_says_so(tmp_path: Path) -> None:
     with pytest.raises(CliError, match="not inside a ctzd app"):
         appconfig.find_root(tmp_path)
+
+
+def test_a_job_runs_in_its_time_zone_and_unknown_zones_are_refused() -> None:
+    assert Job(name="summary", schedule="0 7 * * 1-5", timezone="Europe/London").timezone == "Europe/London"
+    assert Job(name="summary", schedule="0 7 * * 1-5").timezone == "UTC"
+    with pytest.raises(ValueError, match="IANA time zone"):
+        Job(name="summary", schedule="0 7 * * 1-5", timezone="London")
+
+
+def test_the_time_zone_reaches_app_toml(tmp_path: Path) -> None:
+    (tmp_path / "app.toml").write_text('[app]\nname = "bond-prices"\nsbu = "fi"\nui = "none"\nowners = ["a@contoso.com"]\n')
+    config = appconfig.add_job(tmp_path, Job(name="summary", schedule="0 7 * * 1-5", timezone="Europe/London"))
+    assert config.jobs[0].timezone == "Europe/London"
+    assert 'timezone = "Europe/London"' in (tmp_path / "app.toml").read_text()

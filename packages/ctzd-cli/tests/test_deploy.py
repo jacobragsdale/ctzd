@@ -7,7 +7,7 @@ import pytest
 
 from ctzd_cli import api_models as m
 from ctzd_cli import checks, commands, gitops
-from ctzd_cli.errors import CliError
+from ctzd_cli.errors import CliError, NotFoundError, UsageError
 
 from .conftest import FakePlatform, make_app
 
@@ -241,3 +241,16 @@ def test_deploying_without_changes_after_a_failed_build_builds_again(repo: tuple
     assert outcome.data["release"] == 6
     assert git(remote, "rev-parse", "main") != before
     assert git(app, "log", "-1", "--format=%s") == "Deploy again after a failed build"
+
+
+class NoApps(FakePlatform):
+    @override
+    def status(self, sbu: str, name: str) -> m.AppStatus:
+        msg = f"There is no app {sbu}-{name}."
+        raise NotFoundError(msg)
+
+
+def test_opening_an_app_that_does_not_exist_says_so_plainly(tmp_path: Path) -> None:
+    with pytest.raises(UsageError, match="There is no app fi-bond-prices on the platform"):
+        commands.open_app(context(tmp_path, NoApps([m.Build(number=1, state="succeeded")])), name="bond-prices", sbu="fi", directory=None)
+    assert not (tmp_path / "bond-prices").exists()

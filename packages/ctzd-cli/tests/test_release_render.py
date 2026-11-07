@@ -45,7 +45,7 @@ def test_airflow_spec_names_each_dag_and_runs_its_module() -> None:
     spec = render.airflow_spec(config.load(), app, image="acr/fi-bond-prices:abc", release=3)
     (job,) = spec.jobs
     assert job.dag_id == "fi__bond_prices__refresh"
-    assert job.command == ("python", "-m", "app.jobs.refresh")
+    assert job.command == ("python", "-c", "import sys; from app.jobs.refresh import main; sys.exit(main())")
     assert job.resources.limits.memory == "8Gi"
     assert spec.owners == ("ann.lee@contoso.com",)
 
@@ -65,3 +65,9 @@ def test_rendered_values_read_back_as_written() -> None:
     written = values.model_dump_json(by_alias=True)
     assert '"readinessPath"' in written
     assert render.HelmValues.model_validate_json(written) == values
+
+
+def test_each_job_spec_carries_its_time_zone() -> None:
+    app = app_config(jobs=(Job(name="summary", schedule="0 7 * * 1-5", timezone="Europe/London"),))
+    (job,) = render.airflow_spec(config.load(), app, image="i", release=1).jobs
+    assert job.timezone == "Europe/London"

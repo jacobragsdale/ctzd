@@ -60,6 +60,7 @@ class JobSpec(_Model):
     timeout_minutes: int
     command: tuple[str, ...]
     resources: Resources
+    timezone: str
 
 
 class AirflowSpec(_Model):
@@ -78,6 +79,11 @@ class AirflowSpec(_Model):
 
 def runtime_env(platform: PlatformConfig, app: AppConfig) -> dict[str, str]:
     return {"CTZD_APP": app.app.name, "CTZD_SBU": app.app.sbu, "CTZD_ENV": "cluster", "CTZD_STORE_URL": platform.platform.store_url}
+
+
+def job_command(name: str) -> tuple[str, ...]:
+    """Run a job by calling its main(): `python -m` would do nothing for a module without the __main__ guard."""
+    return ("python", "-c", f"import sys; from app.jobs.{name} import main; sys.exit(main())")
 
 
 def source_secrets(app: AppConfig) -> tuple[str, ...]:
@@ -125,7 +131,8 @@ def airflow_spec(platform: PlatformConfig, app: AppConfig, *, image: str, releas
                 schedule=job.schedule,
                 retries=job.retries,
                 timeout_minutes=job.timeout_minutes,
-                command=("python", "-m", f"app.jobs.{job.name}"),
+                command=job_command(job.name),
+                timezone=job.timezone,
                 resources=_resources(platform, job.size),
             )
             for job in app.jobs

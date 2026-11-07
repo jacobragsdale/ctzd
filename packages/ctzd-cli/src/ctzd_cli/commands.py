@@ -15,7 +15,7 @@ from ctzd_cli import api_client, appconfig, assets, auth, checks, config, gitops
 from ctzd_cli import api_models as m
 from ctzd_cli.appconfig import AppConfig, AppSection, Job, SourcesSection, Ui
 from ctzd_cli.assets import start_guide
-from ctzd_cli.errors import CliError, UsageError
+from ctzd_cli.errors import CliError, NotFoundError, UsageError
 from ctzd_cli.releases import ReleaseSource, require_usable, upgrade_hint
 
 ENV_FILE = ".env"
@@ -23,7 +23,7 @@ SCREENSHOTS = ".ctzd/screenshots"
 _POLL_SECONDS = 10.0
 _DEFAULT_JOB = Job(name="refresh", schedule="0 6 * * *")
 # Commands that work inside an app; each refreshes the app's guidance before it runs.
-APP_COMMANDS = frozenset({"dev", "run", "add job", "check", "env", "deploy", "status", "logs", "releases", "rollback", "sync", "delete"})
+APP_COMMANDS = frozenset({"dev", "run", "exec", "add job", "check", "env", "deploy", "status", "logs", "releases", "rollback", "sync", "delete"})
 
 
 @dataclass
@@ -180,6 +180,11 @@ def open_app(ctx: Context, *, name: str, sbu: str, directory: Path | None) -> Ou
     if root.exists():
         msg = f"{root} already exists."
         raise UsageError(msg, hint="Choose another folder with --dir.")
+    try:
+        ctx.platform_factory().status(sbu, name)
+    except NotFoundError:
+        msg = f"There is no app {platform.repo_name(sbu, name)} on the platform."
+        raise UsageError(msg, hint=f"Check the name and business unit with the person; a link such as {platform.app_url(sbu, name)} holds both.") from None
     url = f"https://{platform.github.host}/{platform.github.org}/{platform.repo_name(sbu, name)}.git"
     gitops.open_repo(ctx.cwd, token=ctx.token(), identity=auth.identity()).clone(url, root)
     hints = refresh_guidance(ctx, root, appconfig.load(root), force=True)
@@ -246,11 +251,22 @@ def dev(ctx: Context, *, port: int, run: Callable[[list[str], Path, dict[str, st
     return Outcome(summary=f"The local dashboard stopped (exit {code}).", data={"url": f"http://localhost:{port}", "exit_code": code}, ok=code == 0)
 
 
+def exec_command(ctx: Context, *, argv: tuple[str, ...]) -> Outcome:
+    """Run a command in the app's environment with its source credentials, the way `ctzd dev` runs the page."""
+    root, app = _app(ctx)
+    command = list(argv[1:] if argv[:1] == ("--",) else argv)
+    if not command:
+        msg = "ctzd exec needs a command after --."
+        raise UsageError(msg, hint='For example: ctzd exec --json -- python -c "from app.data.loaders import load_prices; print(load_prices().head())"')
+    result = proc.run(_uv_run(root, *command), cwd=root, env=local_env(root, app), timeout=3600)
+    return Outcome(summary=f"The command {'finished' if result.ok else 'failed'} (exit {result.code}).", data={"exit_code": result.code, "output": proc.tail(result.output, 200)}, ok=result.ok)
+
+
 def run_job(ctx: Context, *, job: str, local: bool, wait: bool, timeout: float) -> Outcome:
     root, app = _app(ctx)
     app.job(job)
     if local:
-        result = proc.run(_uv_run(root, "python", "-m", f"app.jobs.{job}"), cwd=root, env=local_env(root, app), timeout=3600)
+        result = proc.run(_uv_run(root, *render.job_command(job)), cwd=root, env=local_env(root, app), timeout=3600)
         return Outcome(
             summary=f"Job {job} {'finished' if result.ok else 'failed'} locally (exit {result.code}).", data={"exit_code": result.code, "output": proc.tail(result.output, 40)}, ok=result.ok
         )
@@ -281,10 +297,10 @@ def sources(ctx: Context) -> Outcome:
     )
 
 
-def add_job(ctx: Context, *, name: str, schedule: str, size: appconfig.Size) -> Outcome:
+def add_job(ctx: Context, *, name: str, schedule: str, size: appconfig.Size, timezone: str = "UTC") -> Outcome:
     root, _app_config = _app(ctx)
     try:
-        job = Job(name=name, schedule=schedule, size=size)
+        job = Job(name=name, schedule=schedule, size=size, timezone=timezone)
     except ValidationError as err:
         problems = "; ".join(str(error["msg"]).removeprefix("Value error, ") for error in err.errors(include_url=False))
         raise UsageError(problems) from None
@@ -293,7 +309,9 @@ def add_job(ctx: Context, *, name: str, schedule: str, size: appconfig.Size) -> 
     appconfig.add_job(root, job)
     files = scaffold.add_job_files(root, require_usable(chosen), job)
     return Outcome(
-        summary=f"Added job {name} on schedule {schedule!r} (UTC).", data={"job": name, "files": files}, next_steps=[f"Write the job in src/app/jobs/{name}.py, then run `ctzd run {name} --local`."]
+        summary=f"Added job {name} on schedule {schedule!r} ({timezone}).",
+        data={"job": name, "files": files},
+        next_steps=[f"Write the job in src/app/jobs/{name}.py, then run `ctzd run {name} --local`."],
     )
 
 

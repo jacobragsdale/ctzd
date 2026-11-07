@@ -5,6 +5,7 @@ import pandas as pd
 import pytest
 
 import ctzd
+from ctzd import settings
 from ctzd.store import storage_for
 
 
@@ -75,3 +76,12 @@ def test_naive_timestamps_are_refused(tmp_path: Path) -> None:
 def test_unsupported_store_urls_are_rejected(url: str) -> None:
     with pytest.raises(ctzd.StoreError):
         storage_for(url, None)
+
+
+def test_outside_ctzd_the_missing_settings_are_named_with_the_fix(monkeypatch: pytest.MonkeyPatch) -> None:
+    for name in ("CTZD_APP", "CTZD_SBU", "CTZD_ENV", "CTZD_STORE_URL"):
+        monkeypatch.delenv(name, raising=False)
+    settings.app_settings.cache_clear()
+    with pytest.raises(ctzd.CtzdError, match="ctzd exec"):
+        ctzd.read_table("prices")
+    settings.app_settings.cache_clear()
