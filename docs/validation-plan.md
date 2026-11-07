@@ -171,7 +171,7 @@ The plan's open decisions, as taken:
    input to changes, not a gate.
 3. **Authentication and cost:** trials use the operator's Claude Code login
    through `CLAUDE_CONFIG_DIR` with everything else of the operator's hidden.
-   Claude Code reported $10.84 for round 1, $12.15 for round 2, and $2.60 for
+   Claude Code reported $10.84 for round 1, $12.15 for round 2, and $2.67 for
    round 3; a Haiku trial costs a few cents to about $0.80, a Sonnet trial
    $0.20 to $1.70. The graders ran on the operator's model and are not counted.
 
@@ -248,7 +248,8 @@ back before fixing; in round 2 none did. No trial loaded `.env`, and three used
 reading any guidance and found the local GitHub's bare repositories, which
 led one to commit and push with git. The bootstrap skill now forbids searching
 the computer, and `AGENTS.md` forbids committing or pushing outside
-`ctzd deploy`.
+`ctzd deploy`. One session hung for ten minutes on a `ctzd dev` the agent ran in
+the foreground, the case the background `ctzd dev` removes.
 
 ### What the harness got wrong
 
