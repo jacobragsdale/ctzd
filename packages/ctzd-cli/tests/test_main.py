@@ -69,3 +69,10 @@ def test_an_app_made_offline_says_it_is_not_on_the_platform(tmp_path: Path, caps
     assert code == main.EXIT_USAGE
     assert "not on the platform" in str(out["summary"])
     assert "ctzd new bond-prices --sbu fi" in str(out["next"])
+
+
+@pytest.mark.parametrize("argv", [["--json", "env"], ["env", "--json"]])
+def test_json_works_before_or_after_the_command(tmp_path: Path, capsys: pytest.CaptureFixture[str], argv: list[str]) -> None:
+    make_app(tmp_path)
+    main.main(argv, ctx=commands.Context(cwd=tmp_path, platform_factory=commands.default_platform))
+    assert json.loads(capsys.readouterr().out)["command"] == "env"

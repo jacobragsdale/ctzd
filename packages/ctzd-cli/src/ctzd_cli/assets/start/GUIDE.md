@@ -10,6 +10,10 @@ from the platform, so it is always current.
 - Always pass `--json` and read `ok`, `summary`, and `next`; `next` says what
   to do.
 - When the person must act (approve a login), tell them exactly what to click.
+- Everything about apps and data comes through ctzd: `ctzd open` for an
+  existing app, `ctzd sources --json` and the app's SBU skill for data. Never
+  search this computer's files for apps, databases, or credentials: they are
+  not on it, and the person's files are theirs.
 
 ## Logging in
 

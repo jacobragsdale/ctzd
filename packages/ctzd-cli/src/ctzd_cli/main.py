@@ -133,9 +133,12 @@ def _ci_parsers(sub: "argparse._SubParsersAction[argparse.ArgumentParser]", comm
 
 
 def _parser() -> argparse.ArgumentParser:
+    top = argparse.ArgumentParser(add_help=False)
+    top.add_argument("--json", dest="as_json", action="store_true", help="print the outcome as JSON (agents should always pass this)")
+    # Subcommands accept --json too; their default must not overwrite a --json given before the subcommand.
     common = argparse.ArgumentParser(add_help=False)
-    common.add_argument("--json", dest="as_json", action="store_true", help="print the outcome as JSON (agents should always pass this)")
-    parser = argparse.ArgumentParser(prog="ctzd", description="Create, check, and deploy ctzd apps.", parents=[common])
+    common.add_argument("--json", dest="as_json", action="store_true", default=argparse.SUPPRESS, help="print the outcome as JSON (agents should always pass this)")
+    parser = argparse.ArgumentParser(prog="ctzd", description="Create, check, and deploy ctzd apps.", parents=[top])
     parser.add_argument("--version", action="version", version=f"ctzd {assets.version()}")
     sub = parser.add_subparsers(dest="command", required=True)
     for add in (_setup_parsers, _app_parsers, _ship_parsers, _ci_parsers):

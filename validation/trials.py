@@ -66,8 +66,9 @@ Rules:
 - You can open every link the assistant gives you: what it says is live is what you see, unless it tells you something is broken.
   Do not pause the work to check things yourself later; when one request is done, ask for the next one right away.
 - You are already logged in; if the assistant asks about logins or accounts, tell it to use the one it has.
-- When the assistant has done what you want (it says it is live or sent, and gives you the link or result), say thanks and end your
-  message with {done}. If the assistant is stuck after several attempts, end with {give_up}.
+- End your message with {done} only when the assistant's latest message says that what you want is already live or sent, with
+  the link or result. Never in a message where you still ask for something, such as "ship it". If the assistant is stuck after
+  several attempts, end with {give_up}.
 """
 
 
@@ -91,6 +92,24 @@ class Platform:
                 self.process.wait(timeout=60)
             except subprocess.TimeoutExpired:
                 self.process.kill()
+        stop_processes_under(self.root)
+
+
+def stop_processes_under(folder: Path) -> int:
+    """Stop every process working in `folder`: dashboards the platform left, previews an agent left running."""
+    stopped = 0
+    for entry in Path("/proc").iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            cwd = (entry / "cwd").readlink()
+        except OSError:
+            continue
+        if cwd.is_relative_to(folder):
+            with contextlib.suppress(ProcessLookupError, PermissionError):
+                os.kill(int(entry.name), signal.SIGTERM)
+                stopped += 1
+    return stopped
 
 
 def start_platform(root: Path, *, fail_first_build: bool = False) -> Platform:
@@ -231,6 +250,36 @@ def _result(stream: Path) -> dict[str, object]:
     return found
 
 
+def sandboxed(command: list[str], *, writable: list[Path], readable: list[Path], cwd: Path) -> list[str]:
+    """`command` inside bubblewrap: the system, the trial's own folders, and no other file of the operator's.
+
+    The network is shared, so the agent still reaches the local platform, the data sources, and PyPI.
+    Without bubblewrap the command runs as it is, and only the deny rules keep the agent out.
+    """
+    bwrap = shutil.which("bwrap")
+    if bwrap is None:
+        return command
+    home = Path.home()
+    private_tmp = "/tmp"  # noqa: S108 - an empty tmpfs of the sandbox's own, not the host's /tmp
+    args = [bwrap, "--die-with-parent", "--ro-bind", "/usr", "/usr", "--ro-bind", "/etc", "/etc", "--proc", "/proc", "--dev", "/dev", "--tmpfs", private_tmp]
+    args += [part for link in ("bin", "lib", "lib64", "sbin") if Path(f"/{link}").is_symlink() for part in ("--symlink", f"usr/{link}", f"/{link}")]
+    args += ["--ro-bind-try", "/run/systemd/resolve", "/run/systemd/resolve", "--tmpfs", str(home)]
+    claude_rw = [home / ".claude", home / ".cache" / "uv"]
+    claude_ro = [home / ".local" / "bin", home / ".local" / "share" / "claude", home / ".local" / "share" / "uv"]
+    for path in [*claude_ro, *readable]:
+        args += ["--ro-bind-try", str(path), str(path)]
+    for path in [*claude_rw, *writable]:
+        args += ["--bind", str(path), str(path)]
+    # Claude Code's own history stays out of view: the trial keeps its sessions in a folder of its own.
+    private = cwd.parent / "claude-state"
+    for folder in ("projects", "sessions", "session-env", "file-history", "plans", "paste-cache", "shell-snapshots"):
+        (private / folder).mkdir(parents=True, exist_ok=True)
+        args += ["--bind", str(private / folder), str(home / ".claude" / folder)]
+    (private / "history.jsonl").touch()
+    args += ["--bind", str(private / "history.jsonl"), str(home / ".claude" / "history.jsonl")]
+    return [*args, "--chdir", str(cwd), *command]
+
+
 @dataclass(frozen=True)
 class Conversation:
     """One side of a trial's conversation: a headless Claude Code session resumed turn by turn."""
@@ -239,6 +288,9 @@ class Conversation:
     session: str
     model: str
     cwd: Path
+    # Folders the agent's sandbox can write and read besides its own trial folder; empty for the person.
+    writable: tuple[Path, ...] = ()
+    readable: tuple[Path, ...] = ()
 
     def agent(self, message: str, *, env: dict[str, str], number: int) -> tuple[str, float, int, str | None]:
         settings = self.trial_dir / "agent-settings.json"
@@ -248,9 +300,10 @@ class Conversation:
         args += ["--settings", str(settings), "--permission-mode", "dontAsk", "--max-budget-usd", str(AGENT_BUDGET_USD)]
         args += ["--session-id", self.session] if number == 1 else ["--resume", self.session]
         stream = self.trial_dir / f"agent-{number:02d}.jsonl"
+        command = sandboxed(args, writable=[self.trial_dir, *self.writable], readable=list(self.readable), cwd=self.cwd)
         with stream.open("wb") as out:
             try:
-                subprocess.run(args, cwd=self.cwd, env=env, stdout=out, stderr=subprocess.STDOUT, timeout=AGENT_TIMEOUT, check=False)
+                subprocess.run(command, cwd=self.cwd, env=env, stdout=out, stderr=subprocess.STDOUT, timeout=AGENT_TIMEOUT, check=False)
             except subprocess.TimeoutExpired:
                 return "", 0.0, 0, "the agent turn timed out"
         result = _result(stream)
@@ -276,6 +329,14 @@ class Conversation:
         except json.JSONDecodeError:
             return GIVE_UP
         return str(parsed.get("result", GIVE_UP)) if isinstance(parsed, dict) else GIVE_UP
+
+
+_ASKING = ("ship it", "deploy it", "please deploy", "go ahead", "put it live", "make it live", "publish it")
+
+
+def _still_asking(reply: str) -> bool:
+    lowered = reply.lower()
+    return any(phrase in lowered for phrase in _ASKING)
 
 
 @dataclass(frozen=True)
@@ -345,13 +406,18 @@ def run_trial(base: Path, job: Job) -> Trial:
         env = person_env(base, platform, trial_dir / "home")
         prompt = PERSON_PROMPT.format(persona=PERSONAS[job.persona], goal=scenario.goal, facts=scenario.facts, done=DONE, give_up=GIVE_UP)
         cwd = arrange(base, trial_dir, aux, platform, scenario)
-        agent = Conversation(trial_dir, str(uuid.uuid4()), job.model, cwd)
+        # The agent sees the repositories it pushes to (as on GitHub), the platform's settings, and the wheels its apps install.
+        settings = aux / "platform"
+        readable = (settings / "platform.toml", settings / "gitconfig", base / "wheels", base / TOOL_BIN.split("/", maxsplit=1)[0])
+        agent = Conversation(trial_dir, str(uuid.uuid4()), job.model, cwd, writable=(settings / "github",), readable=readable)
         person = Conversation(trial_dir, str(uuid.uuid4()), job.person_model, aux / "person")
         message = scenario.opening
         for number in range(1, scenario.max_turns + 1):
             began = time.monotonic()
             text, cost, turns, stopped = agent.agent(message, env=env, number=number)
             reply = person.person(text, prompt=prompt, number=number)
+            if DONE in reply and _still_asking(reply):
+                reply = reply.replace(DONE, "").strip()  # "ship it" and "done" in one breath: the work is not done yet
             trial.turns.append(Turn(agent=text, person=reply, cost_usd=cost, seconds=round(time.monotonic() - began, 1), agent_turns=turns, stopped=stopped))
             if DONE in reply or GIVE_UP in reply or trial.cost_usd > TRIAL_BUDGET_USD:
                 trial.outcome = "done" if DONE in reply else "gave up" if GIVE_UP in reply else "over budget"
@@ -362,6 +428,7 @@ def run_trial(base: Path, job: Job) -> Trial:
         trial.error = repr(err)
     finally:
         platform.stop()
+        stop_processes_under(trial_dir)
         (trial_dir / "trial.json").write_text(json.dumps(asdict(trial) | {"cost_usd": trial.cost_usd}, indent=2))
     return trial
 

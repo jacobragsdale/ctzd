@@ -141,7 +141,11 @@ def score_trial(trial_dir: Path) -> Score:
     return score
 
 
+_SKILL_IN_COMMAND = re.compile(r"(?:\.agents|\.claude)/skills/([a-z0-9-]+)/SKILL\.md")
+
+
 def score_command(score: Score, command: str, result: str, *, is_error: bool) -> None:
+    score.skills += _SKILL_IN_COMMAND.findall(command)
     for found in re.finditer(r"\bctzd\s+([a-z]+(?:\s+(?:job|check|render|release|smoke))?)", command):
         score.ctzd_calls[found.group(1)] = score.ctzd_calls.get(found.group(1), 0) + 1
     if re.search(r"\bctzd\s+check\b", command) and '"ok": false' in result:

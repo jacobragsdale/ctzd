@@ -112,7 +112,7 @@ flowchart LR
 | Code layout | `src/app/data/` (the only I/O), `src/app/logic/` (pure functions), `src/app/ui/` and `src/app/jobs/` (entry points), enforced by import-linter. | Agents physically cannot put a query in a page callback. |
 | UI frameworks | Streamlit (default) and Dash, chosen at `ctzd new`. | Both are in use; only `ui/` differs. |
 | Python standards | ruff with every rule, ty with every rule as an error, both handled by the agent. Light data validation: loader schemas check required columns and dtypes only. 70% branch coverage on `logic/`. | Strict where the agent pays the cost, light where it would slow people down. Revisit the strict rules once the agent trials in [validation-plan.md](validation-plan.md) measure what they cost. |
-| Tests | `ctzd check` runs the same gates locally and in Jenkins. Jenkins adds a post-deploy browser smoke test with a screenshot. Platform code has ordinary test suites. No agent-driven evaluations. | One definition of "green". |
+| Tests | `ctzd check` runs the same gates locally and in Jenkins. Jenkins adds a post-deploy browser smoke test with a screenshot. Platform code has ordinary test suites. Agent trials against a local copy of the platform (`validation/`, [validation-plan.md](validation-plan.md)) check the CLI's output and the skills with real agents; they inform changes and are not a gate. | One definition of "green". Only an agent shows whether the skills and messages work for an agent. |
 | Agent instructions | App folders have `AGENTS.md` and `.agents/skills/`, plus a copy of the skills in `.claude/skills/` because Claude Code does not read `.agents/skills/`. `ctzd` writes all three and the app's `.gitignore` lists them. | Agent-neutral guidance that every agent can read. |
 | Skill distribution | The internal skills app carries one bootstrap skill, `ctzd`, which says only to run `ctzd setup --json` and follow `next`. Everything else is served with the platform release. | The bootstrap skill almost never changes; everything that does change has one update channel. |
 | Enforcement | `ctzd deploy` runs `ctzd check` first; Jenkins runs it again. An org-wide Claude Code managed setting denies `Read(**/.env)`. | The checks work for every agent, without per-repo agent config. The `.env` rule is a speed bump: it blocks file commands such as `cat .env`, not a script that opens the file, so the read-only accounts are the real limit. |
@@ -481,7 +481,10 @@ Phase 0 spikes:
   every project;
 - whether Claude Code loads `AGENTS.md` and skills when the agent works in an
   app subfolder, and whether it loads skills from a gitignored
-  `.claude/skills/`;
+  `.claude/skills/` (Claude Code 2.1.319 on Linux loads both from a gitignored
+  app folder when started in it; started in a parent folder, agents in the
+  trials read the app's skills by path, as the start guide says; still to check
+  on Windows);
 - GitHub Enterprise device flow for the `ctzd` OAuth app;
 - MinGit and uv on a locked-down laptop, and uv's Python downloads from an
   internal mirror.
@@ -520,6 +523,17 @@ platform pins; the thin bootstrap skill with the served start guide; one
 Kubernetes secret per source; the chart's `auth` block; `ctzd deploy` clearing
 the rollback pause before it pushes and reporting a build that deployed nothing;
 and the table janitor DAG with the delete job's deletion record.
+
+Validated on 2026-11-06 with `validation/` (results in
+[validation-plan.md](validation-plan.md) section 7): the CLI against the API
+over HTTP; `ctzdApp()`, the rollback job, and the delete job on a real Jenkins
+with docker, helm, and kubectl stubbed; the chart linted and rendered; and
+agent trials (Haiku 5.5 and Sonnet 5.5, a simulated person) against a local
+platform that runs the real API, CI steps, dashboards, and jobs. They found and
+fixed bugs that predate this plan's revision, among them a library that did not
+compile on Jenkins, a rollback job the Groovy sandbox rejected, and release tags
+that were all numbered v1. Still not run: a real cluster (Helm install,
+readiness, the factory DAG's pods), and every real service listed above.
 
 ## 15. Open items
 
