@@ -1,5 +1,9 @@
 // Proposal: the parameterised job the platform API triggers for `ctzd rollback`.
 // Redeploys a release's image and config (no rebuild) and leaves auto-deploy paused.
+// It runs in the Groovy sandbox like any job, so the git auth header is built in the shell, and it loads the
+// ctzd library for libraryResource.
+@Library('ctzd') _
+
 pipeline {
     agent { label 'ctzd' }
     parameters {
@@ -21,10 +25,12 @@ pipeline {
         stage('Restore') {
             steps {
                 script {
-                    def host = env.ORG_URL.replaceFirst('https://', '').tokenize('/')[0]
-                    def auth = "AUTHORIZATION: basic " + "x-access-token:${env.CTZD_GITHUB_TOKEN}".bytes.encodeBase64().toString()
-                    sh "rm -rf app && git -c 'http.https://${host}/.extraheader=${auth}' clone --quiet '${env.ORG_URL}/${params.REPO}.git' app"
-                    sh "git -C app -c 'http.https://${host}/.extraheader=${auth}' fetch --quiet --tags"
+                    sh '''
+                        host=$(printf '%s' "$ORG_URL" | sed -E 's#https://([^/]+)/.*#\\1#')
+                        auth="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$CTZD_GITHUB_TOKEN" | base64 -w0)"
+                        rm -rf app && git -c "http.https://$host/.extraheader=$auth" clone --quiet "$ORG_URL/$REPO.git" app
+                        git -C app -c "http.https://$host/.extraheader=$auth" fetch --quiet --tags
+                    '''
                     def record = readJSON(text: sh(script: "git -C app tag -l --format='%(contents)' 'ctzd/v${params.RELEASE}'", returnStdout: true))
                     sh "git -C app checkout --quiet '${record.commit}'"
                     writeFile(file: 'app/app.toml', text: record.app_toml)
