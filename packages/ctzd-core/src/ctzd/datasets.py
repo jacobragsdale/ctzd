@@ -23,48 +23,30 @@ them, so a job that imports the app's logic never needs the web stack.
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from types import FunctionType
-from typing import Annotated, Literal
+from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, JsonValue
-from pydantic.config import JsonDict
-from pydantic.fields import FieldInfo
+from basis.api import format as formats
+from basis.api.format import Formatted
+from pydantic import BaseModel, ConfigDict
 
 from ctzd._errors import CtzdError
 
-FORMAT_KEY = "x-basis-format"
-"""Where a column's display format sits in the API's document, as basis and basis-ui agreed it.
-
-SHIM (MVP): basis step 2.13 writes the format into the Arrow stream's field
-metadata too, and basis-ui step 1.13 formats each column by it; until both land,
-the page names each column's format itself.
-"""
-
-type Kind = Literal["number", "money", "pct", "bps", "price", "price32"]
 DEFAULT_DEADLINE_S = 30.0
 
 
-def display(kind: Kind, *, decimals: int | None = None, currency: str | None = None) -> FieldInfo:
-    """A column's display format, for `Annotated[float | None, ...]`; the column kinds below are built from it."""
-    options: dict[str, JsonValue] = {"kind": kind}
-    if decimals is not None:
-        options["decimals"] = decimals
-    if currency is not None:
-        options["currency"] = currency
-    extra: JsonDict = {FORMAT_KEY: options}
-    return FieldInfo(json_schema_extra=extra)
-
-
-def money(currency: str, *, decimals: int | None = None) -> FieldInfo:
+def money(currency: str, *, decimals: int | None = None) -> Formatted:
     """An amount in `currency`, such as `amount: Annotated[float | None, ctzd.money("USD")]`."""
-    return display("money", decimals=decimals, currency=currency)
+    return formats.money(currency, decimals)
 
 
-Number = Annotated[float | None, display("number", decimals=2)]
-Count = Annotated[float | None, display("number", decimals=0)]
-Price = Annotated[float | None, display("price")]
-Price32 = Annotated[float | None, display("price32")]
-Pct = Annotated[float | None, display("pct")]
-Bps = Annotated[float | None, display("bps")]
+# basis-api writes each kind into the API's document as `x-basis-format` and into the Arrow stream's field
+# metadata as `basis.format`, which parallax and @basis/ui's number components format each column by.
+Number = Annotated[float | None, formats.number(2)]
+Count = Annotated[float | None, formats.number(0)]
+Price = Annotated[float | None, formats.price()]
+Price32 = Annotated[float | None, formats.price32()]
+Pct = Annotated[float | None, formats.pct()]
+Bps = Annotated[float | None, formats.bps()]
 
 
 class Row(BaseModel):

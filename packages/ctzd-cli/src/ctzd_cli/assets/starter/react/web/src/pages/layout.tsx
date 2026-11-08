@@ -6,11 +6,10 @@ import { Link, Outlet } from "@tanstack/react-router";
 import type { ReactElement } from "react";
 
 import { pages } from "#nav.ts";
-import { startParallax } from "#parallax.ts";
 
 function Layout(): ReactElement {
   return (
-    <ParallaxProvider worker={startParallax} prewarm>
+    <ParallaxProvider prewarm>
       <div className="flex min-h-svh flex-col">
         <header className="flex items-center gap-6 border-b px-6 py-3">
           <span className="text-sm font-semibold">{{title}}</span>

@@ -10,7 +10,6 @@ import pytest
 from starlette.testclient import TestClient
 
 from ctzd import api
-from ctzd.datasets import FORMAT_KEY
 
 ARROW = "application/vnd.apache.arrow.stream"
 MODULE = '''
@@ -106,8 +105,8 @@ def test_the_document_names_each_dataset_and_each_column_s_format(module: str) -
     document = api.openapi_document(module)
     assert document["paths"]["/datasets/category-shares"]["get"]["operationId"] == "category_shares"
     share = document["components"]["schemas"]["Share"]["properties"]
-    assert share["value"][FORMAT_KEY] == {"kind": "number", "decimals": 2}
-    assert share["share"][FORMAT_KEY] == {"kind": "pct"}
+    assert share["value"]["x-basis-format"] == {"kind": "number", "decimals": 2}
+    assert share["share"]["x-basis-format"] == {"kind": "pct"}
 
 
 def test_write_openapi_writes_stable_json_once(module: str, tmp_path: Path) -> None:
@@ -115,3 +114,10 @@ def test_write_openapi_writes_stable_json_once(module: str, tmp_path: Path) -> N
     assert api.write_openapi(target, module) is True
     assert api.write_openapi(target, module) is False
     assert json.loads(target.read_text(encoding="utf-8"))["paths"]
+
+
+def test_the_arrow_stream_carries_each_column_s_format(client: TestClient) -> None:
+    answer = client.get("/api/datasets/category-shares", headers={"Accept": ARROW})
+    schema = pa.ipc.open_stream(answer.content).read_all().schema
+    metadata = schema.field("share").metadata or {}
+    assert json.loads(metadata[b"basis.format"]) == {"kind": "pct"}

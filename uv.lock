@@ -79,7 +79,7 @@ wheels = [
 [[package]]
 name = "basis-api"
 version = "0.0.0"
-source = { git = "https://github.com/jacobragsdale/basis?subdirectory=packages%2Fapi&branch=main#6f62ec6b0c06645d858fe740da4200671843652a" }
+source = { git = "https://github.com/jacobragsdale/basis?subdirectory=packages%2Fapi&branch=main#d339e6991f4e795ede16e890e8ae7b1b0789d2ed" }
 dependencies = [
     { name = "basis-core" },
     { name = "cryptography" },
@@ -92,7 +92,7 @@ dependencies = [
 [[package]]
 name = "basis-core"
 version = "0.0.0"
-source = { git = "https://github.com/jacobragsdale/basis?subdirectory=packages%2Fcore&branch=main#6f62ec6b0c06645d858fe740da4200671843652a" }
+source = { git = "https://github.com/jacobragsdale/basis?subdirectory=packages%2Fcore&branch=main#d339e6991f4e795ede16e890e8ae7b1b0789d2ed" }
 dependencies = [
     { name = "grimp" },
     { name = "httpx2" },
@@ -502,6 +502,7 @@ name = "ctzd-core"
 version = "0.2.0"
 source = { editable = "packages/ctzd-core" }
 dependencies = [
+    { name = "basis-api" },
     { name = "basis-core" },
     { name = "httpx" },
     { name = "mssql-python", extra = ["pyarrow"] },
@@ -514,14 +515,9 @@ dependencies = [
     { name = "pydantic-settings" },
 ]
 
-[package.optional-dependencies]
-api = [
-    { name = "basis-api" },
-]
-
 [package.metadata]
 requires-dist = [
-    { name = "basis-api", marker = "extra == 'api'", git = "https://github.com/jacobragsdale/basis?subdirectory=packages%2Fapi&branch=main" },
+    { name = "basis-api", git = "https://github.com/jacobragsdale/basis?subdirectory=packages%2Fapi&branch=main" },
     { name = "basis-core", git = "https://github.com/jacobragsdale/basis?subdirectory=packages%2Fcore&branch=main" },
     { name = "httpx", specifier = ">=0.28" },
     { name = "mssql-python", extras = ["pyarrow"], specifier = ">=1.17" },
@@ -533,7 +529,6 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.14" },
     { name = "pydantic-settings", specifier = ">=2.16" },
 ]
-provides-extras = ["api"]
 
 [[package]]
 name = "ctzd-fi"
@@ -555,7 +550,7 @@ source = { virtual = "." }
 dev = [
     { name = "ctzd", extra = ["ci"] },
     { name = "ctzd-api" },
-    { name = "ctzd-core", extra = ["api"] },
+    { name = "ctzd-core" },
     { name = "ctzd-fi" },
     { name = "httpx2" },
     { name = "pandas-stubs" },
@@ -574,7 +569,7 @@ dev = [
 dev = [
     { name = "ctzd", extras = ["ci"], editable = "packages/ctzd-cli" },
     { name = "ctzd-api", editable = "packages/ctzd-api" },
-    { name = "ctzd-core", extras = ["api"], editable = "packages/ctzd-core" },
+    { name = "ctzd-core", editable = "packages/ctzd-core" },
     { name = "ctzd-fi", editable = "kits/fi" },
     { name = "httpx2", specifier = ">=2.16" },
     { name = "pandas-stubs", specifier = ">=3.1" },

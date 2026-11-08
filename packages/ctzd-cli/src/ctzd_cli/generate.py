@@ -227,7 +227,7 @@ def datasets(root: Path) -> list[Dataset]:
     return found
 
 
-def _parallax_format(display: dict[str, object]) -> dict[str, object]:
+def parallax_format(display: dict[str, object]) -> dict[str, object]:
     """A column's display format as parallax's grid and charts take it."""
     kind = display.get("kind")
     decimals = display.get("decimals")
@@ -243,7 +243,7 @@ def _parallax_format(display: dict[str, object]) -> dict[str, object]:
 
 def _page(name: str, dataset: Dataset) -> str:
     """SHIM (MVP): the page names each column's format until basis-ui reads them from the dataset (step 1.13)."""
-    formats = {column.name: _parallax_format(column.format) for column in dataset.columns if column.format is not None}
+    formats = {column.name: parallax_format(column.format) for column in dataset.columns if column.format is not None}
     numbers = [column.name for column in dataset.columns if column.kind == "number"]
     labels = [column.name for column in dataset.columns if column.kind == "text"]
     if not numbers:
@@ -289,7 +289,7 @@ export {{ {component} }};
 """
 
 
-def _add_route(root: Path, name: str) -> bool:
+def add_route(root: Path, name: str) -> bool:
     """Add the page's route to routes.ts and its link to nav.ts; False when routes.ts no longer has the starter's shape."""
     routes_path = root / ROUTES
     routes = routes_path.read_text(encoding="utf-8")
@@ -333,7 +333,7 @@ def add_page(root: Path, name: str, dataset: str) -> tuple[list[str], bool]:
         msg = f"The dataset {dataset} needs {', '.join(required)}, and a new page passes no parameters."
         raise UsageError(msg, hint="Give those parameters defaults in src/app/api/datasets.py, then add the page.")
     files = [_write(root, target, _page(name, chosen))]
-    routed = _add_route(root, name)
+    routed = add_route(root, name)
     if routed:
         files += [ROUTES.as_posix(), *([NAV.as_posix()] if (root / NAV).is_file() else [])]
     return files, routed

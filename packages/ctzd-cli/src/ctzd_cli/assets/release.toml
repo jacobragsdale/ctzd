@@ -26,9 +26,9 @@ dev = [
 [ui.react]
 # The page's npm packages are in starter/react/web/package.json.
 # SHIM (MVP): basis-api and basis-core are listed directly so that the platform's git sources for them apply (uv
-# applies sources to direct dependencies only); ctzd-core[api] alone brings them once basis is on the internal index.
-dependencies = ["basis-api", "basis-core", "ctzd-core[api]"]
+# applies sources to direct dependencies only); ctzd-core alone brings them once basis is on the internal index.
+dependencies = ["basis-api", "basis-core"]
 
 [ui.none]
-# SHIM (MVP): basis-core is listed directly so that the platform's git source for it applies.
-dependencies = ["basis-core"]
+# SHIM (MVP): basis-api and basis-core are listed directly so that the platform's git sources for them apply.
+dependencies = ["basis-api", "basis-core"]

@@ -77,7 +77,7 @@ Use the `ctzd` command for everything, always with `--json`:
 - Never edit platform-owned files: this file, `.agents/`, `.claude/`, `Dockerfile`, `Jenkinsfile`,
   `ruff.toml`, `ty.toml`, `.importlinter`, `pytest.toml`, `.pre-commit-config.yaml`,
   `.gitignore`, `.gitattributes`, `.dockerignore`, `.python-version`, `.ctzd/`,
-  `web/vite.config.ts`, `web/tsconfig.json`, `web/src/styles.css`, `web/src/parallax.ts`, and
+  `web/vite.config.ts`, `web/tsconfig.json`, `web/src/styles.css`, and
   `web/src/api/generated/`. Fix the code instead.
 - Never add `# noqa`, `# ty: ignore`, `oxlint-disable`, or lint exclusions to make a check pass.
 - Every number is a float64. Never round one or format it as text outside the page: no `ROUND`

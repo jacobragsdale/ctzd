@@ -5,6 +5,7 @@ description = "Runtime library for ctzd apps: data sources, caching, the table s
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+    "basis-api",  # ctzd.api serves a React app's datasets; ctzd's column kinds are its display formats
     "basis-core",  # ctzd.display, and the drivers and utilities ctzd-core moves onto
     "httpx>=0.28",
     "mssql-python[pyarrow]>=1.17",
@@ -16,10 +17,6 @@ dependencies = [
     "pydantic>=2.14",
     "pydantic-settings>=2.16",
 ]
-
-[project.optional-dependencies]
-# A React app's API: ctzd.api builds a basis-api service from the app's datasets.
-api = ["basis-api"]
 
 [build-system]
 requires = ["uv_build>=0.13.6,<0.14"]

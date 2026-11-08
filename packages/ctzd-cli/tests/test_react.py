@@ -30,7 +30,7 @@ def test_the_bundled_platform_config_names_basis_ui_s_packages() -> None:
 def test_a_react_app_locks_its_pages_configuration_and_its_own_dockerfile() -> None:
     react = assets.locked_files(SEED, "react")
     jobs = assets.locked_files(SEED, "none")
-    assert {"web/vite.config.ts", "web/tsconfig.json", "web/src/styles.css", "web/src/parallax.ts"} <= react.keys()
+    assert {"web/vite.config.ts", "web/tsconfig.json", "web/src/styles.css"} <= react.keys()
     assert not any(path.startswith("web/") for path in jobs)
     assert "pnpm install --frozen-lockfile" in react["Dockerfile"]
     assert "pnpm" not in jobs["Dockerfile"]
