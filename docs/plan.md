@@ -772,7 +772,8 @@ tested with the fakes:
 
 Built on 2026-11-07 for the MVP, against basis's and basis-ui's main branches,
 and run on one Linux machine: Python 3.14; `ctzd.dataset`, row types and column
-kinds, served by basis-api (2.11 numbers, 2.14 serving the UI at `/`) from
+kinds, served by basis-api (2.11 numbers, 2.12 Arrow-table datasets, 2.14
+serving the UI at `/`) from
 basis main; the React starter as `ctzd new`'s default, with `@basis/ui`'s shell
 and parallax's grid and chart from the tarballs basis-ui packs from its main
 branch; `ctzd check`'s web install, client, web check, and web build steps;
@@ -783,7 +784,7 @@ Not run: the Docker image (the tarballs are local paths), Jenkins, a browser
 on Windows.
 
 Not built: the rest of what section 13 lists for the React starter, the
-Arrow-table datasets (basis 2.12) and display formats (2.13, basis-ui 1.13), `ctzd add dataset`, `ctzd add page`, `ctzd api list`,
+display formats (2.13, basis-ui 1.13), `ctzd add dataset`, `ctzd add page`, `ctzd api list`,
 `ctzd add package`, `ctzd docs ui`, `ctzd dev --fake`, the new skills, Node in
 `install.ps1` and `ctzd setup`, and Python 3.14.
 

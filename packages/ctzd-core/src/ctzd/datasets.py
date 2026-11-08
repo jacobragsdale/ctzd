@@ -25,13 +25,11 @@ from dataclasses import dataclass
 from types import FunctionType
 from typing import Annotated, Literal
 
-import pandas as pd
 from pydantic import BaseModel, ConfigDict, JsonValue
 from pydantic.config import JsonDict
 from pydantic.fields import FieldInfo
 
-from ctzd._arrow import floats
-from ctzd._errors import CtzdError, DataError
+from ctzd._errors import CtzdError
 
 FORMAT_KEY = "x-basis-format"
 """Where a column's display format sits in the API's document, as basis and basis-ui agreed it.
@@ -113,20 +111,3 @@ def dataset[F: FunctionType](row: type[Row], *, deadline_s: float = DEFAULT_DEAD
 def registered(module: str) -> Mapping[str, Dataset]:
     """The datasets `module` declares, by name."""
     return {name: declared for (owner, name), declared in _registered.items() if owner == module}
-
-
-def rows(frame: pd.DataFrame, row: type[Row], *, what: str) -> list[dict[str, object]]:
-    """The frame's rows as `row`'s columns, numbers as floats and `None` where missing.
-
-    SHIM (MVP): basis step 2.12 takes the frame itself and checks it once against
-    the row type; until it lands, ctzd hands basis-api the rows, which it checks
-    one by one.
-    """
-    columns = list(row.model_fields)
-    missing = [column for column in columns if column not in frame.columns]
-    if missing:
-        msg = f"{what}: the frame has no column {', '.join(repr(column) for column in missing)}, which {row.__name__} declares; its columns are {list(frame.columns)}."
-        raise DataError(msg)
-    chosen = floats(frame[columns], what=what)
-    present = chosen.astype(object).where(chosen.notna(), None)
-    return [dict(zip(columns, values, strict=True)) for values in present.itertuples(index=False, name=None)]

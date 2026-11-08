@@ -95,9 +95,10 @@ def sector_prices(as_of: dt.date | None = None) -> pd.DataFrame:
 
 - The function's arguments are the page's parameters: `str`, `int`, `float`, `bool`,
   `dt.date`, each with a default when the page may leave it out. A dataset only reads.
-- The row type lists the columns in the order the page shows them; the frame may hold
-  more, which the page does not get. A column the row type names and the frame lacks fails
-  the request with a message naming it.
+- The row type lists the columns in the order the page shows them, and the frame holds
+  exactly those columns: select them (`frame[["sector", "bonds", "avg_price"]]`) when the
+  logic returns more. A column missing, extra, or of another type fails the request with a
+  message naming it. Numbers become floats and missing or infinite values blanks on the way.
 - Column kinds say how the page rounds a number: `ctzd.Number` (2 decimals), `ctzd.Count`
   (none), `ctzd.Price`, `ctzd.Price32` (Treasury 32nds), `ctzd.Pct` and `ctzd.Bps` (both
   fractions: 0.0525 is 5.25% and 525 bp), and `Annotated[float | None, ctzd.money("USD")]`.

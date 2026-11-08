@@ -13,14 +13,15 @@ Needs the `api` extra (`ctzd-core[api]`), which brings basis-api.
 import importlib
 import inspect
 import json
+import operator
 from pathlib import Path
-from types import FunctionType, GenericAlias
+from types import FunctionType
 from typing import Any
 
 from basis import api
 from starlette.types import ASGIApp
 
-from ctzd.datasets import Dataset, registered, rows
+from ctzd.datasets import Dataset, registered
 
 DATASETS_MODULE = "app.api.datasets"
 PAGES = "web/dist"
@@ -29,19 +30,20 @@ SERVICE_NAME = "app"
 
 
 def _handler(declared: Dataset) -> FunctionType:
-    """The route's handler: the dataset's parameters, as basis-api reads them, answering the frame's rows."""
+    """The route's handler: the dataset's function, its signature saying it answers `api.Table[Row]`, which is what
+    basis-api checks a handler's return against. The frame goes to basis-api as it is, which checks it once."""
     function = declared.function
-    row_list = GenericAlias(list, (declared.row,))
+    table = operator.getitem(api.Table, declared.row)
 
-    def handler(*args: object, **kwargs: object) -> list[dict[str, object]]:
-        return rows(function(*args, **kwargs), declared.row, what=f"dataset {declared.name}")
+    def handler(*args: object, **kwargs: object) -> object:
+        return function(*args, **kwargs)
 
     handler.__name__ = declared.name
     handler.__qualname__ = declared.name
     handler.__doc__ = function.__doc__
     handler.__module__ = function.__module__
-    handler.__annotations__ = {**function.__annotations__, "return": row_list}
-    handler.__dict__["__signature__"] = inspect.signature(function).replace(return_annotation=row_list)
+    handler.__annotations__ = {**function.__annotations__, "return": table}
+    handler.__dict__["__signature__"] = inspect.signature(function).replace(return_annotation=table)
     return handler
 
 
@@ -49,7 +51,8 @@ def service(module: str = DATASETS_MODULE, *, pages: str | None = None) -> api.S
     """The basis-api service of the datasets that `module` declares, serving the built pages in `pages` at `/`."""
     importlib.import_module(module)
     routes = [
-        api.get(declared.path, _handler(declared), deadline_s=declared.deadline_s, response=GenericAlias(list, (declared.row,)), errors=[], dataset=True) for declared in registered(module).values()
+        api.get(declared.path, _handler(declared), deadline_s=declared.deadline_s, response=operator.getitem(api.Table, declared.row), errors=[], dataset=True)
+        for declared in registered(module).values()
     ]
     return api.Service(name=SERVICE_NAME, settings=api.Settings, routes=routes, ui=pages)
 

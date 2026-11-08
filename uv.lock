@@ -79,7 +79,7 @@ wheels = [
 [[package]]
 name = "basis-api"
 version = "0.0.0"
-source = { git = "https://github.com/jacobragsdale/basis?subdirectory=packages%2Fapi&branch=main#04be15237d4ddcc085321b16fe64e5dc16c3ee88" }
+source = { git = "https://github.com/jacobragsdale/basis?subdirectory=packages%2Fapi&branch=main#e0e099fa38413d557f8522ba47d39b64380792af" }
 dependencies = [
     { name = "basis-core" },
     { name = "cryptography" },
@@ -92,7 +92,7 @@ dependencies = [
 [[package]]
 name = "basis-core"
 version = "0.0.0"
-source = { git = "https://github.com/jacobragsdale/basis?subdirectory=packages%2Fcore&branch=main#04be15237d4ddcc085321b16fe64e5dc16c3ee88" }
+source = { git = "https://github.com/jacobragsdale/basis?subdirectory=packages%2Fcore&branch=main#e0e099fa38413d557f8522ba47d39b64380792af" }
 dependencies = [
     { name = "grimp" },
     { name = "httpx2" },
