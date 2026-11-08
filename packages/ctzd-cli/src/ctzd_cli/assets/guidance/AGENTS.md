@@ -11,8 +11,9 @@ ask them to run a command, open a terminal, use git, or read code.
    where the data lives; the app's `sbu-<sbu>` skill and `ctzd sources` tell you.
 2. Look at the real columns of the source (`ctzd exec`, see `ctzd-data`) before
    you build anything on them.
-3. Build the page, run `ctzd dev`, and give the person the link it returns to
-   open on their own machine. Change the page until they say it is right.
+3. Build the page, run `ctzd dev`, then `ctzd shot` and look at the picture it
+   writes; fix every problem it lists. Then give the person the link `ctzd dev`
+   returned, to open on their own machine. Change the page until they say it is right.
 4. Check a number or two with them against what they see elsewhere.
 5. Deploy when they say so (`ctzd deploy`), and give them the live link.
 6. Offer the obvious next step, such as emailing it every morning, without pushing.
@@ -23,6 +24,9 @@ Use the `ctzd` command for everything, always with `--json`:
 
 - `ctzd dev` builds the page, starts the app in the background, and returns its `url`; run it
   again after a change, and `ctzd dev --stop` when you are done. `ctzd run JOB --local` runs a job.
+- `ctzd shot [PATH] --json` takes a picture of a page `ctzd dev` serves (default `/`), writes it
+  under `.ctzd/shots/`, and lists each problem on the page: errors, failed requests, and a grid or
+  chart that drew nothing or too small. Run it after every change to a page and look at the picture.
 - `ctzd exec --json -- python -c "..."` runs a command with the app's credentials, such as a quick
   look at what a loader returns from the live source.
 - `ctzd env` fetches read-only credentials for the sources in `app.toml`.

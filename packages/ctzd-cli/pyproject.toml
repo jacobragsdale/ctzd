@@ -8,6 +8,7 @@ dependencies = [
     "httpx>=0.28",
     "keyring>=25.7",
     "packaging>=25",
+    "playwright>=1.64",  # `ctzd shot`, and the smoke test Jenkins runs
     "pydantic>=2.14",
     "sqlglot>=30.29",
     "tomlkit>=0.15",

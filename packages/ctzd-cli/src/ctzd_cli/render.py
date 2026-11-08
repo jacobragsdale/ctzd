@@ -20,7 +20,7 @@ _DASH = ("gunicorn", "app.ui.main:server", f"--bind=0.0.0.0:{PORT}", "--workers=
 # One process serves the datasets under /api and the built pages at /.
 _REACT = ("uvicorn", "--factory", "ctzd.api:asgi", "--host=0.0.0.0", f"--port={PORT}", "--proxy-headers")
 _COMMANDS = {"react": _REACT, "streamlit": _STREAMLIT, "dash": _DASH}
-_READINESS = {"react": "/api/health/ready", "streamlit": "/_stcore/health"}
+_READINESS = {"react": "/health/ready", "streamlit": "/_stcore/health"}
 
 
 class _Model(BaseModel):

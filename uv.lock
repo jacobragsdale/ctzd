@@ -79,7 +79,7 @@ wheels = [
 [[package]]
 name = "basis-api"
 version = "0.0.0"
-source = { git = "https://github.com/jacobragsdale/basis?subdirectory=packages%2Fapi&branch=main#ae4bf4fadd232cac3a10529da71812938b9a5d84" }
+source = { git = "https://github.com/jacobragsdale/basis?subdirectory=packages%2Fapi&branch=main#04be15237d4ddcc085321b16fe64e5dc16c3ee88" }
 dependencies = [
     { name = "basis-core" },
     { name = "cryptography" },
@@ -92,7 +92,7 @@ dependencies = [
 [[package]]
 name = "basis-core"
 version = "0.0.0"
-source = { git = "https://github.com/jacobragsdale/basis?subdirectory=packages%2Fcore&branch=main#ae4bf4fadd232cac3a10529da71812938b9a5d84" }
+source = { git = "https://github.com/jacobragsdale/basis?subdirectory=packages%2Fcore&branch=main#04be15237d4ddcc085321b16fe64e5dc16c3ee88" }
 dependencies = [
     { name = "grimp" },
     { name = "httpx2" },
@@ -464,6 +464,7 @@ dependencies = [
     { name = "httpx" },
     { name = "keyring" },
     { name = "packaging" },
+    { name = "playwright" },
     { name = "pydantic" },
     { name = "sqlglot" },
     { name = "tomlkit" },
@@ -480,6 +481,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28" },
     { name = "keyring", specifier = ">=25.7" },
     { name = "packaging", specifier = ">=25" },
+    { name = "playwright", specifier = ">=1.64" },
     { name = "playwright", marker = "extra == 'ci'", specifier = ">=1.64" },
     { name = "pydantic", specifier = ">=2.14" },
     { name = "sqlglot", specifier = ">=30.29" },

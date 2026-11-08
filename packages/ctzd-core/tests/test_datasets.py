@@ -48,11 +48,12 @@ def module(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
 
 
 @pytest.fixture
-def client(module: str, tmp_path: Path) -> Iterator[TestClient]:
-    pages = tmp_path / "dist"
-    pages.mkdir()
+def client(module: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
+    monkeypatch.chdir(tmp_path)
+    pages = tmp_path / "web" / "dist"
+    pages.mkdir(parents=True)
     (pages / "index.html").write_text("<!doctype html><div id=root></div>", encoding="utf-8")
-    with TestClient(api.asgi(module, pages=pages), raise_server_exceptions=False) as test_client:
+    with TestClient(api.asgi(module), raise_server_exceptions=False) as test_client:
         yield test_client
 
 
@@ -85,8 +86,20 @@ def test_the_built_pages_are_served_at_the_root(client: TestClient) -> None:
     assert "id=root" in answer.text
 
 
-def test_the_api_is_ready_under_its_prefix(client: TestClient) -> None:
-    assert client.get("/api/health/ready").status_code == 200
+def test_the_app_is_ready_and_a_page_route_answers_the_pages(client: TestClient) -> None:
+    assert client.get("/health/ready").status_code == 200
+    assert "id=root" in client.get("/categories/north").text
+
+
+def test_a_path_under_api_without_a_route_is_not_found(client: TestClient) -> None:
+    assert client.get("/api/nothing").status_code == 404
+
+
+def test_pages_that_are_not_built_answer_503_and_the_datasets_still_answer(module: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    with TestClient(api.asgi(module), raise_server_exceptions=False) as test_client:
+        assert test_client.get("/").status_code == 503
+        assert test_client.get("/api/datasets/category-shares").status_code == 200
 
 
 def test_the_document_names_each_dataset_and_each_column_s_format(module: str) -> None:

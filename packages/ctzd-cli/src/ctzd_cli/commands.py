@@ -13,6 +13,7 @@ from pydantic import ValidationError
 
 from ctzd_cli import api_client, appconfig, assets, auth, checks, config, devserver, gitops, proc, release, render, scaffold, setup_checks, sync
 from ctzd_cli import api_models as m
+from ctzd_cli import shot as shooting
 from ctzd_cli.appconfig import AppConfig, AppSection, Job, SourcesSection, Ui
 from ctzd_cli.assets import start_guide
 from ctzd_cli.errors import CliError, NotFoundError, UsageError
@@ -272,6 +273,30 @@ def dev(ctx: Context, *, port: int | None, stop: bool) -> Outcome:
             return Outcome(summary=f"The local dashboard {reason}.", data={"output": log, "log": devserver.LOG.as_posix()}, ok=False)
         case unreachable:
             assert_never(unreachable)
+
+
+def shot(ctx: Context, *, page: str) -> Outcome:
+    """A picture of a page that `ctzd dev` serves, and each problem on it, for the agent to look at."""
+    root, app = _app(ctx)
+    if app.app.ui != "react":
+        msg = "ctzd shot takes pictures of a React app's pages."
+        raise UsageError(msg)
+    server = devserver.recorded(root)
+    if server is None:
+        msg = "No local dashboard is running."
+        raise UsageError(msg, hint="Run `ctzd dev`, then `ctzd shot` again.")
+    path = page if page.startswith("/") else f"/{page}"
+    result = shooting.shoot(server.url + path, shooting.picture_path(root, path))
+    picture = result.picture.relative_to(root).as_posix() if result.picture.is_file() else None
+    look = f"Look at {picture} before you show the person the page." if picture is not None else "Fix the problems, run `ctzd dev`, then `ctzd shot` again."
+    if result.ok:
+        return Outcome(summary=f"The page {path} drew without problems.", data={"url": result.url, "picture": picture, "problems": []}, next_steps=[look])
+    return Outcome(
+        summary=f"The page {path} has {len(result.problems)} problem(s): " + "; ".join(result.problems),
+        data={"url": result.url, "picture": picture, "problems": result.problems},
+        next_steps=["Fix each problem, run `ctzd dev`, then `ctzd shot` again.", look],
+        ok=False,
+    )
 
 
 def _dev_port(asked: int | None, *, previous: int | None) -> int:

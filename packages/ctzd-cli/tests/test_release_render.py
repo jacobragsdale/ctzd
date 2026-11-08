@@ -25,9 +25,9 @@ def test_react_values_run_the_app_server_with_the_api_s_readiness() -> None:
     values = render.helm_values(config.load(), app_config(), image="acr/fi-bond-prices:abc", release=7)
     assert values.enabled
     assert values.host == "fi-bond-prices.ctzd.contoso.com"
-    assert values.readiness_path == "/api/health/ready"
+    assert values.readiness_path == "/health/ready"
     assert values.command[:3] == ("uvicorn", "--factory", "ctzd.api:asgi")
-    assert values.model_dump(by_alias=True)["readinessPath"] == "/api/health/ready"
+    assert values.model_dump(by_alias=True)["readinessPath"] == "/health/ready"
 
 
 def test_streamlit_values_run_streamlit_with_its_health_endpoint() -> None:

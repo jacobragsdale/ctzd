@@ -1,10 +1,11 @@
-"""A React app's server: its datasets, served by basis-api under `/api`, and its built pages at `/`.
+"""A React app's server: its datasets under `/api` and its built pages at `/`, both served by basis-api.
 
 `ctzd dev` and the app's container run it with uvicorn, as
 `uvicorn --factory ctzd.api:asgi`, from the app's folder. The pages call
 `/api/datasets/NAME` through the client generated from `openapi.json`, which
 `write_openapi` writes, and which has no `/api` in its paths, as basis's
-contract has it: the page's client adds the prefix.
+contract has it: the page's client adds the prefix. Health is at
+`/health/live` and `/health/ready`.
 
 Needs the `api` extra (`ctzd-core[api]`), which brings basis-api.
 """
@@ -12,22 +13,18 @@ Needs the `api` extra (`ctzd-core[api]`), which brings basis-api.
 import importlib
 import inspect
 import json
-from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
 from pathlib import Path
 from types import FunctionType, GenericAlias
 from typing import Any
 
 from basis import api
-from starlette.applications import Starlette
-from starlette.routing import Mount
-from starlette.staticfiles import StaticFiles
 from starlette.types import ASGIApp
 
 from ctzd.datasets import Dataset, registered, rows
 
 DATASETS_MODULE = "app.api.datasets"
-PAGES = Path("web/dist")
+PAGES = "web/dist"
+"""The built pages, relative to the app's folder, as basis-api serves a UI."""
 SERVICE_NAME = "app"
 
 
@@ -48,13 +45,13 @@ def _handler(declared: Dataset) -> FunctionType:
     return handler
 
 
-def service(module: str = DATASETS_MODULE) -> api.Service:
-    """The basis-api service of the datasets that `module` declares."""
+def service(module: str = DATASETS_MODULE, *, pages: str | None = None) -> api.Service:
+    """The basis-api service of the datasets that `module` declares, serving the built pages in `pages` at `/`."""
     importlib.import_module(module)
     routes = [
         api.get(declared.path, _handler(declared), deadline_s=declared.deadline_s, response=GenericAlias(list, (declared.row,)), errors=[], dataset=True) for declared in registered(module).values()
     ]
-    return api.Service(name=SERVICE_NAME, settings=api.Settings, routes=routes)
+    return api.Service(name=SERVICE_NAME, settings=api.Settings, routes=routes, ui=pages)
 
 
 def openapi_document(module: str = DATASETS_MODULE) -> dict[str, Any]:
@@ -73,18 +70,6 @@ def write_openapi(path: Path, module: str = DATASETS_MODULE) -> bool:
     return True
 
 
-def asgi(module: str = DATASETS_MODULE, *, pages: Path = PAGES) -> ASGIApp:
-    """The app: basis-api's app for the datasets under `/api`, and the built pages at `/`.
-
-    SHIM (MVP): basis step 2.14 serves a built UI at `/` from basis-api's own app;
-    until it lands, ctzd mounts both and runs basis-api's lifespan itself.
-    """
-    built = api.build(service(module))
-    inner = built.asgi
-
-    @asynccontextmanager
-    async def lifespan(_: Starlette) -> AsyncGenerator[None]:
-        async with inner.router.lifespan_context(inner):
-            yield
-
-    return Starlette(routes=[Mount("/api", app=inner), Mount("/", app=StaticFiles(directory=pages, html=True, check_dir=False))], lifespan=lifespan)
+def asgi(module: str = DATASETS_MODULE, *, pages: str = PAGES) -> ASGIApp:
+    """The app: the datasets under `/api`, and the pages in `pages` at `/`, which answer 503 until they are built."""
+    return api.build(service(module, pages=pages)).asgi

@@ -56,6 +56,7 @@ class Args(BaseModel):
     out: Path | None = None
     commit: str | None = None
     url: str | None = None
+    page: str = "/"
     argv: tuple[str, ...] = ()
     timezone: str = "UTC"
 
@@ -84,6 +85,8 @@ def _app_parsers(sub: argparse._SubParsersAction[argparse.ArgumentParser], commo
     dev = sub.add_parser("dev", parents=[common], help="run the dashboard locally in the background, or restart it; --stop stops it")
     dev.add_argument("--port", type=int, help="default: 8501, or the next free port")
     dev.add_argument("--stop", action="store_true", help="stop the local dashboard")
+    shot = sub.add_parser("shot", parents=[common], help="a picture of a page ctzd dev serves, and the problems on it")
+    shot.add_argument("page", nargs="?", default="/", help="the page's path, such as /bonds; default: /")
     exec_ = sub.add_parser("exec", parents=[common], help="run a command in the app with its credentials, as ctzd dev does: ctzd exec --json -- python -c '...'")
     exec_.add_argument("argv", nargs=argparse.REMAINDER, help="the command, after --")
     run = sub.add_parser("run", parents=[common], help="run a job in Airflow, or locally with --local")
@@ -166,6 +169,7 @@ HANDLERS: dict[str, Handler] = {
     "new": lambda a, ctx: commands.new(ctx, name=_required(a.name, "NAME"), sbu=_required(a.sbu, "--sbu"), ui=a.ui, directory=a.dir, owner=a.owner, offline=a.offline),
     "open": lambda a, ctx: commands.open_app(ctx, name=_required(a.name, "NAME"), sbu=_required(a.sbu, "--sbu"), directory=a.dir),
     "dev": lambda a, ctx: commands.dev(ctx, port=a.port, stop=a.stop),
+    "shot": lambda a, ctx: commands.shot(ctx, page=a.page),
     "run": lambda a, ctx: commands.run_job(ctx, job=_required(a.job, "JOB"), local=a.local, wait=a.wait, timeout=a.timeout),
     "exec": lambda a, ctx: commands.exec_command(ctx, argv=a.argv),
     "sources": lambda _a, ctx: commands.sources(ctx),

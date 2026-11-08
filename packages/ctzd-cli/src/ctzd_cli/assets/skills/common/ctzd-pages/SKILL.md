@@ -37,7 +37,7 @@ const formats = { avg_price: { decimals: 3 }, bonds: { decimals: 0 } };
 function PricesPage(): ReactElement {
   const dataset = useDataset("sector_prices", prices);
   return (
-    <div className="h-96">
+    <div className="flex h-96 flex-col">
       <Grid dataset={dataset} layout={{ formats }} />
     </div>
   );
@@ -45,8 +45,10 @@ function PricesPage(): ReactElement {
 ```
 
 - `useDataset(name, load)` loads the dataset once into parallax's engine, which runs off the page.
-- `<Grid>` sorts, filters, groups, totals, and exports to Excel by itself. It fills its
-  container, so give the container a height (`h-96`).
+- `<Grid>` and `<Chart>` fill their container, which must be a flex column with a height:
+  `<div className="flex h-96 flex-col">`, and a chart also takes `className="min-h-0 flex-1"`;
+  without them a chart draws only a sliver. The grid sorts, filters, groups, totals, and exports
+  to Excel by itself.
 - A bar, pie, or donut chart draws groups: `group_by` names the column of categories and
   `measures` what to draw for each,
   `<Chart dataset={dataset} layout={{ chart: { kind: "bar" }, group_by: ["sector"], measures: [{ aggregate: "mean", column: "avg_price" }], formats }} />`.
@@ -98,7 +100,8 @@ Rules, which `ctzd check` enforces with the fix in each message:
 2. Write `web/src/pages/NAME.tsx`, exporting `NamePage`.
 3. List it in `web/src/routes.ts`: `createRoute({ component: NamePage, getParentRoute: () => rootRoute, path: "/name" })`,
    and add the route to `rootRoute.addChildren([...])`.
-4. Run `ctzd dev` and give the person the link.
+4. Run `ctzd dev`, then `ctzd shot /name --json`. Look at the picture it names in `picture`, and
+   fix each line in `problems` before you give the person the link.
 
 ## A worked example: "today's bond prices by sector"
 
@@ -120,6 +123,15 @@ Rules, which `ctzd check` enforces with the fix in each message:
    ```
 
 4. A page with a bar chart grouped by `sector` with the `mean` of `avg_price` above a grid of the rows, as above.
+
+## Look at every page you change
+
+After each change, run `ctzd dev` (it rebuilds the page) and `ctzd shot PATH --json`. It waits
+for parallax to draw, writes `.ctzd/shots/NAME.png`, and lists `problems`: errors the page logs or
+throws, requests that fail, a grid or chart that drew nothing ("No groups to show"), and a chart
+drawn too small. Open the picture and check what the person asked for: the right columns, the
+bars in a sensible order, labels that read. `ok: true` with a picture that looks wrong is still
+wrong.
 
 ## When a check fails
 

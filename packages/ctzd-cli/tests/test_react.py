@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from ctzd_cli import assets, config, releases
+from ctzd_cli import assets, config, releases, shot
 from ctzd_cli.config import NpmConfig
 from ctzd_cli.errors import CliError
 
@@ -41,3 +41,8 @@ def test_the_react_starter_fills_in_the_npm_sources() -> None:
     assert '"@basis/parallax": "file:/p.tgz"' in files["web/package.json"]
     assert "{{" not in files["web/package.json"]
     assert "src/app/api/datasets.py" in files
+
+
+@pytest.mark.parametrize(("page", "name"), [("/", "index.png"), ("/bonds/US912810TM0", "bonds-us912810tm0.png"), ("/Sector Prices", "sector-prices.png")])
+def test_each_page_s_picture_has_its_own_file(tmp_path: Path, page: str, name: str) -> None:
+    assert shot.picture_path(tmp_path, page) == tmp_path / ".ctzd" / "shots" / name

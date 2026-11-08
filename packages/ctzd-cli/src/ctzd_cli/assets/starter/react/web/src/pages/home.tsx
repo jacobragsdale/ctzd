@@ -21,8 +21,9 @@ function HomePage(): ReactElement {
   return (
     <>
       <TypographyH1>{{title}}</TypographyH1>
-      <div className="h-80">
+      <div className="flex h-80 flex-col">
         <Chart
+          className="min-h-0 flex-1"
           dataset={dataset}
           layout={{
             chart: { kind: "bar" },
@@ -32,7 +33,7 @@ function HomePage(): ReactElement {
           }}
         />
       </div>
-      <div className="h-80">
+      <div className="flex h-80 flex-col">
         <Grid dataset={dataset} layout={{ formats }} />
       </div>
     </>

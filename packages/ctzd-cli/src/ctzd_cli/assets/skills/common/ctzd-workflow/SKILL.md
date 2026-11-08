@@ -24,6 +24,7 @@ description: "Run, check, ship, and roll back a ctzd app with the ctzd command, 
 | Sources | `ctzd sources --json` | Names of the data sources the platform has, for `[sources].use` in `app.toml`. |
 | Credentials | `ctzd env --json` | Once per session, and after changing `[sources].use` in `app.toml`. Needed before anything reads real data. |
 | Look | `ctzd dev --json` | Regenerates the page's client from the datasets, builds the page, starts the app in the background, and returns its `url` (`http://localhost:8501`, or the next free port). Run it again after every change to rebuild and restart it; `ctzd dev --stop --json` stops it. Never use `kill` or `pkill`. Give the person the link to open; `ok: false` names the `step` that failed and its `output`. |
+| Picture | `ctzd shot [PATH] --json` | After `ctzd dev`: a picture of the page at PATH (default `/`) in `picture`, under `.ctzd/shots/`, and `problems`, one line each. Look at the picture after every change to a page. |
 | Look at live data | `ctzd exec --json -- python -c "..."` | Runs a command with the app's credentials, as `ctzd dev` does, and returns `exit_code` and `output`. For checking what a loader returns; never source `.env` yourself. |
 | Try a job | `ctzd run JOB --local --json` | Runs `src/app/jobs/JOB.py` here. Emails and Teams posts land in `.ctzd/out/outbox/`, tables in `.ctzd/out/store/`; nothing is sent. |
 | Check | `ctzd check --json` | Every gate. Fixes formatting and simple lint itself (`"state": "fixed"`). `--fast` skips tests while you iterate. |

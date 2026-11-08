@@ -14,7 +14,7 @@ names here are `contoso` placeholders.
 The 2026-11-07 revision makes four decisions: an app's only UI is a React app
 built on basis-ui with a basis-api backend, in one repo and one container
 (Streamlit and Dash go); every number is a float64 that only the display
-rounds; agents never take or look at screenshots; and dashboards are reached
+rounds; agents look at their pages only through `ctzd shot`, not in the deploy loop; and dashboards are reached
 through Gateway API instead of an Ingress. Version 0.3.0 of the CLI implements
 what section 14 lists as built; the React app waits on basis and basis-ui steps
 that section 16 names, and until it lands `ctzd new` still writes the Streamlit
@@ -110,7 +110,7 @@ basis-ui) and nothing else.
 | UI | One kind of dashboard: a React app on `@basis/ui` and `@basis/parallax`, whose data comes from a basis-api backend in the same repo. One image holds both, and one process serves the API under `/api` and the built UI at `/`, on one origin. Streamlit and Dash are removed in the change that adds the React starter. | The latest models write React well. basis-ui's themed, prebuilt components and parallax's grid, pivot and charts give every app the firm's look and its number and date rules without design work, and one UI means one set of skills. |
 | API | Every route of an app's API is a read-only dataset: parameters in, a table out, served as Arrow for parallax and as JSON. No route writes. | Sources are read-only, so an app has nothing to write; one pattern is one thing for the agent to learn. Writes happen only in jobs. |
 | Numbers | Every number is a float64 from the source to the browser, `NaN` where it is missing; ids are text. Python never rounds or formats a number: the page rounds once, at display, by Excel's rule (15 significant digits, half away from zero, then the shown decimals), and `ctzd.display` writes numbers into messages by the same rule. `ctzd check` refuses rounding in an app's Python and SQL. | One simple type that pandas, numpy, Arrow, and the browser all hold natively. One rule in one place means a number reads the same in the page, an export, and an email, and the same as in Excel, where the firm's users live. Section 6 has the details. |
-| Screenshots | Agents never take or look at screenshots of a UI. Lint, types, tests, and the dataset checks are the gates; the person opens the link themselves. | The components are themed and prebuilt, so design is not the risk; code checks catch the rest, and images cost an agent time and tokens. |
+| Screenshots | After changing a page, the agent runs `ctzd shot`, which loads the page `ctzd dev` serves in a headless browser (on Windows, the Edge every laptop has), waits for parallax to draw, writes a PNG the agent looks at, and lists each problem: errors, failed requests, and a grid or chart that drew nothing or too small. It is not a gate in `ctzd check`, and deploys and the smoke test take no screenshots. | Decided on 2026-11-07 without screenshots, and reversed the same day by the maintainer: a code check cannot see a chart that draws an empty or squashed canvas, which the first React starter did. Edge means nothing to download on a laptop. |
 | Libraries | `ctzd-core` wraps basis-core and basis-api: citizen Python imports only `ctzd`. Citizen pages import `@basis/ui` and `@basis/parallax` directly. Each platform release pins one basis version and one basis-ui version. ctzd never runs the `basis` command or `vp run sync`. | The Python wrapper keeps basis free to change; wrapping 60 React components would add nothing. The pins mean nothing reaches an app until a platform release names it. Section 16 has the coupling. |
 | Template | No Copier. Platform files are byte-identical in every app on the same platform release, and `ctzd sync` overwrites them. The app's Python package is always `app`. | Locked files never need a merge, so a template engine adds nothing. |
 | Platform releases | Build files, agent guidance, and starter code ship together as numbered platform releases, separate from the CLI. A platform release never changes once published; its manifest names the minimum CLI and the minimum `ctzd-core`. Section 9 says how they are served and when each part moves. | Templates and skills change often, and reaching apps must not depend on people upgrading the CLI. |
@@ -135,7 +135,7 @@ basis-ui) and nothing else.
 | Notifications | `ctzd.notify.email` (SMTP relay, DataFrames attached as xlsx or csv) and `ctzd.notify.teams` (Workflows webhook). Owners get an email when a job fails. | "Send me X every Monday" is the most common job. |
 | Data stack | pandas 3 is the default. Oracle through `python-oracledb` thin mode, MSSQL through `mssql-python`, both fetching through Arrow. REST through the `ctzd-core` client. | Most data comes from REST, Oracle, and MSSQL. Thin mode needs no Oracle client; no source needs Native Network Encryption. |
 | Code layout | `src/app/data/` (the only I/O), `src/app/logic/` (pure functions), `src/app/api/` and `src/app/jobs/` (entry points), and `web/` (the pages), enforced by import-linter and basis-ui's lint. | Agents physically cannot put a query in a page or a route. |
-| Python | Python 3.14, which basis requires, from the platform's mirror of uv's Python builds. Until the React starter lands, apps stay on 3.13. | One version across ctzd and basis. |
+| Python | Python 3.14, which basis requires, from the platform's mirror of uv's Python builds. Airflow's own project stays on 3.13. | One version across ctzd and basis. |
 | Python standards | ruff with every rule, ty with every rule as an error, both handled by the agent. Light data validation: loader schemas check required columns and dtypes only. 70% branch coverage on `logic/`. | Strict where the agent pays the cost, light where it would slow people down. Revisit the strict rules once the agent trials in [validation-plan.md](validation-plan.md) measure what they cost. |
 | Tests | `ctzd check` runs the same gates locally and in Jenkins. Jenkins adds a post-deploy smoke test in a headless browser that fails, and rolls the release back, on an error, a failed request, or a page that never loads; it takes no screenshot. Platform code has ordinary test suites. Agent trials against a local copy of the platform (`validation/`, [validation-plan.md](validation-plan.md)) check the CLI's output and the skills with real agents; they inform changes and are not a gate. | One definition of "green". Only an agent shows whether the skills and messages work for an agent. |
 | Agent instructions | App folders have `AGENTS.md` and `.agents/skills/`, plus a copy of the skills in `.claude/skills/` because Claude Code does not read `.agents/skills/`. `ctzd` writes all three and the app's `.gitignore` lists them. | Agent-neutral guidance that every agent can read. |
@@ -232,6 +232,7 @@ client and to the theme's components and tokens.
 | `ctzd new NAME --sbu SBU --ui react\|none` | Creates the GitHub repo through the platform API and writes the current platform release's starter app into a new folder: for `react`, a working app with the shell, a grid page, a chart page and a filter bar on fake data. `--offline` writes the files only. |
 | `ctzd open NAME --sbu SBU` | Clones an existing app into a new folder. |
 | `ctzd dev [--port N] [--fake]`, `ctzd dev --stop` | Starts the app locally in the background, against real data or, with `--fake`, the fake sources in `fixtures/`, and returns its URL; run again, it restarts it. For a React app it runs the API and the page server together and regenerates the client when the API changes. `--stop` stops it, so an agent never has to find and kill processes. |
+| `ctzd shot [PATH]` | A picture of a page `ctzd dev` serves (default `/`), under `.ctzd/shots/`, and each problem on it, one line each. Not a gate. |
 | `ctzd exec -- COMMAND` | Runs a command in the app's environment with its source credentials, as `ctzd dev` does, such as a look at what a loader returns from the live source. Agents never read or load `.env` themselves. |
 | `ctzd add dataset NAME --source SRC` (planned) | Writes a dataset's SQL file, loader, route, fixture, and test, and regenerates the client. |
 | `ctzd add page NAME --kind grid\|chart\|kpi\|detail --dataset NAME` (planned) | Writes a route and its page from a recipe, wired to the dataset's generated hook. |
@@ -394,7 +395,7 @@ formatting, Oxlint at basis-ui's settings, and TypeScript; a check that the
 generated client matches the API; the pages' tests, which run without a
 browser; and each dataset run once against the fake sources, its frame checked
 against its row type, with no infinities and no more rows than parallax holds.
-Laptops then need no Chromium.
+Laptops need no Chromium for the checks; `ctzd shot` uses Edge on Windows.
 
 Jenkins runs the same `ctzd ci check`, and after the rollout a smoke test opens
 every page in a headless browser and fails, rolling the release back, on an
@@ -760,16 +761,28 @@ tested with the fakes:
   number family;
 - the numbers gate in `ctzd check`, for Python and SQL;
 - `ctzd.display`, the Python port of parallax's formatter;
-- no screenshots: `ctzd ci smoke` takes none, the platform API serves none, and
-  `ctzd deploy` reports none; the guidance no longer mentions them (validation
-  stage 1 passes; stages 2 and 3 not rerun);
+- no screenshots in the deploy loop: `ctzd ci smoke` takes none, the platform
+  API serves none, and `ctzd deploy` reports none (validation stage 1 passes;
+  stages 2 and 3 not rerun);
 - the chart on Gateway API, with sign-in through an Envoy Gateway
   `SecurityPolicy`;
 - platform release 1 (not yet tagged) requiring CLI 0.3.0 and `ctzd-core`
   0.2.0, with the number rules in its guidance.
 
-Not built: the React starter and everything section 13 lists for it, the
-datasets and column kinds, `ctzd add dataset`, `ctzd add page`, `ctzd api list`,
+Built on 2026-11-07 for the MVP, against basis's and basis-ui's main branches,
+and run on one Linux machine: Python 3.14; `ctzd.dataset`, row types and column
+kinds, served by basis-api (2.11 numbers, 2.14 serving the UI at `/`) from
+basis main; the React starter as `ctzd new`'s default, with `@basis/ui`'s shell
+and parallax's grid and chart from the tarballs basis-ui packs from its main
+branch; `ctzd check`'s web install, client, web check, and web build steps;
+`ctzd dev` building the page and serving it with its datasets; `ctzd shot`;
+and the guidance and the `ctzd-pages` skill. A generated app passes every
+check, `ctzd dev` serves it, and `ctzd shot` sees its chart and grid draw.
+Not run: the Docker image (the tarballs are local paths), Jenkins, a browser
+on Windows.
+
+Not built: the rest of what section 13 lists for the React starter, the
+Arrow-table datasets (basis 2.12) and display formats (2.13, basis-ui 1.13), `ctzd add dataset`, `ctzd add page`, `ctzd api list`,
 `ctzd add package`, `ctzd docs ui`, `ctzd dev --fake`, the new skills, Node in
 `install.ps1` and `ctzd setup`, and Python 3.14.
 
