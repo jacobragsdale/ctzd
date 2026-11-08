@@ -18,6 +18,15 @@ description: "Read data in a ctzd app: ctzd.query with SQL files and bind parame
 - Select only the columns the app uses, and filter and aggregate in SQL, not in
   pandas after fetching everything.
 - Check the columns the code relies on with `ctzd.require_columns` in the loader.
+- Every number arrives as a `float64`, with `NaN` where it is missing: decimals,
+  integers, and counts alike. Select ids, account numbers, and other numbers
+  that name something as text: `TO_CHAR(security_id) AS security_id` on Oracle,
+  `CAST(security_id AS VARCHAR(40)) AS security_id` on SQL Server.
+- Never round a number or format it as text, in SQL or in Python: no `ROUND`,
+  no casts to `NUMBER(p,s)` or `DECIMAL(p,s)`, no `round()` or `.round()`, no
+  `f"{x:.2f}"`. The page shows each number to the decimals it needs, and
+  `ctzd.display` writes numbers into emails and messages (see `ctzd-jobs`).
+  `ctzd check` refuses rounding outside the page code.
 - Cache every dashboard loader with `@ctzd.cached`.
 - "Today's" or "latest" data means the newest date the source has, not the
   clock's date: sources are stamped at close of business, skip weekends and
@@ -40,7 +49,7 @@ use = ["pricing_db", "ratings_api"]
 | `.get_all_pages(path, params=None, *, records, next_key="next")` | Follows the link in `next_key` until it is empty; concatenates the rows. |
 | `.get_json(path, params=None) -> object` / `.post_json(path, body, params=None) -> object` | Raw JSON. It is `object`: narrow it with `isinstance` before use. |
 | `@ctzd.cached(ttl="15m")` | Caches the result per argument values, in this process, for `ttl` (`"30s"`, `"15m"`, `"2h"`, `"1d"`, seconds, or a `timedelta`). Arguments must be hashable: `str`, numbers, dates, tuples. Pass `("a", "b")`, never a list or dict. |
-| `ctzd.require_columns(frame, {"col": "str"}, what="prices")` | Raises `ctzd.DataError` naming every missing column or wrong dtype. Families: `str`, `float`, `int`, `number`, `bool`, `datetime`, `any`. Returns the frame. |
+| `ctzd.require_columns(frame, {"col": "str"}, what="prices")` | Raises `ctzd.DataError` naming every missing column or wrong dtype. Families: `str`, `float` (every number), `bool`, `datetime`, `any`. Returns the frame. |
 | `ctzd.write_table(frame, "name", allow_empty=False) -> str` | Publishes a new version of this app's table (jobs only). An empty frame raises `ctzd.StoreError` unless `allow_empty=True`. |
 | `ctzd.read_table("name", app=None, sbu=None, columns=None)` | Latest version of a table; `app=`/`sbu=` read another app's table. |
 
@@ -49,15 +58,18 @@ Errors: `ctzd.SourceError` (source missing or misused), `ctzd.DataError`,
 
 What comes back: Oracle column names that are all upper case (unquoted
 identifiers) arrive lower case, so `select isin, price` gives `isin` and
-`price`; quoted names and SQL Server names arrive as written. Decimal numbers
-arrive as `float64`, date columns as `datetime64`, text as `str`.
+`price`; quoted names and SQL Server names arrive as written. Every number
+arrives as `float64`, date columns as `datetime64`, text as `str`. A
+whole-number column holding a value beyond 9,007,199,254,740,992 (2**53) fails
+the query with `ctzd.DataError`, because a float64 cannot hold it exactly: it is
+almost always an id, so select it as text.
 
 ## Loaders
 
 `src/app/data/sql/trades.sql` (SQL Server)
 
 ```sql
-SELECT trade_id, isin, quantity
+SELECT CAST(trade_id AS VARCHAR(40)) AS trade_id, isin, quantity
 FROM dbo.trades
 WHERE trade_date = %(trade_date)s AND desk = %(desk)s
 ```
@@ -74,7 +86,7 @@ import pandas as pd
 @ctzd.cached(ttl="15m")
 def load_trades(trade_date: dt.date, desk: str) -> pd.DataFrame:
     frame = ctzd.query("trades_db", "sql/trades.sql", {"trade_date": trade_date, "desk": desk})
-    return ctzd.require_columns(frame, {"trade_id": "int", "isin": "str", "quantity": "number"}, what="trades")
+    return ctzd.require_columns(frame, {"trade_id": "str", "isin": "str", "quantity": "float"}, what="trades")
 
 
 @ctzd.cached(ttl="1h")
@@ -95,7 +107,7 @@ def load_rating_scale() -> tuple[str, ...]:
 @ctzd.cached(ttl="10m")
 def _sector_summary() -> pd.DataFrame:
     frame = ctzd.read_table("sector_summary")
-    return ctzd.require_columns(frame, {"sector": "str", "bonds": "int", "avg_price": "float"}, what="sector_summary")
+    return ctzd.require_columns(frame, {"sector": "str", "bonds": "float", "avg_price": "float"}, what="sector_summary")
 
 
 def load_sector_summary() -> pd.DataFrame | None:
@@ -106,9 +118,9 @@ def load_sector_summary() -> pd.DataFrame | None:
         return None  # not cached: the page shows the data as soon as the job has run
 ```
 
-Oracle returns every `NUMBER` column as `float64`, counts included (`COUNT(*)`): declare
-them `"number"` or `"float"` in `require_columns`, not `"int"`. Test frames use the same types
-as the source, or a test passes that the live data then fails.
+Counts arrive as `float64` too (`COUNT(*)`), and so does every number in a fake
+source's frame, a REST response, and a table the store returns, so test frames
+and live data agree. Declare numbers `"float"` in `require_columns`.
 
 The types in these examples are illustrations: before the first deploy, print
 `frame.dtypes` from the live source (below) and declare what comes back, or the
@@ -158,5 +170,6 @@ written locally is read from production when `ctzd env` provided read access.
 - Pass `validate="many_to_one"` (or `one_to_one`, `one_to_many`) to every
   `merge`; a duplicated key then raises `pd.errors.MergeError` instead of
   silently multiplying rows.
-- Floats are fine for prices, amounts, and yields. Round only for display.
+- Floats are right for prices, amounts, and yields. Never round them: the page
+  and `ctzd.display` round once, when they show a number.
 - Compare a `datetime64` column with `pd.Timestamp(as_of)`, not a `date`.

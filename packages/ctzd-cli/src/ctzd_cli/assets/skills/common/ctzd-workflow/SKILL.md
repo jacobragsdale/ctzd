@@ -42,16 +42,17 @@ filter"` labels the change; the default lists the changed files.
 
 Read the result:
 
-- `ok: true` with `release`: live. `url` is the dashboard, `dags` maps each job
-  to its Airflow page, `screenshot` is a PNG of the live page. Look at the
-  screenshot before you tell the person it works.
+- `ok: true` with `release`: live. `url` is the dashboard and `dags` maps each
+  job to its Airflow page. The platform opened the live page after the rollout,
+  and a page with an error, a failed request, or a page that never finished
+  loading would have been rolled back.
 - `ok: true`, no `release`, `build.state` is `queued` or `running`: still
   building. Run `ctzd status --wait --json` again.
 - `ok: false` with `steps`: a check failed and nothing was uploaded. Fix it and
   deploy again.
 - `ok: false` with `build.state: "failed"`: the build stopped at `build.stage`,
-  and `build.log_tail` holds its last log lines (`screenshot` too, when the
-  smoke test took one). Production still runs the previous release, so the
+  and `build.log_tail` holds its last log lines. Production still runs the
+  previous release, so the
   person sees no change. Fix the cause, run
   `ctzd check`, deploy again. See `ctzd-troubleshoot`.
 
@@ -82,7 +83,7 @@ Every result has `ok`, `command`, `summary`, and `next`, plus:
 | Command | Fields |
 |---|---|
 | `check` | `steps`: list of `name`, `state` (`passed`, `fixed`, `failed`, `skipped`), `detail` |
-| `deploy`, `status --wait` | `commit`, `build` (`number`, `state`, `stage`, `url`, `log_tail`, `release`, `has_screenshot`); when live also `release`, `url`, `dags`, `screenshot` |
+| `deploy`, `status --wait` | `commit`, `build` (`number`, `state`, `stage`, `url`, `log_tail`, `release`); when live also `release`, `url`, `dags` |
 | `deploy --detach` | `commit`, `committed` (false when there was nothing new) |
 | `status` | `sbu`, `name`, `url`, `release`, `paused`, `dags`, `last_build` |
 | `run JOB --local` | `exit_code`, `output` (last 40 lines) |
@@ -107,7 +108,7 @@ tests, or release numbers.
 
 | Result | Say |
 |---|---|
-| Release live | "Your dashboard is updated: URL." Add the screenshot. |
+| Release live | "Your dashboard is updated: URL." |
 | Build failed | "The update did not go out because REASON. What people see is unchanged. I am fixing it now." |
 | Built but not deployed (`summary` says nothing was deployed) | Nothing yet: follow `next`, then report the outcome. |
 | Checks failed | Nothing yet: fix it, then report the outcome. |

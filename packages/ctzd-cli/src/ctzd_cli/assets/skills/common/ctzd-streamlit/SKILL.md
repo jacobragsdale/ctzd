@@ -46,8 +46,6 @@ locally. Streamlit is 1.66 or later.
   ```
 
   Altair's typed API does not pass `ctzd check`; use the spec above.
-- Look at the deploy screenshot: a flat line or bars in the wrong order are
-  mistakes to fix before you report.
 - Numbers: `st.metric(label, value)`, and `st.columns(3)` to place several side by side.
 
 ## A page

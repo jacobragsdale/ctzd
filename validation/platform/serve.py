@@ -136,7 +136,7 @@ def run_platform(root: Path, base: Path) -> None:
     fail_build = 2 if os.environ.get("CTZD_TRIAL_FAIL_FIRST_BUILD") == "1" else None
     cluster = LocalCluster(github=github, root=root, ci_env=ci_env, runtime_env=runtime_env, fail_build=fail_build)
     seed = releases.seed_files()
-    gateway = fakes.FakeReleases(channels='cli = "0.2.0"\n[channels]\npilot = 2\ngeneral = 2\n', archives={1: fakes.archive(seed), 2: fakes.archive(trial_release())})
+    gateway = fakes.FakeReleases(channels='cli = "0.3.0"\n[channels]\npilot = 2\ngeneral = 2\n', archives={1: fakes.archive(seed), 2: fakes.archive(trial_release())})
     services = Services(
         github=github,
         jenkins=LocalJenkins(cluster),

@@ -50,18 +50,16 @@ previous release. Read `log_tail` for the real cause; by what the stage does:
   real data (`ctzd env`, `ctzd dev`, open every page), add a test for the case,
   fix it. `the page did not finish loading within N s` means the page never
   rendered: usually a slow query on page load (move it into a job) or code that
-  never returns. Look at the screenshot, then `ctzd logs --json`. If neither
-  shows a cause and nothing changed in how the page loads, deploy again once:
+  never returns. Look at `ctzd logs --json`. If the logs show no cause and
+  nothing changed in how the page loads, deploy again once:
   the smoke test can time out when the platform is busy.
 
 A failure that has nothing to do with the app, such as the image registry
 being unavailable during **Image build**, needs no change: `ctzd deploy --json`
 with nothing new builds again when the last build failed.
 
-`screenshot` is the PNG the smoke test took, saved under `.ctzd/screenshots/`,
-for a failed deploy as well as a successful one. Look at it: a page without an
-error box can still be blank or wrong. The smoke test also fails when a request
-behind the page answers with a server error, such as a Dash callback that raised.
+The smoke test also fails when a request behind the page answers with a server
+error, such as a Dash callback that raised; `build.log_tail` names the request.
 
 `ok: true` with "The build is still running": run `ctzd status --wait --json`.
 

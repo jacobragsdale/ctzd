@@ -482,7 +482,7 @@ wheels = [
 
 [[package]]
 name = "ctzd"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "packages/ctzd-cli" }
 dependencies = [
     { name = "httpx" },
@@ -514,7 +514,7 @@ provides-extras = ["ci"]
 
 [[package]]
 name = "ctzd-api"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "packages/ctzd-api" }
 dependencies = [
     { name = "azure-identity" },
@@ -539,11 +539,12 @@ requires-dist = [
 
 [[package]]
 name = "ctzd-core"
-version = "0.1.1"
+version = "0.2.0"
 source = { editable = "packages/ctzd-core" }
 dependencies = [
     { name = "httpx" },
     { name = "mssql-python", extra = ["pyarrow"] },
+    { name = "numpy" },
     { name = "openpyxl" },
     { name = "oracledb" },
     { name = "pandas" },
@@ -562,6 +563,7 @@ requires-dist = [
     { name = "dash", marker = "extra == 'dash'", specifier = ">=4.5" },
     { name = "httpx", specifier = ">=0.28" },
     { name = "mssql-python", extras = ["pyarrow"], specifier = ">=1.17" },
+    { name = "numpy", specifier = ">=2.5" },
     { name = "openpyxl", specifier = ">=3.1" },
     { name = "oracledb", specifier = ">=26.1" },
     { name = "pandas", specifier = ">=3.1" },

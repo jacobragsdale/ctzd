@@ -8,7 +8,6 @@ __pycache__/
 .env.*
 !.env.example
 .ctzd/out/
-.ctzd/screenshots/
 .ctzd/guidance.json
 .ctzd/dev.json
 .ctzd/dev.log

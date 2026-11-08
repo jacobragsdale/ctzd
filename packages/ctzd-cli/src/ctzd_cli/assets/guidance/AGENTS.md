@@ -21,8 +21,6 @@ Use the `ctzd` command for everything, always with `--json`:
 
 ## Shipping
 
-- After every `ctzd deploy`, look at the screenshot named in its `screenshot` field before you
-  tell the person it works.
 - When the person says the live app is wrong, run `ctzd rollback --json` first, so they see the
   last good version again; then fix the change and deploy.
 
@@ -54,6 +52,10 @@ Use the `ctzd` command for everything, always with `--json`:
   `ruff.toml`, `ty.toml`, `.importlinter`, `pytest.toml`, `.pre-commit-config.yaml`,
   `.gitignore`, `.gitattributes`, `.dockerignore`, `.python-version`, `.ctzd/`. Fix the code instead.
 - Never add `# noqa`, `# ty: ignore`, or lint exclusions to make a check pass.
+- Every number is a float64. Never round one or format it as text outside the page code: no
+  `ROUND` or decimal casts in SQL, no `round()`, `.round()`, or `f"{x:.2f}"` in Python. The page
+  shows each number to its decimals; `ctzd.display` writes numbers into emails and messages.
+  Select ids and account numbers as text.
 - Add packages with `uv add NAME`; never edit `uv.lock` by hand.
 - Never commit, push, reset, or rewrite history with git yourself: `ctzd deploy` saves and ships
   every change after its checks, and a push of your own would ship code that skipped them.

@@ -91,6 +91,12 @@ morning job that reports the latest prices says the previous business day.
 - `ctzd.notify.teams(source, text, title=None)`: `source` is a `teams` source,
   a channel webhook the platform team adds. Ask the person which channel; never
   guess the name.
+- A number in a subject, a body, or a Teams message goes through `ctzd.display`,
+  which rounds it the way the page does: `ctzd.display.number(total, decimals=0)`,
+  `ctzd.display.money(par, "USD")`, `ctzd.display.percent(weight, decimals=1)` and
+  `ctzd.display.bps(spread)` (rates and spreads are fractions: 0.0525 is 5.25%
+  and 525 bp). Never `round()` it or write `f"{x:.2f}"`; `ctzd check` refuses
+  both. Attachments carry the raw numbers, and Excel shows them.
 - `ctzd.write_table(frame, "name")` refuses an empty frame. Pass
   `allow_empty=True` only when no rows is a real answer ("no breaches today").
 - The dashboard reads the table through a loader that calls
