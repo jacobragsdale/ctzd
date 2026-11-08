@@ -12,10 +12,6 @@ const shares = async (): Promise<ArrayBuffer> => {
   return answer.data.arrayBuffer();
 };
 
-/* SHIM (MVP): each column's format comes from its row type once basis-ui step 1.13 reads it; until then the page
- * names it. */
-const formats = { share: { percent: true }, value: { decimals: 2 } };
-
 function HomePage(): ReactElement {
   const dataset = useDataset("category_shares", shares);
   return (
@@ -24,11 +20,11 @@ function HomePage(): ReactElement {
       <div className="h-80">
         <Chart
           dataset={dataset}
-          layout={{ chart: { kind: "bar", x: "category", y: ["value"] }, formats }}
+          layout={{ chart: { kind: "bar", x: "category", y: ["value"] } }}
         />
       </div>
       <div className="h-80">
-        <Grid dataset={dataset} layout={{ formats }} />
+        <Grid dataset={dataset} layout={{}} />
       </div>
     </>
   );

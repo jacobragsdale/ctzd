@@ -13,20 +13,6 @@ def test_names_follow_the_client_and_the_components(name: str, camel: str, pasca
     assert generate.pascal(name) == pascal
 
 
-@pytest.mark.parametrize(
-    ("display", "shown"),
-    [
-        ({"kind": "number", "decimals": 2}, {"decimals": 2}),
-        ({"kind": "pct"}, {"percent": True}),
-        ({"kind": "bps", "decimals": 1}, {"decimals": 1, "bps": True}),
-        ({"kind": "price32", "step": "half"}, {"thirty_seconds": "halves"}),
-        ({"kind": "money", "currency": "USD", "decimals": 0}, {"decimals": 0}),
-    ],
-)
-def test_each_display_format_becomes_parallax_s(display: dict[str, object], shown: dict[str, object]) -> None:
-    assert generate.parallax_format(display) == shown
-
-
 @pytest.mark.parametrize("pages", ['[{ path: "/", title: "Home" }]', '[\n  { path: "/", title: "Home" },\n]'])
 def test_a_new_page_is_linked_after_the_others(tmp_path: Path, pages: str) -> None:
     web = tmp_path / "web" / "src"

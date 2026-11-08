@@ -32,13 +32,11 @@ const prices = async (): Promise<ArrayBuffer> => {
   return answer.data.arrayBuffer();
 };
 
-const formats = { avg_price: { decimals: 3 }, bonds: { decimals: 0 } };
-
 function PricesPage(): ReactElement {
   const dataset = useDataset("sector_prices", prices);
   return (
     <div className="h-96">
-      <Grid dataset={dataset} layout={{ formats }} />
+      <Grid dataset={dataset} layout={{}} />
     </div>
   );
 }
@@ -48,16 +46,16 @@ function PricesPage(): ReactElement {
 - `<Grid>` and `<Chart>` fill their container, so give it a height: `<div className="h-96">`.
   The grid sorts, filters, groups, totals, and exports to Excel by itself.
 - A chart draws columns against a column:
-  `<Chart dataset={dataset} layout={{ chart: { kind: "bar", x: "sector", y: ["avg_price"] }, formats }} />`.
+  `<Chart dataset={dataset} layout={{ chart: { kind: "bar", x: "sector", y: ["avg_price"] } }} />`.
   `kind` is `line`, `area`, `bar`, `scatter`, `heatmap`, `histogram`, `candlestick`, `ohlc`,
   `pie`, or `donut`; `series` splits a column into coloured series. To total many rows per
   category instead, give `group_by: ["sector"]` and `measures: [{ aggregate: "sum", column: "par" }]`
   (`aggregate` is `sum`, `mean`, `min`, `max`, or `count`).
 - A small chart of rows the page already holds: `<Chart rows={rows} kind="bar" x="sector" y="exposure" />`.
-- `formats` writes each column's numbers: `{ decimals: 2 }`, `{ percent: true }` and
-  `{ bps: true }` (both for fractions: 0.0525 is 5.25% and 525 bp), `{ thirty_seconds: "halves" }`
-  for Treasury prices, `{ abbreviate: "millions" }`. Until the formats come from the dataset's row
-  types by themselves, give each number column the format its row type names.
+- Each number column shows by its row type's kind (`ctzd.Price`, `ctzd.Pct`, ...): the grid,
+  the chart, and its tooltips read it from the dataset, so a page names no formats. Change a
+  column's kind in `src/app/api/datasets.py`, not in the page. A layout's `formats` overrides
+  one column only when a page must show it differently from everywhere else.
 - `ParallaxProvider` in `web/src/pages/layout.tsx` starts the engine for every page; leave it there.
 
 Pick the chart from the person's question:
@@ -102,7 +100,7 @@ Two commands write a working slice, which passes `ctzd check` as written; then y
    `app.toml`, and regenerates the client. Without `--source`, the loader returns example rows.
    Write the query, then make the row type's fields the query's columns (`ctzd-data`).
 2. `ctzd add page PAGE --dataset NAME --json` writes `web/src/pages/PAGE.tsx`, showing the
-   dataset as a bar chart and a grid with each column's format from its row type, routes it at
+   dataset as a bar chart and a grid routes it at
    `/PAGE`, and links it from the header (`web/src/nav.ts`). Change the chart's columns and kind
    to answer the person's question.
 3. Run `ctzd dev`, then `ctzd shot /PAGE --json`. Look at the picture it names in `picture`, and

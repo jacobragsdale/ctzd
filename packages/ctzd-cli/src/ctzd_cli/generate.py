@@ -33,7 +33,6 @@ DATASET_NAME = re.compile(r"[a-z][a-z0-9_]{0,40}")
 PAGE_NAME = re.compile(r"[a-z][a-z0-9-]{0,40}")
 _FORMAT_KEY = "x-basis-format"
 _EXAMPLE_QUERY = "-- Replace this with the real query. Bind values as :name on Oracle and %(name)s on SQL Server.\nSELECT 'example' AS label, 1.0 AS value\n"
-_STEPS = {"32nd": "thirty_seconds", "half": "halves", "quarter": "quarters", "eighth": "eighths"}
 
 
 def camel(name: str) -> str:
@@ -229,23 +228,8 @@ def datasets(root: Path) -> list[Dataset]:
     return found
 
 
-def parallax_format(display: dict[str, object]) -> dict[str, object]:
-    """A column's display format as parallax's grid and charts take it."""
-    kind = display.get("kind")
-    decimals = display.get("decimals")
-    shown: dict[str, object] = {} if decimals is None else {"decimals": decimals}
-    if kind == "pct":
-        shown["percent"] = True
-    elif kind == "bps":
-        shown["bps"] = True
-    elif kind == "price32":
-        shown = {"thirty_seconds": _STEPS.get(str(display.get("step", "32nd")), "thirty_seconds")}
-    return shown
-
-
 def _page(name: str, dataset: Dataset) -> str:
-    """SHIM (MVP): the page names each column's format until basis-ui reads them from the dataset (step 1.13)."""
-    formats = {column.name: parallax_format(column.format) for column in dataset.columns if column.format is not None}
+    """A page of the dataset as a bar chart and a grid; parallax formats each column by its row type's kind."""
     numbers = [column.name for column in dataset.columns if column.kind == "number"]
     labels = [column.name for column in dataset.columns if column.kind == "text"]
     if not numbers:
@@ -267,21 +251,16 @@ const rows = async (): Promise<ArrayBuffer> => {{
   return answer.data.arrayBuffer();
 }};
 
-const formats = {json.dumps(formats)};
-
 function {component}(): ReactElement {{
   const dataset = useDataset("{dataset.name}", rows);
   return (
     <>
       <TypographyH1>{title(name)}</TypographyH1>
       <div className="h-80">
-        <Chart
-          dataset={{dataset}}
-          layout={{{{ chart: {{ kind: "bar", x: "{x}", y: ["{numbers[0]}"] }}, formats }}}}
-        />
+        <Chart dataset={{dataset}} layout={{{{ chart: {{ kind: "bar", x: "{x}", y: ["{numbers[0]}"] }} }}}} />
       </div>
       <div className="h-80">
-        <Grid dataset={{dataset}} layout={{{{ formats }}}} />
+        <Grid dataset={{dataset}} layout={{{{}}}} />
       </div>
     </>
   );

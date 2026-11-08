@@ -4,4 +4,5 @@
 /* oxlint-disable oxc/no-barrel-file -- this file is the generated client's whole surface, which changes with every
  * dataset; a bundle keeps only what the pages import. */
 export * from "./generated/client.ts";
+export * from "./generated/formats.ts";
 export * from "./generated/model/index.ts";
