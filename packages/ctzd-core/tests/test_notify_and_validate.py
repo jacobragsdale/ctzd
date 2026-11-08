@@ -36,6 +36,6 @@ def test_require_columns_accepts_matching_frames() -> None:
 def test_require_columns_reports_every_problem_at_once() -> None:
     prices = pd.DataFrame({"price": ["1.0"]})
     with pytest.raises(ctzd.DataError) as caught:
-        ctzd.require_columns(prices, {"isin": "str", "price": "number"}, what="prices")
+        ctzd.require_columns(prices, {"isin": "str", "price": "float"}, what="prices")
     assert "missing column 'isin'" in str(caught.value)
     assert "column 'price'" in str(caught.value)

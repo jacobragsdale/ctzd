@@ -10,7 +10,7 @@ from typing import assert_never
 
 import pandas as pd
 
-from ctzd import _mssql, _oracle, _overrides
+from ctzd import _arrow, _mssql, _oracle, _overrides
 from ctzd._errors import SourceError
 from ctzd.sources import MssqlSource, OracleSource, RestSource, TeamsSource, check_name, load_source
 
@@ -34,7 +34,8 @@ def read_sql(sql: str) -> str:
 def query(source: str, sql: str, params: Mapping[str, object] | None = None) -> pd.DataFrame:
     """Run the SQL file `sql` against `source` and return the rows as a DataFrame.
 
-    Bind parameters by name: `:name` for Oracle, `%(name)s` for SQL Server.
+    Bind parameters by name: `:name` for Oracle, `%(name)s` for SQL Server. Every
+    number arrives as a float64, NaN where it is missing; select ids as text.
     """
     check_name(source)
     bound = dict(params or {})
@@ -54,9 +55,9 @@ def _real_query(source: str, sql: str, params: Mapping[str, object]) -> pd.DataF
     text = read_sql(sql)
     match config:
         case OracleSource():
-            return _oracle.fetch(config, text, params)
+            return _oracle.fetch(config, text, params, what=f"{source} {sql}")
         case MssqlSource():
-            return _mssql.fetch(config, text, params)
+            return _mssql.fetch(config, text, params, what=f"{source} {sql}")
         case RestSource() | TeamsSource():
             msg = f"Source {source!r} is a {config.kind} source; call ctzd.rest({source!r}) instead of ctzd.query."
             raise SourceError(msg)
@@ -73,9 +74,10 @@ def _fake_query(fakes: Mapping[str, Mapping[str, object]], source: str, sql: str
     if result is None:
         msg = f"Fake source {source!r} has no result for {sql!r}; known SQL files: {sorted(routes)}."
         raise SourceError(msg)
+    # A fake's numbers become float64 as a real source's do, so a test sees what the app will.
     if isinstance(result, pd.DataFrame):
-        return result.copy()
+        return _arrow.floats(result.copy(), what=f"fake {source} {sql}")
     if isinstance(result, _overrides.SqlHandler):
-        return result.function(params)
+        return _arrow.floats(result.function(params), what=f"fake {source} {sql}")
     msg = f"Fake for {source!r} {sql!r} must be a DataFrame or ctzd.testing.by_params(function)."
     raise SourceError(msg)

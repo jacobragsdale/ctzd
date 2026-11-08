@@ -30,10 +30,11 @@ def connection_string(source: MssqlSource) -> str:
     return ";".join(f"{key}={_value(value)}" for key, value in parts.items())
 
 
-def fetch(source: MssqlSource, sql: str, params: Mapping[str, object]) -> pd.DataFrame:
+def fetch(source: MssqlSource, sql: str, params: Mapping[str, object], *, what: str) -> pd.DataFrame:
+    """The rows, every number a float64."""
     with mssql_python.connect(connection_string(source), timeout=_LOGIN_TIMEOUT_SECONDS) as connection, connection.cursor() as cursor:
         if params:
             cursor.execute(sql, dict(params))
         else:
             cursor.execute(sql)
-        return to_pandas(cursor.arrow())
+        return to_pandas(cursor.arrow(), what=what)

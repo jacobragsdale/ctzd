@@ -11,7 +11,7 @@ import httpx
 import pandas as pd
 from pydantic import TypeAdapter, ValidationError
 
-from ctzd import _overrides
+from ctzd import _arrow, _overrides
 from ctzd._errors import DataError, SourceError
 from ctzd.sources import BasicAuth, BearerAuth, ClientCredentialsAuth, HeaderAuth, NoAuth, RestSource, check_name, load_source
 
@@ -55,9 +55,10 @@ class RestClient:
         """GET `path` and turn the JSON rows into a frame.
 
         `records` names the key holding the list of rows when the response is an
-        object rather than a list. Nested objects become dotted column names.
+        object rather than a list. Nested objects become dotted column names, and
+        every number a float64.
         """
-        return records_frame(self.get_json(path, params), records)
+        return records_frame(self.get_json(path, params), records, what=path)
 
     def get_all_pages(self, path: str, params: QueryParams | None = None, *, records: str, next_key: str = "next") -> pd.DataFrame:
         """Follow the URL in `next_key` of each response until it is empty, and concatenate the rows."""
@@ -68,7 +69,7 @@ class RestClient:
             if url is None:
                 break
             payload = self.get_json(url, page_params)
-            frames.append(records_frame(payload, records))
+            frames.append(records_frame(payload, records, what=path))
             body = _as_object(payload)
             following = None if body is None else body.get(next_key)
             url = str(following) if following else None
@@ -135,8 +136,8 @@ class RestClient:
             return token
 
 
-def records_frame(payload: object, records: str | None) -> pd.DataFrame:
-    """Rows from a JSON list, or from the list under `records` in a JSON object."""
+def records_frame(payload: object, records: str | None, *, what: str = "REST response") -> pd.DataFrame:
+    """Rows from a JSON list, or from the list under `records` in a JSON object, every number a float64."""
     rows = payload
     if records is not None:
         body = _as_object(payload)
@@ -149,7 +150,7 @@ def records_frame(payload: object, records: str | None) -> pd.DataFrame:
     except ValidationError:
         msg = "Expected a JSON list of objects; pass records= to name the key that holds the rows."
         raise DataError(msg) from None
-    return pd.json_normalize(normalized)
+    return _arrow.floats(pd.json_normalize(normalized), what=what)
 
 
 _clients: dict[tuple[str, str], RestClient] = {}

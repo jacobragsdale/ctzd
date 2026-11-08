@@ -13,7 +13,7 @@ from packaging.version import InvalidVersion, Version
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from ctzd_cli import api_models as m
-from ctzd_cli import proc, sync
+from ctzd_cli import proc, rounding, sync
 from ctzd_cli.appconfig import AppConfig
 from ctzd_cli.config import PlatformConfig
 from ctzd_cli.errors import CliError
@@ -224,6 +224,20 @@ def sql_files(root: Path) -> Step:
     return Step("sql", "failed", "\n".join(problems)) if problems else Step("sql", "passed")
 
 
+_SHOWN_PROBLEMS = 20
+
+
+def numbers(root: Path) -> Step:
+    """No Python or SQL in the app rounds or formats a number; see `ctzd_cli.rounding`."""
+    found = rounding.problems(root)
+    if not found:
+        return Step("numbers", "passed")
+    shown = found[:_SHOWN_PROBLEMS]
+    more = len(found) - len(shown)
+    lines = [*shown, *([f"... and {more} more."] if more else []), rounding.FIX]
+    return Step("numbers", "failed", "\n".join(lines))
+
+
 def tests(root: Path) -> Step:
     result = _tool(root, "pytest", "-q", "--no-header", "-p", "no:cacheprovider")
     return Step("tests", "passed", proc.tail(result.output, 3)) if result.ok else Step("tests", "failed", proc.tail(result.output, 80))
@@ -237,6 +251,6 @@ def run_all(target: Target, *, mode: Mode, fast: bool) -> list[Step]:
     steps.append(environment(root, mode))
     if steps[-1].state == "failed":
         return steps
-    steps += [formatting(root, mode), lint(root, mode), types(root), layers(root), sql_files(root)]
+    steps += [formatting(root, mode), lint(root, mode), types(root), layers(root), sql_files(root), numbers(root)]
     steps.append(Step("tests", "skipped", "--fast") if fast else tests(root))
     return steps

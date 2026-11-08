@@ -16,7 +16,7 @@ from urllib.parse import urlsplit
 import pandas as pd
 
 from ctzd import _overrides
-from ctzd._arrow import Storage
+from ctzd._arrow import Storage, floats
 from ctzd._errors import StoreError
 from ctzd.settings import app_settings
 
@@ -69,7 +69,8 @@ def write_table(frame: pd.DataFrame, name: str, *, allow_empty: bool = False, ke
     """Publish `frame` as the new version of this app's table `name` and return the version id.
 
     An empty frame is refused unless `allow_empty=True`, because an empty
-    result is far more often a broken query than a real answer.
+    result is far more often a broken query than a real answer. Every number is
+    written as a float64, so a reader gets the same type whatever wrote it.
     """
     _check_table(name)
     if frame.empty and not allow_empty:
@@ -88,7 +89,7 @@ def write_table(frame: pd.DataFrame, name: str, *, allow_empty: bool = False, ke
     table_dir = storage.path(target.sbu, target.app, name)
     version_dir = f"{table_dir}/v={version}"
     storage.make_dirs(version_dir)
-    storage.write_frame(f"{version_dir}/data.parquet", frame)
+    storage.write_frame(f"{version_dir}/data.parquet", floats(frame, what=f"table {name!r}"))
     pointer_tmp = f"{table_dir}/{_LATEST}.{secrets.token_hex(4)}.tmp"
     storage.write_text(pointer_tmp, version)
     storage.move(pointer_tmp, f"{table_dir}/{_LATEST}")
@@ -110,6 +111,6 @@ def read_table(name: str, *, app: str | None = None, sbu: str | None = None, col
         table_dir = storage.path(owner_sbu, owner_app, name)
         version = storage.read_text(f"{table_dir}/{_LATEST}")
         if version is not None:
-            return storage.read_frame(f"{table_dir}/v={version.strip()}/data.parquet", columns)
+            return floats(storage.read_frame(f"{table_dir}/v={version.strip()}/data.parquet", columns), what=f"table {name!r}")
     msg = f"Table {name!r} of app {owner_sbu}/{owner_app} has never been written. Run the job that writes it first."
     raise StoreError(msg)

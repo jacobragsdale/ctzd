@@ -1,4 +1,7 @@
-"""`ctzd.require_columns`: a light check that a frame has the columns and dtype families code relies on."""
+"""`ctzd.require_columns`: a light check that a frame has the columns and dtype families code relies on.
+
+Every number is a float64, so `float` is the one family for numbers; ids are text, `str`.
+"""
 
 from collections.abc import Callable, Mapping
 from typing import Literal
@@ -8,15 +11,13 @@ from pandas.api import types as ptypes
 
 from ctzd._errors import DataError
 
-Family = Literal["any", "bool", "datetime", "float", "int", "number", "str"]
+Family = Literal["any", "bool", "datetime", "float", "str"]
 
 _CHECKS: dict[Family, Callable[[pd.Series], bool]] = {
     "any": lambda _dtype: True,
     "bool": ptypes.is_bool_dtype,
     "datetime": ptypes.is_datetime64_any_dtype,
     "float": ptypes.is_float_dtype,
-    "int": ptypes.is_integer_dtype,
-    "number": ptypes.is_numeric_dtype,
     "str": ptypes.is_string_dtype,
 }
 
