@@ -1,9 +1,11 @@
 # ctzd
 
 ctzd is a platform for citizen developers: business users with no coding experience who ask an AI
-coding agent to build Python dashboards (Streamlit or Dash) and scheduled jobs, and get back a link to
-the running app. The agent does every technical step through the `ctzd` command line. Apps run on
-Kubernetes; Jenkins builds them; Airflow schedules their jobs.
+coding agent to build dashboards and scheduled jobs, and get back a link to the running app. A
+dashboard is a React app on basis-ui with a basis-api backend, in one repo and one container (the
+Streamlit and Dash starters stay until the React one lands; [docs/plan.md](docs/plan.md) section 13).
+The agent does every technical step through the `ctzd` command line. Apps run on Kubernetes; Jenkins
+builds them; Airflow schedules their jobs.
 
 The design, every decision behind it, and the rollout plan are in [docs/plan.md](docs/plan.md).
 All hostnames and organisation names in this repository are `contoso` placeholders.
@@ -27,12 +29,14 @@ All hostnames and organisation names in this repository are `contoso` placeholde
 
 ## Status
 
-CLI 0.2.0, 2026-11-06. Templates and skills ship as platform releases the API serves, separate from the
-CLI. Verified here: the CLI, runtime library, and API test suites; apps of each kind generated and
-passing every gate; the CLI against the API over HTTP; the Jenkins library, rollback job, and delete job
-on a real Jenkins with the deploy tools stubbed; the Helm chart linted and rendered; the factory and
-janitor DAGs loaded by Airflow 3.3; and agent trials against a local copy of the platform. Results are
-in [docs/validation-plan.md](docs/validation-plan.md). Not yet run against the real services: GitHub
+CLI 0.3.0, 2026-11-07. Templates and skills ship as platform releases the API serves, separate from the
+CLI. Every number is a float64 that only the display rounds, and `ctzd check` refuses rounding in an
+app's Python and SQL; agents take no screenshots; dashboards are reached through Gateway API. Verified
+here: the CLI, runtime library, and API test suites; apps of each kind generated and passing every
+gate; the CLI against the API over HTTP; the Jenkins library, rollback job, and delete job on a real
+Jenkins with the deploy tools stubbed; the Helm chart linted and rendered; the factory and janitor DAGs
+loaded by Airflow 3.3; and agent trials against a local copy of the platform. Results are in
+[docs/validation-plan.md](docs/validation-plan.md). Not yet run against the real services: GitHub
 Enterprise, Jenkins with a real cluster, AKS, Key Vault, Airflow's REST API, the company's Oracle and
 SQL Server, and Windows laptops. Section 13 of the plan lists the Phase 0 checks for each.
 
