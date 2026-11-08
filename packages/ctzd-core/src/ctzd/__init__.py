@@ -1,6 +1,6 @@
 """The ctzd runtime library. App code imports it as `import ctzd`."""
 
-from ctzd import notify, testing
+from ctzd import display, notify, testing
 from ctzd._errors import CtzdError, DataError, SourceError, StoreError
 from ctzd._messages import Attachment, EmailMessage, TeamsMessage
 from ctzd.cache import cached
@@ -19,6 +19,7 @@ __all__ = [
     "StoreError",
     "TeamsMessage",
     "cached",
+    "display",
     "notify",
     "query",
     "read_table",
