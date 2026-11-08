@@ -49,6 +49,23 @@ class PythonConfig(_Model):
     sources: dict[str, dict[str, str]] = Field(default_factory=dict)
 
 
+class NpmConfig(_Model):
+    """Where an app's pages get the firm's npm packages, by name: a version range, or a `file:` path that may start
+    with `~`. SHIM (MVP): basis-ui's packages are tarballs it packs from its main branch, until the internal registry
+    serves them."""
+
+    packages: dict[str, str] = Field(default_factory=dict)
+
+    def spec(self, name: str) -> str:
+        found = self.packages.get(name)
+        if found is None:
+            msg = f"The platform config names no source for the npm package {name!r}."
+            raise CliError(msg, hint="Add it to [npm.packages] in the platform config.")
+        if found.startswith("file:~"):
+            return "file:" + str(Path(found.removeprefix("file:")).expanduser())
+        return found
+
+
 class SizeConfig(_Model):
     cpu_request: str
     cpu_limit: str
@@ -77,6 +94,7 @@ class PlatformConfig(_Model):
     github: GitHubConfig
     platform: PlatformUrls
     python: PythonConfig
+    npm: NpmConfig = Field(default_factory=NpmConfig)
     sizes: dict[str, SizeConfig]
     sbus: dict[str, SbuConfig]
 

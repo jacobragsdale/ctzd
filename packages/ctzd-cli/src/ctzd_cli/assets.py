@@ -1,5 +1,6 @@
 """Views over a platform release: the files `ctzd` writes into an app, keyed by their path in the app."""
 
+from collections.abc import Mapping
 from importlib import metadata
 
 from ctzd_cli import api_models as m
@@ -17,9 +18,13 @@ def _folder(release: m.PlatformRelease, prefix: str) -> dict[str, str]:
     return {path.removeprefix(prefix): text for path, text in sorted(release.files.items()) if path.startswith(prefix)}
 
 
-def locked_files(release: m.PlatformRelease) -> dict[str, str]:
-    """The build files: committed in every app and drift-checked against the app's recorded release."""
-    return _folder(release, "locked/")
+def locked_files(release: m.PlatformRelease, ui: Ui) -> dict[str, str]:
+    """The build files: committed in every app and drift-checked against the app's recorded release. A React app's
+    `locked-react/` files add its pages' configuration and replace the Dockerfile with one that builds them."""
+    files = _folder(release, "locked/")
+    if ui == "react":
+        files |= _folder(release, "locked-react/")
+    return files
 
 
 def skills(release: m.PlatformRelease, sbu: str) -> dict[str, str]:
@@ -47,12 +52,13 @@ def _render(text: str, tokens: dict[str, str]) -> str:
     return text
 
 
-def starter_files(release: m.PlatformRelease, ui: Ui, *, title: str, sbu_name: str) -> dict[str, str]:
-    tokens = {"title": title, "sbu_name": sbu_name}
+def starter_files(release: m.PlatformRelease, ui: Ui, tokens: Mapping[str, str]) -> dict[str, str]:
+    """The starter app for `ui`, its `{{token}}`s filled: `name`, `title`, `sbu_name`, and `npm:PACKAGE`, where each npm
+    package the pages need comes from."""
     files = _folder(release, "starter/common/")
     if ui != "none":
         files |= _folder(release, f"starter/{ui}/")
-    return {path: _render(text, tokens) for path, text in files.items()}
+    return {path: _render(text, dict(tokens)) for path, text in files.items()}
 
 
 def job_files(release: m.PlatformRelease, job: str) -> dict[str, str]:

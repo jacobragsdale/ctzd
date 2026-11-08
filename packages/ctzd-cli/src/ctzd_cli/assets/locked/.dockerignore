@@ -3,6 +3,8 @@
 .env
 .env.*
 .ctzd/out
+web/node_modules
+web/dist
 .claude
 .agents
 tests

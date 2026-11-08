@@ -11,36 +11,36 @@ SEED = releases.seed()
 
 def test_a_fresh_app_has_no_drift_and_records_its_release(tmp_path: Path) -> None:
     make_app(tmp_path)
-    assert sync.drift(tmp_path, config.load(), SEED) == []
+    assert sync.drift(tmp_path, config.load(), SEED, "react") == []
     assert sync.recorded_release(tmp_path) == SEED.release
 
 
 def test_an_edited_locked_file_is_reported_and_restored(tmp_path: Path) -> None:
     make_app(tmp_path)
     (tmp_path / "ruff.toml").write_text("line-length = 80\n")
-    assert sync.drift(tmp_path, config.load(), SEED) == [sync.Drift("ruff.toml", "changed")]
-    assert sync.write_build(tmp_path, config.load(), SEED) == ["ruff.toml"]
-    assert sync.drift(tmp_path, config.load(), SEED) == []
+    assert sync.drift(tmp_path, config.load(), SEED, "react") == [sync.Drift("ruff.toml", "changed")]
+    assert sync.write_build(tmp_path, config.load(), SEED, "react") == ["ruff.toml"]
+    assert sync.drift(tmp_path, config.load(), SEED, "react") == []
 
 
 def test_windows_line_endings_are_not_drift(tmp_path: Path) -> None:
     make_app(tmp_path)
     path = tmp_path / "Dockerfile"
     path.write_bytes(path.read_bytes().replace(b"\n", b"\r\n"))
-    assert sync.drift(tmp_path, config.load(), SEED) == []
+    assert sync.drift(tmp_path, config.load(), SEED, "react") == []
 
 
 def test_a_deleted_locked_file_is_missing(tmp_path: Path) -> None:
     make_app(tmp_path)
     (tmp_path / "Jenkinsfile").unlink()
-    assert sync.Drift("Jenkinsfile", "missing") in sync.drift(tmp_path, config.load(), SEED)
+    assert sync.Drift("Jenkinsfile", "missing") in sync.drift(tmp_path, config.load(), SEED, "react")
 
 
 def test_guidance_is_not_drift_checked(tmp_path: Path) -> None:
     make_app(tmp_path)
     (tmp_path / "AGENTS.md").write_text("edited\n")
     (tmp_path / ".agents" / "skills" / "homemade").mkdir()
-    assert sync.drift(tmp_path, config.load(), SEED) == []
+    assert sync.drift(tmp_path, config.load(), SEED, "react") == []
 
 
 def test_changing_a_managed_pyproject_table_is_drift_but_dependencies_are_not(tmp_path: Path) -> None:
@@ -48,16 +48,16 @@ def test_changing_a_managed_pyproject_table_is_drift_but_dependencies_are_not(tm
     path = tmp_path / "pyproject.toml"
     text = path.read_text()
     path.write_text(text.replace('dependencies = ["ctzd-fi>=0.1", "streamlit>=1.66"]', 'dependencies = ["ctzd-fi>=0.1", "plotly>=6", "streamlit>=1.66"]'))
-    assert sync.drift(tmp_path, config.load(), SEED) == []
+    assert sync.drift(tmp_path, config.load(), SEED, "react") == []
     path.write_text(path.read_text().replace('"ruff==0.17.3"', '"ruff==0.18.0"'))
-    assert sync.drift(tmp_path, config.load(), SEED) == [sync.Drift("pyproject.toml [dependency-groups.dev]", "changed")]
+    assert sync.drift(tmp_path, config.load(), SEED, "react") == [sync.Drift("pyproject.toml [dependency-groups.dev]", "changed")]
 
 
 def test_writing_build_files_rewrites_managed_tables_and_keeps_dependencies(tmp_path: Path) -> None:
     make_app(tmp_path)
     path = tmp_path / "pyproject.toml"
-    path.write_text(path.read_text().replace('"ruff==0.17.3"', '"ruff==0.1.0"').replace('"streamlit>=1.66"]', '"streamlit>=1.66", "plotly>=6"]'))
-    assert sync.write_build(tmp_path, config.load(), SEED) == ["pyproject.toml"]
+    path.write_text(path.read_text().replace('"ruff==0.17.3"', '"ruff==0.1.0"').replace('"ctzd-fi>=0.1"]', '"ctzd-fi>=0.1", "plotly>=6"]'))
+    assert sync.write_build(tmp_path, config.load(), SEED, "react") == ["pyproject.toml"]
     pyproject = tomllib.loads(path.read_text())
     assert "plotly>=6" in pyproject["project"]["dependencies"]
     assert "ruff==0.17.3" in pyproject["dependency-groups"]["dev"]
@@ -66,8 +66,8 @@ def test_writing_build_files_rewrites_managed_tables_and_keeps_dependencies(tmp_
 def test_a_later_release_with_other_tool_pins_is_a_different_build(tmp_path: Path) -> None:
     del tmp_path
     pins = SEED.python.model_copy(update={"dev": (*SEED.python.dev, "mypy==2.0")})
-    assert not sync.same_build(config.load(), SEED, variant(SEED, 2, python=pins.model_dump()))
-    assert sync.same_build(config.load(), SEED, variant(SEED, 2, files={"skills/common/ctzd-data/SKILL.md": "new advice"}))
+    assert not sync.same_build(config.load(), SEED, variant(SEED, 2, python=pins.model_dump()), "react")
+    assert sync.same_build(config.load(), SEED, variant(SEED, 2, files={"skills/common/ctzd-data/SKILL.md": "new advice"}), "react")
 
 
 def test_guidance_goes_to_agents_and_claude_and_is_gitignored(tmp_path: Path) -> None:

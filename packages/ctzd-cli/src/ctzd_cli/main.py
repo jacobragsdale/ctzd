@@ -6,12 +6,13 @@ import sys
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal
+from typing import Literal, get_args
 
 import httpx
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from ctzd_cli import assets, commands, releases
+from ctzd_cli.appconfig import Ui
 from ctzd_cli.commands import Context, Outcome
 from ctzd_cli.errors import CliError, UsageError
 
@@ -30,7 +31,7 @@ class Args(BaseModel):
     action: str | None = None
     name: str | None = None
     sbu: str | None = None
-    ui: Literal["streamlit", "dash", "none"] = "streamlit"
+    ui: Ui = "react"
     dir: Path | None = None
     owner: str | None = None
     offline: bool = False
@@ -72,7 +73,7 @@ def _app_parsers(sub: argparse._SubParsersAction[argparse.ArgumentParser], commo
     new = sub.add_parser("new", parents=[common], help="create a new app and its GitHub repo")
     new.add_argument("name")
     new.add_argument("--sbu", required=True, help="business unit, such as fi")
-    new.add_argument("--ui", choices=["streamlit", "dash", "none"], default="streamlit")
+    new.add_argument("--ui", choices=get_args(Ui), default="react")
     new.add_argument("--dir", type=Path, help="parent folder; default: the current folder")
     new.add_argument("--owner", help="owner email; default: the GitHub login's email")
     new.add_argument("--offline", action="store_true", help="for platform tests only: write the files with no repository, so the app can never be deployed")

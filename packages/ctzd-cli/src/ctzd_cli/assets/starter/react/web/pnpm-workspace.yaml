@@ -1,0 +1,8 @@
+# The page's pnpm settings. @basis/parallax depends on @basis/ui, which comes from the same place as the app's.
+overrides:
+  "@basis/ui": "{{npm:@basis/ui}}"
+  # orval brings TypeScript 6 with it; one TypeScript in the tree.
+  typescript: 7.0.2
+# esbuild's install script only checks the binary pnpm already installs.
+allowBuilds:
+  esbuild: false

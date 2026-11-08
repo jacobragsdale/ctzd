@@ -12,8 +12,13 @@ from playwright.sync_api import Page, Response, ViewportSize, sync_playwright
 
 from ctzd_cli.appconfig import Ui
 
-_ERROR_SELECTORS: dict[Ui, tuple[str, ...]] = {"streamlit": ('[data-testid="stException"]',), "dash": (".dash-fe-error__title", '[data-dash-is-loading="true"] .dash-fe-error'), "none": ()}
-_READY_SELECTORS: dict[Ui, str] = {"streamlit": '[data-testid="stApp"]', "dash": "#react-entry-point", "none": "body"}
+_ERROR_SELECTORS: dict[Ui, tuple[str, ...]] = {
+    "streamlit": ('[data-testid="stException"]',),
+    "dash": (".dash-fe-error__title", '[data-dash-is-loading="true"] .dash-fe-error'),
+    "react": (),
+    "none": (),
+}
+_READY_SELECTORS: dict[Ui, str] = {"streamlit": '[data-testid="stApp"]', "dash": "#react-entry-point", "react": "#root > *", "none": "body"}
 _SETTLE_MS = 4_000
 _VIEWPORT = ViewportSize(width=1440, height=900)
 _SERVER_ERROR = 500
@@ -28,6 +33,15 @@ class SmokeResult:
     @property
     def ok(self) -> bool:
         return not self.problems
+
+
+def _watch_page_errors(page: Page, result: SmokeResult) -> None:
+    """Record any error a React page throws and does not catch; its shell shows no error box of its own to look for."""
+
+    def on_error(error: PlaywrightError) -> None:
+        result.problems.append(f"the page threw: {str(error).splitlines()[0][:500]}")
+
+    page.on("pageerror", on_error)
 
 
 def _watch_server_errors(page: Page, result: SmokeResult) -> None:
@@ -71,6 +85,8 @@ def smoke(url: str, *, ui: Ui, timeout_ms: int = _TIMEOUT_MS) -> SmokeResult:
         try:
             page = browser.new_page(viewport=_VIEWPORT)
             _watch_server_errors(page, result)
+            if ui == "react":
+                _watch_page_errors(page, result)
             _check(page, url, ui, result, timeout_ms)
             if ui == "streamlit" and not result.problems:
                 links = page.locator('[data-testid="stSidebarNavLink"]')

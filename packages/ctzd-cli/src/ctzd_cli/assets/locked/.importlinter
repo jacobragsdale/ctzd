@@ -4,10 +4,10 @@ root_package = app
 include_external_packages = True
 
 [importlinter:contract:layers]
-name = ui and jobs sit above data and logic; each layer stays independent of its neighbour
+name = datasets and jobs sit above data and logic; each layer stays independent of its neighbour
 type = layers
 layers =
-    app.ui | app.jobs
+    (app.ui) | app.api | app.jobs
     app.data | app.logic
 
 [importlinter:contract:pure-logic]
@@ -24,10 +24,10 @@ forbidden_modules =
     streamlit
 
 [importlinter:contract:pages-use-loaders]
-name = pages reach data only through app.data
+name = datasets reach data only through app.data
 type = forbidden
 source_modules =
-    app.ui
+    app.api
 forbidden_modules =
     httpx
     mssql_python

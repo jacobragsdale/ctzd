@@ -21,13 +21,19 @@ def test_next_release_number_follows_the_highest() -> None:
     assert release.next_number([]) == 1
 
 
-def test_streamlit_values_run_streamlit_with_its_health_endpoint() -> None:
+def test_react_values_run_the_app_server_with_the_api_s_readiness() -> None:
     values = render.helm_values(config.load(), app_config(), image="acr/fi-bond-prices:abc", release=7)
     assert values.enabled
     assert values.host == "fi-bond-prices.ctzd.contoso.com"
-    assert values.readiness_path == "/_stcore/health"
+    assert values.readiness_path == "/api/health/ready"
+    assert values.command[:3] == ("uvicorn", "--factory", "ctzd.api:asgi")
+    assert values.model_dump(by_alias=True)["readinessPath"] == "/api/health/ready"
+
+
+def test_streamlit_values_run_streamlit_with_its_health_endpoint() -> None:
+    values = render.helm_values(config.load(), app_config(ui="streamlit"), image="i", release=None)
     assert values.command[:2] == ("streamlit", "run")
-    assert values.model_dump(by_alias=True)["readinessPath"] == "/_stcore/health"
+    assert values.readiness_path == "/_stcore/health"
 
 
 def test_dash_values_serve_with_gunicorn() -> None:

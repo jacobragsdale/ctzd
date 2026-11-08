@@ -215,7 +215,7 @@ def test_pyproject_is_the_platforms_only_while_the_person_changed_nothing_else_i
     path.write_text(path.read_text().replace('"ruff==0.17.3"', '"ruff==0.17.4"'))
     ctx = context(app, FakePlatform([m.Build(number=8, state="succeeded", release=5)]))
     assert commands.platform_changes(ctx, app, gitops.open_repo(app, token=None, identity=None)) == ["pyproject.toml"]
-    path.write_text(path.read_text().replace('"streamlit>=1.66"]', '"streamlit>=1.66", "plotly>=6"]'))
+    path.write_text(path.read_text().replace('"ctzd-fi>=0.1"]', '"ctzd-fi>=0.1", "plotly>=6"]'))
     assert commands.platform_changes(ctx, app, gitops.open_repo(app, token=None, identity=None)) == []
 
 

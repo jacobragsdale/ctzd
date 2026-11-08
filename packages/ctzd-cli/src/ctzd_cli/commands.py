@@ -160,6 +160,11 @@ def new(ctx: Context, *, name: str, sbu: str, ui: Ui, directory: Path | None, ow
     if not locked.ok:
         msg = "The new app's packages could not be installed."
         raise CliError(msg, hint=proc.tail(locked.output, 20))
+    if ui == "react":
+        for step in (checks.web_install(root, "local"), checks.client(root, "local")):
+            if step.state == "failed":
+                msg = f"The new app's pages could not be set up ({step.name})."
+                raise CliError(msg, hint=step.detail)
     git = gitops.open_repo(root, token=None if offline else ctx.token(), identity=auth.identity() or ("ctzd", "ctzd@localhost"))
     git.init(None if created is None else created.clone_url)
     git.commit_all(f"Create {name} on platform release {chosen.release}")
@@ -248,7 +253,12 @@ def dev(ctx: Context, *, port: int | None, stop: bool) -> Outcome:
         msg = "This app has no dashboard."
         raise UsageError(msg, hint="Run a job locally with `ctzd run JOB --local`.")
     chosen = _dev_port(port, previous=None if stopped is None else stopped.port)
-    if app.app.ui == "streamlit":
+    if app.app.ui == "react":
+        for step in (checks.web_install(root, "local"), checks.client(root, "local"), checks.web_build(root)):
+            if step.state == "failed":
+                return Outcome(summary=f"The page could not be built ({step.name}).", data={"step": step.name, "output": step.detail}, ok=False)
+        command = _uv_run(root, "uvicorn", "--factory", "ctzd.api:asgi", "--host", "localhost", "--port", str(chosen))
+    elif app.app.ui == "streamlit":
         command = _uv_run(root, "streamlit", "run", "src/app/ui/main.py", "--server.port", str(chosen), "--server.address", "localhost", "--server.headless", "true")
     else:
         command = _uv_run(root, "python", "-c", f"from app.ui.main import app; app.run(debug=True, port={chosen})")
@@ -454,7 +464,7 @@ def platform_changes(ctx: Context, root: Path, git: gitops.Git) -> list[str]:
     numbers = {sync.recorded_release(root), int(committed) if committed is not None and committed.strip().isdigit() else None}
     for number in sorted(number for number in numbers if number is not None):
         with contextlib.suppress(CliError):
-            owned |= assets.locked_files(ctx.releases.get(number)).keys()
+            owned |= assets.locked_files(ctx.releases.get(number), appconfig.load(root).app.ui).keys()
     paths = [path for path in changed if path in owned]
     pyproject = (root / "pyproject.toml").read_text(encoding="utf-8") if (root / "pyproject.toml").is_file() else None
     if _outside_managed(git.show("pyproject.toml")) == _outside_managed(pyproject):

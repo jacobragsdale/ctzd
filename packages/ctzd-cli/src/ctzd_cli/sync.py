@@ -19,7 +19,7 @@ from tomlkit.items import Table
 
 from ctzd_cli import api_models as m
 from ctzd_cli import assets
-from ctzd_cli.appconfig import AppConfig
+from ctzd_cli.appconfig import AppConfig, Ui
 from ctzd_cli.config import PlatformConfig
 
 VERSION_FILE = ".ctzd/version"
@@ -36,8 +36,8 @@ class Drift:
     problem: Literal["changed", "missing"]
 
 
-def expected_files(release: m.PlatformRelease) -> dict[str, str]:
-    return assets.locked_files(release) | {VERSION_FILE: f"{release.release}\n"}
+def expected_files(release: m.PlatformRelease, ui: Ui) -> dict[str, str]:
+    return assets.locked_files(release, ui) | {VERSION_FILE: f"{release.release}\n"}
 
 
 # The tables of pyproject.toml the platform owns, as dotted keys.
@@ -61,9 +61,9 @@ def managed_pyproject(platform: PlatformConfig, release: m.PlatformRelease) -> d
     return {key: values[key] for key in MANAGED_PYPROJECT_KEYS}
 
 
-def same_build(platform: PlatformConfig, one: m.PlatformRelease, other: m.PlatformRelease) -> bool:
-    """Whether two releases would write the same build files; the recorded number aside."""
-    return assets.locked_files(one) == assets.locked_files(other) and managed_pyproject(platform, one) == managed_pyproject(platform, other)
+def same_build(platform: PlatformConfig, one: m.PlatformRelease, other: m.PlatformRelease, ui: Ui) -> bool:
+    """Whether two releases would write the same build files for an app of kind `ui`; the recorded number aside."""
+    return assets.locked_files(one, ui) == assets.locked_files(other, ui) and managed_pyproject(platform, one) == managed_pyproject(platform, other)
 
 
 def _normalized(text: str) -> str:
@@ -86,9 +86,9 @@ def _lookup(document: dict[str, object], dotted: str) -> object:
     return node
 
 
-def drift(root: Path, platform: PlatformConfig, release: m.PlatformRelease) -> list[Drift]:
+def drift(root: Path, platform: PlatformConfig, release: m.PlatformRelease, ui: Ui) -> list[Drift]:
     problems: list[Drift] = []
-    for path, text in sorted(expected_files(release).items()):
+    for path, text in sorted(expected_files(release, ui).items()):
         target = root / path
         if not target.is_file():
             problems.append(Drift(path, "missing"))
@@ -125,10 +125,10 @@ def write_pyproject(root: Path, platform: PlatformConfig, release: m.PlatformRel
     return after != before
 
 
-def write_build(root: Path, platform: PlatformConfig, release: m.PlatformRelease) -> list[str]:
-    """Bring every build file to `release` and record it; return the paths that changed."""
+def write_build(root: Path, platform: PlatformConfig, release: m.PlatformRelease, ui: Ui) -> list[str]:
+    """Bring every build file of an app of kind `ui` to `release` and record it; return the paths that changed."""
     changed: list[str] = []
-    for path, text in expected_files(release).items():
+    for path, text in expected_files(release, ui).items():
         target = root / path
         if target.is_file() and _normalized(target.read_text(encoding="utf-8")) == text:
             continue

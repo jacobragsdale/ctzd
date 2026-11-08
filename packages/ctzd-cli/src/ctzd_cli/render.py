@@ -17,6 +17,10 @@ _STREAMLIT = (
     "--client.toolbarMode=viewer",
 )
 _DASH = ("gunicorn", "app.ui.main:server", f"--bind=0.0.0.0:{PORT}", "--workers=2", "--threads=4", "--timeout=120")
+# One process serves the datasets under /api and the built pages at /.
+_REACT = ("uvicorn", "--factory", "ctzd.api:asgi", "--host=0.0.0.0", f"--port={PORT}", "--proxy-headers")
+_COMMANDS = {"react": _REACT, "streamlit": _STREAMLIT, "dash": _DASH}
+_READINESS = {"react": "/api/health/ready", "streamlit": "/_stcore/health"}
 
 
 class _Model(BaseModel):
@@ -107,8 +111,8 @@ def helm_values(platform: PlatformConfig, app: AppConfig, *, image: str, release
         release=release,
         host=f"{fullname}.{platform.platform.apps_domain}",
         port=PORT,
-        command=_STREAMLIT if ui == "streamlit" else _DASH if ui == "dash" else (),
-        readiness_path="/_stcore/health" if ui == "streamlit" else "/healthz",
+        command=_COMMANDS.get(ui, ()),
+        readiness_path=_READINESS.get(ui, "/healthz"),
         resources=_resources(platform, app.app.size),
         env=runtime_env(platform, app),
         source_secrets=source_secrets(app),

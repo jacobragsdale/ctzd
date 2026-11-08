@@ -37,6 +37,12 @@ git = "https://github.com/jacobragsdale/basis"
 branch = "main"
 subdirectory = "packages/core"
 
+# SHIM (MVP): a React app's pages take basis-ui's packages from the tarballs basis-ui packs from its main branch on
+# this machine, until the internal npm registry serves them.
+[npm.packages]
+"@basis/ui" = "file:~/dev/basis-ui-dist/basis-ui.tgz"
+"@basis/parallax" = "file:~/dev/basis-ui-dist/basis-parallax.tgz"
+
 # Resources per app.toml size. Requests stay small so idle dashboards cost little.
 [sizes.s]
 cpu_request = "100m"

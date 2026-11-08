@@ -16,7 +16,7 @@ class _Model(BaseModel):
 BuildState = Literal["queued", "running", "succeeded", "failed", "not_found"]
 Channel = Literal["pilot", "general"]
 # The folders of a platform release; see ctzd_cli/assets.
-RELEASE_FOLDERS = ("locked/", "guidance/", "skills/", "starter/", "start/")
+RELEASE_FOLDERS = ("locked/", "locked-react/", "guidance/", "skills/", "starter/", "start/")
 
 
 def _version(value: str) -> str:

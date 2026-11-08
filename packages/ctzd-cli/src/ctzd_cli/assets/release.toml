@@ -29,5 +29,11 @@ dependencies = ["streamlit>=1.66"]
 [ui.dash]
 dependencies = ["dash[ag-grid]>=4.5", "gunicorn>=26.2"]
 
+[ui.react]
+# The page's npm packages are in starter/react/web/package.json.
+# SHIM (MVP): basis-api and basis-core are listed directly so that the platform's git sources for them apply (uv
+# applies sources to direct dependencies only); ctzd-core[api] alone brings them once basis is on the internal index.
+dependencies = ["basis-api", "basis-core", "ctzd-core[api]"]
+
 [ui.none]
 dependencies = []

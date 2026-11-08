@@ -115,7 +115,7 @@ def _ci_platform_files(target: Target) -> Step:
         release = require_usable(target.releases.get(recorded))
     except CliError as err:
         return Step("platform files", "failed", _described(err))
-    problems = [f"{problem.path} ({problem.problem})" for problem in sync.drift(target.root, target.platform, release)]
+    problems = [f"{problem.path} ({problem.problem})" for problem in sync.drift(target.root, target.platform, release, target.app.app.ui)]
     core = core_problem(target.root, release)
     if core is not None:
         problems.append(core)
@@ -140,7 +140,7 @@ def _local_release(target: Target, recorded: int | None) -> m.PlatformRelease:
     except CliError:
         return chosen
     # A release that changes only guidance leaves the app on the release it records.
-    return base if sync.same_build(target.platform, base, chosen) else chosen
+    return base if sync.same_build(target.platform, base, chosen, target.app.app.ui) else chosen
 
 
 def platform_files(target: Target, mode: Mode) -> Step:
@@ -149,7 +149,7 @@ def platform_files(target: Target, mode: Mode) -> Step:
     recorded = sync.recorded_release(target.root)
     try:
         release = _local_release(target, recorded)
-        changed = sync.write_build(target.root, target.platform, release)
+        changed = sync.write_build(target.root, target.platform, release, target.app.app.ui)
         changed += raise_core(target, release)
     except CliError as err:
         return Step("platform files", "failed", _described(err))
@@ -238,6 +238,52 @@ def numbers(root: Path) -> Step:
     return Step("numbers", "failed", "\n".join(lines))
 
 
+WEB = "web"
+_WRITE_OPENAPI = "from pathlib import Path; import ctzd.api; print(ctzd.api.write_openapi(Path('web/openapi.json')))"
+
+
+def _pnpm(root: Path, *args: str) -> proc.Completed:
+    pnpm = proc.which("pnpm", hint="Run `ctzd setup`, which installs Node and pnpm.")
+    return proc.run([pnpm, *args], cwd=root / WEB, timeout=_TOOL_TIMEOUT)
+
+
+def web_install(root: Path, mode: Mode) -> Step:
+    """The page's npm packages, from the app's lockfile in Jenkins."""
+    result = _pnpm(root, "install", "--frozen-lockfile") if mode == "ci" else _pnpm(root, "install")
+    return Step("web install", "passed") if result.ok else Step("web install", "failed", proc.tail(result.output, 30))
+
+
+def client(root: Path, mode: Mode) -> Step:
+    """The page's client matches the datasets: `web/openapi.json` from `src/app/api/datasets.py`, and the client
+    generated from it. Locally both are rewritten; Jenkins fails when either is out of date."""
+    written = proc.run([_uv(), "run", "--no-sync", "python", "-c", _WRITE_OPENAPI], cwd=root, timeout=_TOOL_TIMEOUT)
+    if not written.ok:
+        return Step("client", "failed", proc.tail(written.output, 30))
+    changed = written.output.strip().endswith("True")
+    if mode == "ci":
+        if changed:
+            return Step("client", "failed", "web/openapi.json does not match the datasets. Run `ctzd check` on a laptop and push the result.")
+        result = _pnpm(root, "exec", "vp", "run", "client-check")
+        return Step("client", "passed") if result.ok else Step("client", "failed", proc.tail(result.output, 30))
+    result = _pnpm(root, "exec", "vp", "run", "client-pull")
+    if not result.ok:
+        return Step("client", "failed", proc.tail(result.output, 30))
+    return Step("client", "fixed", "Regenerated the page's client from the datasets.") if changed else Step("client", "passed")
+
+
+def web_check(root: Path) -> Step:
+    """The pages' formatting, lint and types, at basis-ui's settings."""
+    result = _pnpm(root, "exec", "vp", "check")
+    return Step("web check", "passed") if result.ok else Step("web check", "failed", proc.tail(result.output, 60))
+
+
+def web_build(root: Path) -> Step:
+    """The pages built into `web/dist`, which the app serves at `/`; the React Compiler fails the build on a page it
+    cannot optimize."""
+    result = _pnpm(root, "exec", "vp", "build")
+    return Step("web build", "passed") if result.ok else Step("web build", "failed", proc.tail(result.output, 40))
+
+
 def tests(root: Path) -> Step:
     result = _tool(root, "pytest", "-q", "--no-header", "-p", "no:cacheprovider")
     return Step("tests", "passed", proc.tail(result.output, 3)) if result.ok else Step("tests", "failed", proc.tail(result.output, 80))
@@ -251,6 +297,14 @@ def run_all(target: Target, *, mode: Mode, fast: bool) -> list[Step]:
     steps.append(environment(root, mode))
     if steps[-1].state == "failed":
         return steps
+    react = target.app.app.ui == "react"
+    if react:
+        steps.append(web_install(root, mode))
+        if steps[-1].state == "failed":
+            return steps
+        steps.append(client(root, mode))
     steps += [formatting(root, mode), lint(root, mode), types(root), layers(root), sql_files(root), numbers(root)]
+    if react:
+        steps += [web_check(root), web_build(root)]
     steps.append(Step("tests", "skipped", "--fast") if fast else tests(root))
     return steps

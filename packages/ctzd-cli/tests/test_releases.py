@@ -39,7 +39,7 @@ def test_the_seed_is_the_bundled_folder() -> None:
     assert "locked/Dockerfile" in SEED.files
     assert "guidance/AGENTS.md" in SEED.files
     assert "release.toml" not in SEED.files
-    assert set(SEED.ui) == {"streamlit", "dash", "none"}
+    assert set(SEED.ui) == {"react", "streamlit", "dash", "none"}
 
 
 def test_a_folder_without_a_manifest_or_with_a_bad_one_is_refused() -> None:
@@ -127,7 +127,7 @@ def test_a_release_with_new_build_files_upgrades_the_app_and_names_the_paths(tmp
     assert step.detail.startswith("Upgraded platform files to platform release 2")
     assert set(step.paths) == {".ctzd/version", "pyproject.toml", "ruff.toml"}
     assert sync.recorded_release(tmp_path) == 2
-    assert sync.drift(tmp_path, config.load(), later) == []
+    assert sync.drift(tmp_path, config.load(), later, "react") == []
 
 
 def test_a_reverted_channel_moves_the_app_back(tmp_path: Path) -> None:

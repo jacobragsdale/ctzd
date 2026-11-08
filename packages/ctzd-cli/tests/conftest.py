@@ -27,7 +27,7 @@ def run(argv: list[str], cwd: Path, capsys: pytest.CaptureFixture[str]) -> tuple
     return code, _OUTPUT.validate_json(capsys.readouterr().out)
 
 
-def app_config(*, ui: str = "streamlit", jobs: tuple[Job, ...] = (), sources: tuple[str, ...] = ()) -> AppConfig:
+def app_config(*, ui: str = "react", jobs: tuple[Job, ...] = (), sources: tuple[str, ...] = ()) -> AppConfig:
     return AppConfig.model_validate(
         {"app": {"name": "bond-prices", "sbu": "fi", "ui": ui, "owners": ["ann.lee@contoso.com"]}, "sources": {"use": list(sources)}, "jobs": [job.model_dump() for job in jobs]}
     )

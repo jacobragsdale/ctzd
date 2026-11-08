@@ -35,12 +35,15 @@ def write_files(root: Path, files: dict[str, str]) -> None:
 
 def scaffold(root: Path, *, platform: PlatformConfig, app: AppConfig, release: m.PlatformRelease) -> None:
     sbu = platform.sbu(app.app.sbu)
-    write_files(root, assets.starter_files(release, app.app.ui, title=title_for(app.app.name), sbu_name=sbu.name))
+    tokens = {"name": platform.repo_name(app.app.sbu, app.app.name), "title": title_for(app.app.name), "sbu_name": sbu.name}
+    if app.app.ui == "react":
+        tokens |= {f"npm:{package}": platform.npm.spec(package) for package in platform.npm.packages}
+    write_files(root, assets.starter_files(release, app.app.ui, tokens))
     for job in app.jobs:
         write_files(root, assets.job_files(release, job.name))
     (root / APP_FILE).write_text(render(app), encoding="utf-8")
     (root / "pyproject.toml").write_text(initial_pyproject(platform, release, app), encoding="utf-8")
-    sync.write_build(root, platform, release)
+    sync.write_build(root, platform, release, app.app.ui)
     sync.write_env_example(root, app)
     sync.write_guidance(root, release, app.app.sbu)
 
