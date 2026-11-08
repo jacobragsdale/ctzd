@@ -57,6 +57,7 @@ class Args(BaseModel):
     commit: str | None = None
     url: str | None = None
     page: str = "/"
+    fake: bool = False
     source: str | None = None
     dataset: str | None = None
     argv: tuple[str, ...] = ()
@@ -87,6 +88,7 @@ def _app_parsers(sub: argparse._SubParsersAction[argparse.ArgumentParser], commo
     dev = sub.add_parser("dev", parents=[common], help="run the dashboard locally in the background, or restart it; --stop stops it")
     dev.add_argument("--port", type=int, help="default: 8501, or the next free port")
     dev.add_argument("--stop", action="store_true", help="stop the local dashboard")
+    dev.add_argument("--fake", action="store_true", help="serve the fake rows in fixtures/ instead of the real sources")
     docs_ui = (
         sub.add_parser("docs", parents=[common], help="the firm's documentation for this app")
         .add_subparsers(dest="action", required=True)
@@ -185,7 +187,7 @@ HANDLERS: dict[str, Handler] = {
     "login": lambda a, ctx: commands.login_start(ctx, open_browser=not a.no_browser) if a.start else commands.login_wait(ctx),
     "new": lambda a, ctx: commands.new(ctx, name=_required(a.name, "NAME"), sbu=_required(a.sbu, "--sbu"), ui=a.ui, directory=a.dir, owner=a.owner, offline=a.offline),
     "open": lambda a, ctx: commands.open_app(ctx, name=_required(a.name, "NAME"), sbu=_required(a.sbu, "--sbu"), directory=a.dir),
-    "dev": lambda a, ctx: commands.dev(ctx, port=a.port, stop=a.stop),
+    "dev": lambda a, ctx: commands.dev(ctx, port=a.port, stop=a.stop, fake=a.fake),
     "shot": lambda a, ctx: commands.shot(ctx, page=a.page),
     "docs ui": lambda a, ctx: commands.docs_ui(ctx, name=a.name),
     "add dataset": lambda a, ctx: commands.add_dataset(ctx, name=_required(a.name, "NAME"), source=a.source),

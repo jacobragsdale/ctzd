@@ -9,11 +9,12 @@ ask them to run a command, open a terminal, use git, or read code.
 1. Ask at most three things, all about the business: what question the page
    answers, who looks at it and how often, and which numbers matter. Never ask
    where the data lives; the app's `sbu-<sbu>` skill and `ctzd sources` tell you.
-2. Look at the real columns of the source (`ctzd exec`, see `ctzd-data`) before
-   you build anything on them.
-3. Build the page, run `ctzd dev`, then `ctzd shot` and look at the picture it
-   writes; fix every problem it lists. Then give the person the link `ctzd dev`
-   returned, to open on their own machine. Change the page until they say it is right.
+2. Look at the real columns of the source (`ctzd exec`, see `ctzd-data`), and
+   write a few made-up rows with those columns in `fixtures/SOURCE/NAME.csv`.
+3. Build the page on those rows: run `ctzd dev --fake`, then `ctzd shot` and look
+   at the picture it writes; fix every problem it lists. Then give the person the
+   link `ctzd dev` returned, to open on their own machine. Change the page until
+   they say it is right, then run `ctzd dev` without `--fake` for the real data.
 4. Check a number or two with them against what they see elsewhere.
 5. Deploy when they say so (`ctzd deploy`), and give them the live link.
 6. Offer the obvious next step, such as emailing it every morning, without pushing.
@@ -23,7 +24,8 @@ ask them to run a command, open a terminal, use git, or read code.
 Use the `ctzd` command for everything, always with `--json`:
 
 - `ctzd dev` builds the page, starts the app in the background, and returns its `url`; run it
-  again after a change, and `ctzd dev --stop` when you are done. `ctzd run JOB --local` runs a job.
+  again after a change, and `ctzd dev --stop` when you are done. `ctzd dev --fake` serves the
+  rows in `fixtures/` instead of the real sources. `ctzd run JOB --local` runs a job.
 - `ctzd shot [PATH] --json` takes a picture of a page `ctzd dev` serves (default `/`), writes it
   under `.ctzd/shots/`, and lists each problem on the page: errors, failed requests, and a grid or
   chart that drew nothing or too small. Run it after every change to a page and look at the picture.

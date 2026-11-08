@@ -20,6 +20,8 @@ from ctzd_cli.errors import CliError, NotFoundError, UsageError
 from ctzd_cli.releases import ReleaseSource, require_usable, upgrade_hint
 
 ENV_FILE = ".env"
+FIXTURES = "fixtures"
+FAKE_FIXTURES = "CTZD_FAKE_FIXTURES"  # ctzd.api serves the fake rows in this folder
 _POLL_SECONDS = 10.0
 _DEFAULT_JOB = Job(name="refresh", schedule="0 6 * * *")
 # Commands that work inside an app; each refreshes the app's guidance before it runs.
@@ -244,7 +246,7 @@ def _uv_run(root: Path, *command: str) -> list[str]:
     return [uv, "run", *env_file, *command]
 
 
-def dev(ctx: Context, *, port: int | None, stop: bool) -> Outcome:
+def dev(ctx: Context, *, port: int | None, stop: bool, fake: bool = False) -> Outcome:
     root, app = _app(ctx)
     stopped = devserver.stop(root)
     if stop:
@@ -258,10 +260,12 @@ def dev(ctx: Context, *, port: int | None, stop: bool) -> Outcome:
         if step.state == "failed":
             return Outcome(summary=f"The page could not be built ({step.name}).", data={"step": step.name, "output": step.detail}, ok=False)
     command = _uv_run(root, "uvicorn", "--factory", "ctzd.api:asgi", "--host", "localhost", "--port", str(chosen))
-    match devserver.start(root, command, port=chosen, env=local_env(root, app)):
+    env = local_env(root, app) | ({FAKE_FIXTURES: str(root / FIXTURES)} if fake else {})
+    data = " on the fake rows in fixtures/" if fake else ""
+    match devserver.start(root, command, port=chosen, env=env):
         case devserver.Started(server, _process):
             return Outcome(
-                summary=f"The dashboard runs at {server.url} in the background; ctzd dev restarts it, ctzd dev --stop stops it.",
+                summary=f"The dashboard runs at {server.url}{data} in the background; ctzd dev restarts it, ctzd dev --stop stops it.",
                 data={"url": server.url, "port": server.port, "log": devserver.LOG.as_posix()},
             )
         case devserver.Failed(reason, log):

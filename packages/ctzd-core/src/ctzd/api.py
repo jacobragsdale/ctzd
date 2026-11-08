@@ -12,15 +12,18 @@ contract has it: the page's client adds the prefix. Health is at
 import importlib
 import json
 import operator
+import os
 from pathlib import Path
 from typing import Any
 
 from basis import api
 from starlette.types import ASGIApp
 
+from ctzd import testing
 from ctzd.datasets import registered
 
 DATASETS_MODULE = "app.api.datasets"
+FAKE_FIXTURES = "CTZD_FAKE_FIXTURES"
 PAGES = "web/dist"
 """The built pages, relative to the app's folder, as basis-api serves a UI."""
 SERVICE_NAME = "app"
@@ -53,5 +56,12 @@ def write_openapi(path: Path, module: str = DATASETS_MODULE) -> bool:
 
 
 def asgi(module: str = DATASETS_MODULE, *, pages: str = PAGES) -> ASGIApp:
-    """The app: the datasets under `/api`, and the pages in `pages` at `/`, which answer 503 until they are built."""
+    """The app: the datasets under `/api`, and the pages in `pages` at `/`, which answer 503 until they are built.
+
+    With `CTZD_FAKE_FIXTURES` naming a folder, as `ctzd dev --fake` sets it, every source answers the fake rows
+    in that folder instead (`ctzd.testing.fixture_sources`).
+    """
+    fixtures = os.environ.get(FAKE_FIXTURES)
+    if fixtures is not None and fixtures != "":
+        testing.serve_fixtures(Path(fixtures))
     return api.build(service(module, pages=pages)).asgi

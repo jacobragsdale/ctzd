@@ -28,6 +28,7 @@ PAGES = Path("web/src/pages")
 ROUTES = Path("web/src/routes.ts")
 NAV = Path("web/src/nav.ts")
 OPENAPI = Path("web/openapi.json")
+FIXTURES = Path("fixtures")
 DATASET_NAME = re.compile(r"[a-z][a-z0-9_]{0,40}")
 PAGE_NAME = re.compile(r"[a-z][a-z0-9-]{0,40}")
 _FORMAT_KEY = "x-basis-format"
@@ -144,6 +145,7 @@ def add_dataset(root: Path, name: str, source: str | None) -> list[str]:
         if _add_source(root, source):
             files.append(appconfig.APP_FILE)
         files.append(_write(root, SQL / f"{name}.sql", "\n".join((f"-- The rows of the dataset `{name}`, one column per field of its row type in src/app/api/datasets.py.", _EXAMPLE_QUERY))))
+        files.append(_write(root, FIXTURES / source / f"{name}.csv", "label,value\nNorth,42.0\nSouth,17.0\n"))
     files.append(_write(root, LOADERS, loaders.rstrip("\n") + "\n" + _loader(name, source)))
     row = f"{pascal(name)}Row"
     addition = f'''
