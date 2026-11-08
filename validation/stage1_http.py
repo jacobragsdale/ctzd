@@ -32,6 +32,8 @@ from validation.harness import Report, build_wheels, platform_config, run_ctzd, 
 APP = "bond-prices"
 REPO_NAME = "fi-bond-prices"
 SEED = releases.seed_files()
+BASE = releases.seed().release  # the platform release bundled in this CLI; the flow publishes later ones
+GUIDANCE_ONLY = "# Instructions, a guidance-only release\n"
 LIVE = 3  # the release the fake cluster runs at the start
 BEFORE_LIVE = 2
 DEPLOYED = 4
@@ -40,7 +42,7 @@ BUILD_URL = f"https://jenkins.contoso.com/job/ctzd-apps/job/{REPO_NAME}/job/main
 
 
 def release_archive(number: int, *, files: dict[str, str] | None = None, requires_cli: str | None = None) -> bytes:
-    manifest = SEED["release.toml"].replace("release = 1\n", f"release = {number}\n", 1)
+    manifest = re.sub(r"^release = \d+$", f"release = {number}", SEED["release.toml"], count=1, flags=re.MULTILINE)
     if requires_cli is not None:
         manifest = re.sub(r'^requires_cli = ".*"$', f'requires_cli = "{requires_cli}"', manifest, count=1, flags=re.MULTILINE)
     return fakes.archive(SEED | {"release.toml": manifest} | (files or {}))
@@ -90,7 +92,7 @@ def seeded() -> World:
     repo = fakes.FakeRepo(permissions={"ann": "admin", "bob": "read"}, files={"app.toml": app_toml()}, tags=[tag(1), tag(BEFORE_LIVE), tag(LIVE)])
     github = fakes.FakeGitHub(tokens={"ann-token": "ann", "bob-token": "bob"}, members={"ann", "bob"}, repos={REPO_NAME: repo})
     jenkins = RollbackJenkins(kube)
-    gateway = fakes.FakeReleases(channels=channels(1), archives={1: release_archive(1)})
+    gateway = fakes.FakeReleases(channels=channels(BASE), archives={BASE: release_archive(BASE)})
     services = Services(
         github=github,
         jenkins=jenkins,
@@ -143,7 +145,7 @@ class Run:
 def make_app(report: Report, work: Path, env: dict[str, str]) -> Path:
     created = run_ctzd(["new", APP, "--sbu", "fi", "--offline", "--owner", "ann.lee@contoso.com", "--dir", str(work / "apps")], cwd=work, env=env)
     app = work / "apps" / APP
-    report.expect("new --offline writes the app on the seed release", ok=created.ok and (app / ".ctzd" / "version").read_text() == "1\n", seen=created.raw)
+    report.expect("new --offline writes the app on the seed release", ok=created.ok and (app / ".ctzd" / "version").read_text() == f"{BASE}\n", seen=created.raw)
     (app / "app.toml").write_text(app_toml())
     synced = run_ctzd(["sync"], cwd=app, env=env)
     report.expect("sync regenerates .env.example from app.toml", ok=synced.ok and "CTZD_SOURCE_FI_PRICING=" in (app / ".env.example").read_text(), seen=synced.raw)
@@ -180,24 +182,24 @@ def everyday_commands(run: Run) -> None:
 
 def releases_follow_the_channel(run: Run) -> None:
     report, app, env, gateway = run.report, run.app, run.env, run.world.releases
-    gateway.archives[2] = release_archive(2, files={"guidance/AGENTS.md": "# Instructions, release 2\n"})
-    gateway.channels = channels(2)
+    gateway.archives[BASE + 1] = release_archive(BASE + 1, files={"guidance/AGENTS.md": GUIDANCE_ONLY})
+    gateway.channels = channels(BASE + 1)
     stale(app)
     refreshed = run_ctzd(["status"], cwd=app, env=env)
-    report.expect("any app command rewrites AGENTS.md from the channel's release", ok=refreshed.ok and (app / "AGENTS.md").read_text() == "# Instructions, release 2\n", seen=refreshed.raw)
+    report.expect("any app command rewrites AGENTS.md from the channel's release", ok=refreshed.ok and (app / "AGENTS.md").read_text() == GUIDANCE_ONLY, seen=refreshed.raw)
     checked = run_ctzd(["check", "--fast"], cwd=app, env=env)
-    report.expect("a guidance-only release leaves .ctzd/version alone", ok=checked.ok and (app / ".ctzd" / "version").read_text() == "1\n", seen=checked.raw)
+    report.expect("a guidance-only release leaves .ctzd/version alone", ok=checked.ok and (app / ".ctzd" / "version").read_text() == f"{BASE}\n", seen=checked.raw)
     report.expect("refreshed guidance leaves nothing to commit", ok=git(app, "status", "--porcelain") == "", seen=git(app, "status", "--porcelain"))
-    ruff = SEED["locked/ruff.toml"] + "# release 3\n"
-    gateway.archives[3] = release_archive(3, files={"locked/ruff.toml": ruff})
-    gateway.channels = channels(3, cli="9.9.9")
+    ruff = SEED["locked/ruff.toml"] + f"# release {BASE + 2}\n"
+    gateway.archives[BASE + 2] = release_archive(BASE + 2, files={"locked/ruff.toml": ruff})
+    gateway.channels = channels(BASE + 2, cli="9.9.9")
     stale(app)
     upgraded = run_ctzd(["check", "--fast"], cwd=app, env=env)
-    moved = (app / ".ctzd" / "version").read_text() == "3\n" and (app / "ruff.toml").read_text() == ruff
+    moved = (app / ".ctzd" / "version").read_text() == f"{BASE + 2}\n" and (app / "ruff.toml").read_text() == ruff
     report.expect("check moves the build files to the release with new ones", ok=upgraded.ok and moved, seen=upgraded.raw)
     report.expect("a newer published ctzd is only a hint", ok=upgraded.ok and any("9.9.9" in step for step in upgraded.next_steps()), seen=upgraded.raw)
-    gateway.archives[5] = release_archive(5, requires_cli="99.0")
-    gateway.channels = channels(5)
+    gateway.archives[BASE + 4] = release_archive(BASE + 4, requires_cli="99.0")
+    gateway.channels = channels(BASE + 4)
     stale(app)
     blocked = run_ctzd(["status"], cwd=app, env=env)
     report.expect(
@@ -205,7 +207,7 @@ def releases_follow_the_channel(run: Run) -> None:
         ok=blocked.code == 1 and "needs ctzd 99.0" in blocked.text("summary") and "uv tool upgrade ctzd" in blocked.raw,
         seen=blocked.raw,
     )
-    gateway.channels = channels(3)
+    gateway.channels = channels(BASE + 2)
     stale(app)
 
 
@@ -217,7 +219,7 @@ def shipping(run: Run) -> None:
     subjects = git(app, "log", "-3", "--format=%s").splitlines()
     report.expect(
         "deploy commits the platform upgrade on its own, then the change",
-        ok=pushed.ok and subjects[:2] == ["Update README.md", "Upgrade platform files to platform release 3"],
+        ok=pushed.ok and subjects[:2] == ["Update README.md", f"Upgrade platform files to platform release {BASE + 2}"],
         seen=(pushed.raw, subjects),
     )
     report.expect("deploy cleared the rollback pause", ok=not world.kube.state(REPO_NAME).paused)

@@ -7,6 +7,7 @@ from ctzd_cli import config, releases, sync
 from .conftest import app_config, make_app, variant
 
 SEED = releases.seed()
+LATER = SEED.release + 1  # a platform release published after the bundled one
 
 
 def test_a_fresh_app_has_no_drift_and_records_its_release(tmp_path: Path) -> None:
@@ -66,8 +67,8 @@ def test_writing_build_files_rewrites_managed_tables_and_keeps_dependencies(tmp_
 def test_a_later_release_with_other_tool_pins_is_a_different_build(tmp_path: Path) -> None:
     del tmp_path
     pins = SEED.python.model_copy(update={"dev": (*SEED.python.dev, "mypy==2.0")})
-    assert not sync.same_build(config.load(), SEED, variant(SEED, 2, python=pins.model_dump()), "react")
-    assert sync.same_build(config.load(), SEED, variant(SEED, 2, files={"skills/common/ctzd-data/SKILL.md": "new advice"}), "react")
+    assert not sync.same_build(config.load(), SEED, variant(SEED, LATER, python=pins.model_dump()), "react")
+    assert sync.same_build(config.load(), SEED, variant(SEED, LATER, files={"skills/common/ctzd-data/SKILL.md": "new advice"}), "react")
 
 
 def test_guidance_goes_to_agents_and_claude_and_is_gitignored(tmp_path: Path) -> None:
@@ -86,7 +87,7 @@ def test_writing_guidance_replaces_stale_and_removes_extra_skills(tmp_path: Path
     extra = tmp_path / ".agents" / "skills" / "homemade" / "SKILL.md"
     extra.parent.mkdir(parents=True)
     extra.write_text("mine\n")
-    later = variant(SEED, 2, files={"skills/common/ctzd-data/SKILL.md": "new advice\n"})
+    later = variant(SEED, LATER, files={"skills/common/ctzd-data/SKILL.md": "new advice\n"})
     assert sync.write_guidance(tmp_path, later, "fi")
     assert not extra.exists()
     assert (tmp_path / ".claude" / "skills" / "ctzd-data" / "SKILL.md").read_text() == "new advice\n"

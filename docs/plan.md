@@ -509,7 +509,8 @@ the common skills, and every SBU's skill), the starter code, and the start guide
 naming the release number, the minimum CLI, and the minimum `ctzd-core`.
 Cutting a release is raising that number, committing, and tagging the commit
 `platform-release/<n>`; a published release never changes. No release has been
-tagged yet, so release 1 still takes changes. The CLI and Jenkins fetch
+tagged yet; release 2, the React release, waits for the maintainer's review before
+its tag. The CLI and Jenkins fetch
 releases only through the platform API: `GET /v1/releases/current` (with `sbu`
 and `app`, that app's channel; without, the general channel) and
 `GET /v1/releases/{n}`. The API reads each tag's tarball once, checks that its
@@ -769,8 +770,9 @@ tested with the fakes:
   stages 2 and 3 not rerun);
 - the chart on Gateway API, with sign-in through an Envoy Gateway
   `SecurityPolicy`;
-- platform release 1 (not yet tagged) requiring CLI 0.3.0 and `ctzd-core`
-  0.2.0, with the number rules in its guidance.
+- platform release 2, the React release (not yet tagged; release 1 never was),
+  requiring CLI 0.3.0 and `ctzd-core` 0.2.0, with the number rules and the
+  React guidance.
 
 Built on 2026-11-07 for the MVP, against basis's and basis-ui's main branches,
 and run on one Linux machine: Python 3.14; `ctzd.dataset`, row types and column

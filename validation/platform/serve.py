@@ -9,6 +9,7 @@ trial's agent and person need, then serves until it is stopped.
 
 import json
 import os
+import re
 import secrets
 import sys
 from dataclasses import dataclass
@@ -59,14 +60,19 @@ Each item has `isin`, `issuer`, `rating`, `coupon_pct`, `maturity_date`,
 """
 
 
+SEED_RELEASE = releases.seed().release
+TRIAL_RELEASE = SEED_RELEASE + 1
+"""The trials' platform serves the seed and, as both channels' current release, the seed with FI's sources filled in."""
+
+
 def trial_release() -> dict[str, str]:
-    """Release 2: the seed with the FI champion's sources filled in, as before the pilot."""
+    """The release after the seed: the seed with the FI champion's sources filled in, as before the pilot."""
     files = releases.seed_files()
     skill_path = "skills/sbu/fi/sbu-fi/SKILL.md"
     skill = files[skill_path]
     start = skill.index("## Sources")
     end = skill.index("## Conventions")
-    manifest = files["release.toml"].replace("release = 1\n", "release = 2\n", 1)
+    manifest = re.sub(r"^release = \d+$", f"release = {TRIAL_RELEASE}", files["release.toml"], count=1, flags=re.MULTILINE)
     return files | {"release.toml": manifest, skill_path: skill[:start] + FI_SOURCES + skill[end:]}
 
 
@@ -136,7 +142,9 @@ def run_platform(root: Path, base: Path) -> None:
     fail_build = 2 if os.environ.get("CTZD_TRIAL_FAIL_FIRST_BUILD") == "1" else None
     cluster = LocalCluster(github=github, root=root, ci_env=ci_env, runtime_env=runtime_env, fail_build=fail_build)
     seed = releases.seed_files()
-    gateway = fakes.FakeReleases(channels='cli = "0.3.0"\n[channels]\npilot = 2\ngeneral = 2\n', archives={1: fakes.archive(seed), 2: fakes.archive(trial_release())})
+    gateway = fakes.FakeReleases(
+        channels=f'cli = "0.3.0"\n[channels]\npilot = {TRIAL_RELEASE}\ngeneral = {TRIAL_RELEASE}\n', archives={SEED_RELEASE: fakes.archive(seed), TRIAL_RELEASE: fakes.archive(trial_release())}
+    )
     services = Services(
         github=github,
         jenkins=LocalJenkins(cluster),

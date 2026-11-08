@@ -6,10 +6,12 @@ from typing import override
 import pytest
 
 from ctzd_cli import api_models as m
-from ctzd_cli import checks, commands, gitops
+from ctzd_cli import checks, commands, gitops, releases
 from ctzd_cli.errors import CliError, NotFoundError, UsageError
 
 from .conftest import FakePlatform, make_app
+
+LATER = releases.seed().release + 1  # a platform release published after the bundled one
 
 GIT = gitops.find_git()
 
@@ -172,9 +174,9 @@ def test_a_build_that_deployed_nothing_is_not_reported_as_live(repo: tuple[Path,
 
 
 def upgrading(target: checks.Target, *, mode: checks.Mode, fast: bool) -> list[checks.Step]:
-    """A gate run in which the platform-files step moved the app to release 2."""
+    """A gate run in which the platform-files step moved the app to the release after the bundled one."""
     del mode, fast
-    (target.root / ".ctzd" / "version").write_text("2\n")
+    (target.root / ".ctzd" / "version").write_text(f"{LATER}\n")
     (target.root / "ruff.toml").write_text("line-length = 120\n")
     return [checks.Step("platform files", "fixed", "Upgraded", paths=(".ctzd/version", "ruff.toml")), checks.Step("tests", "passed")]
 
@@ -187,7 +189,7 @@ def test_platform_upgrades_get_their_own_commit_before_the_change(repo: tuple[Pa
     assert outcome.ok
     log = git(app, "log", "-3", "--format=%s").splitlines()
     assert log[0] == "Update src/app/logic/summary.py"
-    assert log[1] == "Upgrade platform files to platform release 2"
+    assert log[1] == f"Upgrade platform files to platform release {LATER}"
     assert git(app, "show", "--name-only", "--format=", "HEAD~1").splitlines() == [".ctzd/version", "ruff.toml"]
     assert git(remote, "rev-parse", "main") == git(app, "rev-parse", "HEAD")
 
@@ -196,17 +198,17 @@ def test_a_platform_upgrade_alone_is_enough_to_end_a_pause(repo: tuple[Path, Pat
     app, _remote = repo
     platform = FakePlatform([m.Build(number=8, state="succeeded", release=5)], paused=True)
     commands.deploy(context(app, platform, upgrading), message=None, detach=False, timeout=60)
-    assert git(app, "log", "-1", "--format=%s") == "Upgrade platform files to platform release 2"
+    assert git(app, "log", "-1", "--format=%s") == f"Upgrade platform files to platform release {LATER}"
 
 
 def test_an_upgrade_made_by_an_earlier_check_still_gets_its_own_commit(repo: tuple[Path, Path]) -> None:
     app, _remote = repo
     # What `ctzd check` leaves behind when it moved the app to a release with a new ruff.toml.
-    (app / ".ctzd" / "version").write_text("2\n")
-    (app / "ruff.toml").write_text((app / "ruff.toml").read_text() + "# release 2\n")
+    (app / ".ctzd" / "version").write_text(f"{LATER}\n")
+    (app / "ruff.toml").write_text((app / "ruff.toml").read_text() + f"# release {LATER}\n")
     (app / "README.md").write_text("changed\n")
     commands.deploy(context(app, FakePlatform([m.Build(number=8, state="succeeded", release=5)])), message=None, detach=False, timeout=60)
-    assert git(app, "log", "-2", "--format=%s").splitlines() == ["Update README.md", "Upgrade platform files to platform release 2"]
+    assert git(app, "log", "-2", "--format=%s").splitlines() == ["Update README.md", f"Upgrade platform files to platform release {LATER}"]
 
 
 def test_pyproject_is_the_platforms_only_while_the_person_changed_nothing_else_in_it(repo: tuple[Path, Path]) -> None:

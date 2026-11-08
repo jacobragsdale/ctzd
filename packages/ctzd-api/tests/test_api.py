@@ -1,5 +1,6 @@
 import dataclasses
 import datetime as dt
+import re
 from pathlib import Path
 from typing import override
 
@@ -46,7 +47,7 @@ def tag(number: int) -> tuple[str, str]:
 
 
 def renumbered(number: int, *, ruff: str | None = None) -> dict[str, str]:
-    files = SEED_FILES | {"release.toml": SEED_FILES["release.toml"].replace("release = 1\n", f"release = {number}\n", 1)}
+    files = SEED_FILES | {"release.toml": re.sub(r"^release = \d+$", f"release = {number}", SEED_FILES["release.toml"], count=1, flags=re.MULTILINE)}
     return files if ruff is None else files | {"locked/ruff.toml": ruff}
 
 
@@ -77,7 +78,7 @@ def world() -> Services:
         airflow=fakes.FakeAirflow(),
         kube=fakes.FakeKube(states={"fi-bond-prices": AppState(release=3, paused=False)}),
         secrets=fakes.FakeSecrets(values={"ctzd-source-fi-pricing": '{"kind":"oracle"}', "ctzd-shared-store-sas": "sv=2026&sig=x"}),
-        releases=ReleaseStore(fakes.FakeReleases(channels=CHANNELS, archives={1: fakes.archive(SEED_FILES), 2: fakes.archive(renumbered(2))})),
+        releases=ReleaseStore(fakes.FakeReleases(channels=CHANNELS, archives={1: fakes.archive(renumbered(1)), 2: fakes.archive(renumbered(2))})),
         platform=config.load(),
     )
 
@@ -238,7 +239,7 @@ def test_the_cli_reads_releases_through_the_api(client: TestClient) -> None:
     platform = api_client.PlatformClient("http://testserver", "ann-token", transport=InProcess(client))
     source = releases.ReleaseSource(lambda: platform)
     assert source.for_app("fi", "pilot-app").release == 2
-    assert source.get(1) == releases.seed()
+    assert source.get(2) == releases.seed()
 
 
 def test_channels_are_read_again_only_after_their_ttl() -> None:

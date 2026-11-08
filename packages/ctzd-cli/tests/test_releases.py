@@ -10,6 +10,7 @@ from ctzd_cli.errors import CliError
 from .conftest import FakePlatform, app_config, make_app, variant
 
 SEED = releases.seed()
+LATER = SEED.release + 1  # a platform release published after the bundled one
 MOMENT = datetime(2026, 11, 6, 9, tzinfo=UTC)
 NEW_PINS = SEED.python.model_copy(update={"dev": (*SEED.python.dev, "mypy==2.0")}).model_dump()
 
@@ -35,7 +36,7 @@ def online(*published: m.PlatformRelease, current: int, cli: str | None = None) 
 
 
 def test_the_seed_is_the_bundled_folder() -> None:
-    assert SEED.release == 1
+    assert SEED.release == 2
     assert "locked/Dockerfile" in SEED.files
     assert "guidance/AGENTS.md" in SEED.files
     assert "release.toml" not in SEED.files
@@ -51,16 +52,16 @@ def test_a_folder_without_a_manifest_or_with_a_bad_one_is_refused() -> None:
 
 def test_files_outside_the_release_folders_are_refused() -> None:
     with pytest.raises(ValueError, match="outside"):
-        variant(SEED, 2, files={"locked/../../etc/passwd": "x"})
+        variant(SEED, LATER, files={"locked/../../etc/passwd": "x"})
 
 
 def test_a_release_that_needs_a_newer_cli_stops_the_command() -> None:
     with pytest.raises(CliError, match=r"needs ctzd 99\.0") as caught:
-        releases.require_usable(variant(SEED, 2, requires_cli="99.0"))
+        releases.require_usable(variant(SEED, LATER, requires_cli="99.0"))
     assert caught.value.hint is not None
     assert "uv tool upgrade ctzd" in caught.value.hint
     with pytest.raises(CliError):
-        releases.require_usable(variant(SEED, 2, format=releases.FORMAT + 1))
+        releases.require_usable(variant(SEED, LATER, format=releases.FORMAT + 1))
     assert releases.require_usable(SEED) is SEED
 
 
@@ -74,11 +75,11 @@ def test_a_newer_published_cli_only_hints() -> None:
 
 
 def test_a_fetched_release_is_cached_and_not_fetched_again() -> None:
-    later = variant(SEED, 2)
-    platform = online(later, current=2)
-    assert source(platform).get(2) == later
-    assert source(platform).get(2) == later
-    assert platform.events == ["release 2"]
+    later = variant(SEED, LATER)
+    platform = online(later, current=LATER)
+    assert source(platform).get(LATER) == later
+    assert source(platform).get(LATER) == later
+    assert platform.events == [f"release {LATER}"]
     assert source(None).newest_local() == later
 
 
@@ -100,12 +101,12 @@ def test_an_unreachable_platform_is_remembered_with_its_reason() -> None:
 
 
 def test_a_damaged_cache_entry_is_fetched_again() -> None:
-    later = variant(SEED, 2)
-    platform = online(later, current=2)
-    source(platform).get(2)
-    (releases.cache_dir() / "2.json").write_text("{")
-    assert source(platform).get(2) == later
-    assert platform.events == ["release 2", "release 2"]
+    later = variant(SEED, LATER)
+    platform = online(later, current=LATER)
+    source(platform).get(LATER)
+    (releases.cache_dir() / f"{LATER}.json").write_text("{")
+    assert source(platform).get(LATER) == later
+    assert platform.events == [f"release {LATER}", f"release {LATER}"]
 
 
 # ---------------------------------------------------------------- build files move with the channel
@@ -113,36 +114,36 @@ def test_a_damaged_cache_entry_is_fetched_again() -> None:
 
 def test_a_guidance_only_release_leaves_the_app_on_its_release(tmp_path: Path) -> None:
     make_app(tmp_path)
-    advice = variant(SEED, 2, files={"skills/common/ctzd-data/SKILL.md": "new advice\n"})
-    step = checks.platform_files(target(tmp_path, online(advice, current=2)), "local")
+    advice = variant(SEED, LATER, files={"skills/common/ctzd-data/SKILL.md": "new advice\n"})
+    step = checks.platform_files(target(tmp_path, online(advice, current=LATER)), "local")
     assert step == checks.Step("platform files", "passed")
     assert sync.recorded_release(tmp_path) == SEED.release
 
 
 def test_a_release_with_new_build_files_upgrades_the_app_and_names_the_paths(tmp_path: Path) -> None:
     make_app(tmp_path)
-    later = variant(SEED, 2, files={"locked/ruff.toml": "line-length = 120\n"}, python=NEW_PINS)
-    step = checks.platform_files(target(tmp_path, online(later, current=2)), "local")
+    later = variant(SEED, LATER, files={"locked/ruff.toml": "line-length = 120\n"}, python=NEW_PINS)
+    step = checks.platform_files(target(tmp_path, online(later, current=LATER)), "local")
     assert step.state == "fixed"
-    assert step.detail.startswith("Upgraded platform files to platform release 2")
+    assert step.detail.startswith(f"Upgraded platform files to platform release {LATER}")
     assert set(step.paths) == {".ctzd/version", "pyproject.toml", "ruff.toml"}
-    assert sync.recorded_release(tmp_path) == 2
+    assert sync.recorded_release(tmp_path) == LATER
     assert sync.drift(tmp_path, config.load(), later, "react") == []
 
 
 def test_a_reverted_channel_moves_the_app_back(tmp_path: Path) -> None:
-    later = variant(SEED, 2, files={"locked/ruff.toml": "line-length = 120\n"})
+    later = variant(SEED, LATER, files={"locked/ruff.toml": "line-length = 120\n"})
     make_app(tmp_path, release=later)
-    step = checks.platform_files(target(tmp_path, online(SEED, later, current=1)), "local")
-    assert step.detail.startswith("Moved platform files to platform release 1")
-    assert sync.recorded_release(tmp_path) == 1
+    step = checks.platform_files(target(tmp_path, online(SEED, later, current=SEED.release)), "local")
+    assert step.detail.startswith(f"Moved platform files to platform release {SEED.release}")
+    assert sync.recorded_release(tmp_path) == SEED.release
 
 
 def test_offline_an_edited_file_is_restored_to_the_recorded_release(tmp_path: Path) -> None:
     make_app(tmp_path)
     (tmp_path / "Dockerfile").write_text("FROM scratch\n")
     step = checks.platform_files(target(tmp_path, None), "local")
-    assert step.detail == "Restored platform files to platform release 1: Dockerfile."
+    assert step.detail == f"Restored platform files to platform release {SEED.release}: Dockerfile."
     assert step.paths == ("Dockerfile",)
 
 
@@ -159,8 +160,8 @@ def test_offline_a_recorded_release_that_is_not_here_fails_without_touching_file
 def test_ci_checks_against_the_recorded_release_and_never_writes(tmp_path: Path) -> None:
     make_app(tmp_path)
     (tmp_path / "ruff.toml").write_text("line-length = 80\n")
-    later = variant(SEED, 2, files={"locked/ruff.toml": "line-length = 80\n"})
-    step = checks.platform_files(target(tmp_path, online(SEED, later, current=2)), "ci")
+    later = variant(SEED, LATER, files={"locked/ruff.toml": "line-length = 80\n"})
+    step = checks.platform_files(target(tmp_path, online(SEED, later, current=LATER)), "ci")
     assert step.state == "failed"
     assert "ruff.toml (changed)" in step.detail
     assert (tmp_path / "ruff.toml").read_text() == "line-length = 80\n"
@@ -175,9 +176,9 @@ def test_ci_fails_an_app_that_records_no_release(tmp_path: Path) -> None:
 def test_ci_fails_when_ctzd_core_is_older_than_the_release_needs(tmp_path: Path) -> None:
     make_app(tmp_path)
     (tmp_path / "uv.lock").write_text('version = 1\n[[package]]\nname = "ctzd-core"\nversion = "0.1.0"\n')
-    newer = variant(SEED, 2, min_ctzd_core="0.3.0")
+    newer = variant(SEED, LATER, min_ctzd_core="0.3.0")
     (tmp_path / sync.VERSION_FILE).write_text("2\n")
-    step = checks.platform_files(target(tmp_path, online(newer, current=2)), "ci")
+    step = checks.platform_files(target(tmp_path, online(newer, current=LATER)), "ci")
     assert "ctzd-core 0.1.0" in step.detail
     assert checks.locked_version(tmp_path, "ctzd-core") is not None
     assert checks.locked_version(tmp_path, "pandas") is None
@@ -188,10 +189,10 @@ def test_ci_fails_when_ctzd_core_is_older_than_the_release_needs(tmp_path: Path)
 
 def test_guidance_follows_the_channel_and_is_stamped(tmp_path: Path) -> None:
     make_app(tmp_path)
-    advice = variant(SEED, 2, files={"guidance/AGENTS.md": "# New instructions\n"})
-    hints = commands.refresh_guidance(context(tmp_path, online(advice, current=2, cli="99.0")), tmp_path, app_config())
+    advice = variant(SEED, LATER, files={"guidance/AGENTS.md": "# New instructions\n"})
+    hints = commands.refresh_guidance(context(tmp_path, online(advice, current=LATER, cli="99.0")), tmp_path, app_config())
     assert (tmp_path / "AGENTS.md").read_text() == "# New instructions\n"
-    assert sync.read_stamp(tmp_path) == sync.GuidanceStamp(release=2, checked_at=MOMENT)
+    assert sync.read_stamp(tmp_path) == sync.GuidanceStamp(release=LATER, checked_at=MOMENT)
     assert len(hints) == 1
     assert "uv tool upgrade ctzd" in hints[0]
 
@@ -199,11 +200,11 @@ def test_guidance_follows_the_channel_and_is_stamped(tmp_path: Path) -> None:
 def test_fresh_guidance_does_not_ask_the_platform(tmp_path: Path) -> None:
     make_app(tmp_path)
     sync.write_stamp(tmp_path, 1, MOMENT)
-    platform = online(variant(SEED, 2), current=2)
+    platform = online(variant(SEED, LATER), current=LATER)
     commands.refresh_guidance(context(tmp_path, platform, now=MOMENT + timedelta(minutes=1)), tmp_path, app_config())
     assert platform.events == []
     commands.refresh_guidance(context(tmp_path, platform, now=MOMENT + sync.GUIDANCE_REFRESH), tmp_path, app_config())
-    assert platform.events == ["release 2"]
+    assert platform.events == [f"release {LATER}"]
 
 
 def test_without_the_platform_existing_guidance_is_kept_and_the_reason_given(tmp_path: Path) -> None:
@@ -224,8 +225,8 @@ def test_missing_guidance_is_written_from_the_newest_local_release(tmp_path: Pat
 
 def test_prepare_refreshes_only_inside_an_app_and_only_for_app_commands(tmp_path: Path) -> None:
     make_app(tmp_path)
-    advice = variant(SEED, 2, files={"guidance/AGENTS.md": "# New\n"})
-    platform = online(advice, current=2)
+    advice = variant(SEED, LATER, files={"guidance/AGENTS.md": "# New\n"})
+    platform = online(advice, current=LATER)
     assert commands.prepare(context(tmp_path, platform), "setup") == []
     assert platform.events == []
     commands.prepare(context(tmp_path, platform), "status")
@@ -235,7 +236,7 @@ def test_prepare_refreshes_only_inside_an_app_and_only_for_app_commands(tmp_path
 
 def test_a_channel_on_a_release_too_new_for_this_cli_stops_every_app_command(tmp_path: Path) -> None:
     make_app(tmp_path)
-    platform = online(variant(SEED, 2, requires_cli="99.0"), current=2)
+    platform = online(variant(SEED, LATER, requires_cli="99.0"), current=LATER)
     with pytest.raises(CliError, match=r"needs ctzd 99\.0"):
         commands.prepare(context(tmp_path, platform), "check")
 
@@ -243,8 +244,8 @@ def test_a_channel_on_a_release_too_new_for_this_cli_stops_every_app_command(tmp
 def test_setup_hands_over_the_channels_start_guide(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     ready = [setup_checks.Check("uv", "ok", "uv"), setup_checks.Check("login", "ok", "ann")]
     monkeypatch.setattr(setup_checks, "run", lambda _cwd, **_client: ready)
-    guide = variant(SEED, 2, files={"start/GUIDE.md": "# Start here\n"})
-    outcome = commands.setup(context(tmp_path, online(guide, current=2)))
+    guide = variant(SEED, LATER, files={"start/GUIDE.md": "# Start here\n"})
+    outcome = commands.setup(context(tmp_path, online(guide, current=LATER)))
     assert outcome.ok
     assert outcome.data["guide"] == "# Start here\n"
     # Offline, the newest release on this computer is the one just fetched.
@@ -275,7 +276,7 @@ def test_offline_existing_guidance_is_kept_even_without_a_stamp(tmp_path: Path) 
 
 
 def test_a_release_the_platform_does_not_have_is_an_error_not_an_outage() -> None:
-    found = source(online(current=1))
+    found = source(online(current=SEED.release))
     with pytest.raises(CliError, match="no platform release 7"):
         found.get(7)
     assert found.unreachable is None

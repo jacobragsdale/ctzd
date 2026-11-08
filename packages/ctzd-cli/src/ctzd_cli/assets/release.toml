@@ -3,7 +3,7 @@
 # code (starter/). To cut a release, raise `release`, commit, and tag that
 # commit `platform-release/<release>`; then point a channel at it in
 # channels.toml. A published release never changes.
-release = 1
+release = 2
 format = 1
 requires_cli = "0.3.0"
 min_ctzd_core = "0.2.0"
