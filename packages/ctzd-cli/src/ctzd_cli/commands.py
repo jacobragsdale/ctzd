@@ -11,7 +11,7 @@ from typing import Protocol, assert_never
 
 from pydantic import ValidationError
 
-from ctzd_cli import api_client, appconfig, assets, auth, checks, config, devserver, gitops, proc, release, render, scaffold, setup_checks, sync
+from ctzd_cli import api_client, appconfig, assets, auth, catalogue, checks, config, devserver, gitops, proc, release, render, scaffold, setup_checks, sync
 from ctzd_cli import api_models as m
 from ctzd_cli import shot as shooting
 from ctzd_cli.appconfig import AppConfig, AppSection, Job, SourcesSection, Ui
@@ -292,6 +292,22 @@ def shot(ctx: Context, *, page: str) -> Outcome:
         next_steps=["Fix each problem, run `ctzd dev`, then `ctzd shot` again.", look],
         ok=False,
     )
+
+
+def docs_ui(ctx: Context, *, name: str | None) -> Outcome:
+    """The firm's components, from the catalogue the app's own @basis/ui ships: every family, or one in full."""
+    root, _app_config = _app(ctx)
+    found = catalogue.load(root)
+    if name is None:
+        families = catalogue.overview(found)
+        count = sum(len(family["components"]) if isinstance(family["components"], list) else 0 for family in families.values())
+        return Outcome(
+            summary=f"{count} components of {found.package} in {len(families)} families.",
+            data={"families": families, "icons": list(found.icons)},
+            next_steps=["Run `ctzd docs ui NAME` for a component's props, variants, and example before you use it."],
+        )
+    component = catalogue.entry(found, name)
+    return Outcome(summary=f"{component['name']}: {component['purpose']}", data=component)
 
 
 def _dev_port(asked: int | None, *, previous: int | None) -> int:

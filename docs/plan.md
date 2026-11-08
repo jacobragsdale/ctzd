@@ -238,7 +238,7 @@ client and to the theme's components and tokens.
 | `ctzd add page NAME --kind grid\|chart\|kpi\|detail --dataset NAME` (planned) | Writes a route and its page from a recipe, wired to the dataset's generated hook. |
 | `ctzd api list` (planned) | Each dataset with its parameters, columns, and hook name, so an agent never reads the generated client. |
 | `ctzd add package NAME [--npm]` (planned) | Adds a Python or npm package from the internal registry. |
-| `ctzd docs ui [COMPONENT]` (planned) | The component catalogue of the pinned `@basis/ui`, or one component's props, variants, and example. |
+| `ctzd docs ui [COMPONENT]` | The component catalogue of the installed `@basis/ui` (`catalogue.json`, basis-ui step 1.15), by family, or one component's props, variants, and example. |
 | `ctzd run JOB [--local] [--wait]` | Runs a job in Airflow and prints the run link, `--wait` follows it to success or failure; `--local` runs it on the laptop. |
 | `ctzd add job NAME --schedule CRON [--timezone ZONE]` | Adds a job module, its test, and its `app.toml` entry; the schedule runs in ZONE (default UTC). |
 | `ctzd check [--fast]` | Runs every gate, fixing formatting and simple lint locally; `--fast` skips the tests. |

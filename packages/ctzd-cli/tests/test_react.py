@@ -1,12 +1,13 @@
 """A React app's platform pieces: where its pages' npm packages come from, and its locked files."""
 
+import json
 from pathlib import Path
 
 import pytest
 
-from ctzd_cli import assets, config, releases, shot
+from ctzd_cli import assets, catalogue, config, releases, shot
 from ctzd_cli.config import NpmConfig
-from ctzd_cli.errors import CliError
+from ctzd_cli.errors import CliError, UsageError
 
 SEED = releases.seed()
 
@@ -46,3 +47,33 @@ def test_the_react_starter_fills_in_the_npm_sources() -> None:
 @pytest.mark.parametrize(("page", "name"), [("/", "index.png"), ("/bonds/US912810TM0", "bonds-us912810tm0.png"), ("/Sector Prices", "sector-prices.png")])
 def test_each_page_s_picture_has_its_own_file(tmp_path: Path, page: str, name: str) -> None:
     assert shot.picture_path(tmp_path, page) == tmp_path / ".ctzd" / "shots" / name
+
+
+CATALOGUE = {
+    "format": "basis-ui-catalogue/1",
+    "package": "@basis/ui",
+    "icons": ["ArrowLeftIcon"],
+    "components": [
+        {"name": "Card", "family": "card", "purpose": "A card. A raised panel.", "props": [], "variants": {}, "example": "<Card />"},
+        {"name": "CardTitle", "family": "card", "purpose": "A card's title.", "props": [{"name": "className", "type": "string", "optional": True, "description": ""}], "variants": {}},
+        {"name": "Button", "family": "button", "purpose": "A button.", "props": [], "variants": {"size": {"default": "default", "options": ["default", "sm"]}}, "extends": ["X"]},
+    ],
+}
+
+
+def test_the_catalogue_lists_families_and_gives_a_component_its_family_s_example(tmp_path: Path) -> None:
+    path = tmp_path / catalogue.CATALOGUE
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps(CATALOGUE), encoding="utf-8")
+    found = catalogue.load(tmp_path)
+    assert catalogue.overview(found)["card"] == {"purpose": "A card.", "components": ["Card", "CardTitle"]}
+    title = catalogue.entry(found, "cardtitle")
+    assert title["example"] == "<Card />"
+    assert title["family_components"] == ["Card", "CardTitle"]
+    with pytest.raises(UsageError, match="no component named 'Grid'"):
+        catalogue.entry(found, "Grid")
+
+
+def test_without_the_page_s_packages_there_is_no_catalogue(tmp_path: Path) -> None:
+    with pytest.raises(CliError, match="no component catalogue"):
+        catalogue.load(tmp_path)

@@ -78,7 +78,10 @@ Pick the chart from the person's question:
 
 ## The firm's components: @basis/ui
 
-They keep shadcn's names and props: `Button`, `Card` with `CardHeader`, `CardTitle` and
+`ctzd docs ui --json` lists every component by family, and `ctzd docs ui NAME --json` gives one
+component's props, variants, and a working example, for the version the app installed: read it
+before you use a component rather than guessing its props. They keep shadcn's names and props:
+`Button`, `Card` with `CardHeader`, `CardTitle` and
 `CardContent`, `Tabs`, `Badge`, `Alert`, `Select`, `Input`, `Skeleton`, `ErrorAlert`, and
 `TypographyH1`, `TypographyLead` for text. A number in text goes through a number component,
 which rounds it as the grid does: `<Num value={total} decimals={0} />`, `<Pct value={share} />`,
