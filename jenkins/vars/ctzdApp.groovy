@@ -11,7 +11,7 @@ def call(Map config = [:]) {
     def defaults = [
         cliVersion: '0.3.0',
         registry: 'contosoctzd.azurecr.io',
-        baseImage: 'contosoctzd.azurecr.io/ctzd/base:py3.13',
+        baseImage: 'contosoctzd.azurecr.io/ctzd/base:py3.14',
         namespace: 'ctzd-apps',
         chart: 'oci://contosoctzd.azurecr.io/helm/ctzd-app',
         chartVersion: '0.3.0',

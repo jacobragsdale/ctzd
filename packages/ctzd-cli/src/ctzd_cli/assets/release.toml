@@ -10,7 +10,7 @@ min_ctzd_core = "0.2.0"
 
 # The managed tables of every app's pyproject.toml.
 [python]
-requires = ">=3.13"
+requires = ">=3.14"
 build_backend = "uv_build>=0.13.6,<0.14"
 dev = [
     "import-linter==2.15",

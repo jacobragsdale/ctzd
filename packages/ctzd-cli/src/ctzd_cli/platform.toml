@@ -16,7 +16,7 @@ api_url = "https://api.ctzd.contoso.com"
 apps_domain = "ctzd.contoso.com"
 airflow_url = "https://airflow.ctzd.contoso.com"
 registry = "contosoctzd.azurecr.io"
-base_image = "contosoctzd.azurecr.io/ctzd/base:py3.13"
+base_image = "contosoctzd.azurecr.io/ctzd/base:py3.14"
 store_url = "abfs://ctzd@contosoctzdstore.dfs.core.windows.net"
 mingit_url = "https://ctzd.contoso.com/downloads/MinGit-64-bit.zip"
 

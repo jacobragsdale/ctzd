@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # Base image for every ctzd app: Python, uv, the system libraries mssql-python needs, and a non-root user.
-# Build: docker build -t contosoctzd.azurecr.io/ctzd/base:py3.13 images/base
-ARG PYTHON_IMAGE=python:3.13-slim-trixie
+# Build: docker build -t contosoctzd.azurecr.io/ctzd/base:py3.14 images/base
+ARG PYTHON_IMAGE=python:3.14-slim-trixie
 ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.13.6
 FROM ${UV_IMAGE} AS uv
 

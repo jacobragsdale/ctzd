@@ -3,7 +3,7 @@ name = "ctzd-api"
 version = "0.2.0"
 description = "The ctzd platform API: repo creation, build status, rollback, job runs, logs, and credentials"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 dependencies = [
     "azure-identity>=1.27",
     "ctzd>=0.1",

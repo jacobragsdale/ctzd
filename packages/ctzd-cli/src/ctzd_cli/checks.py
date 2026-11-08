@@ -72,7 +72,7 @@ def locked_version(root: Path, package: str) -> Version | None:
     try:
         parsed: object = tomllib.loads(path.read_text(encoding="utf-8"))
         lock = _Lock.model_validate(parsed)
-    except (tomllib.TOMLDecodeError, ValidationError):
+    except tomllib.TOMLDecodeError, ValidationError:
         return None
     found = next((entry.version for entry in lock.package if entry.name == package and entry.version is not None), None)
     try:

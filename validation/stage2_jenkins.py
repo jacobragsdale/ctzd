@@ -39,7 +39,7 @@ CASC = """jenkins:
     - envVars:
         env:
           - {{key: CTZD_REGISTRY, value: "registry.local:5000"}}
-          - {{key: CTZD_BASE_IMAGE, value: "registry.local:5000/ctzd/base:py3.13"}}
+          - {{key: CTZD_BASE_IMAGE, value: "registry.local:5000/ctzd/base:py3.14"}}
           - {{key: CTZD_CHART, value: "oci://registry.local:5000/helm/ctzd-app"}}
           - {{key: CTZD_DAGS_REPO, value: "https://github.contoso.com/ctzd-platform/ctzd-dags.git"}}
           - {{key: CTZD_PLATFORM_CONFIG, value: "{work}/platform.toml"}}

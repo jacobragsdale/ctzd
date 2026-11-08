@@ -3,7 +3,7 @@ name = "ctzd-fi"
 version = "0.1.0"
 description = "FI (fixed income) library for ctzd apps: the SBU's package stack and shared loaders"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 dependencies = [
     "ctzd-core>=0.1",
 ]

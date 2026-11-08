@@ -84,7 +84,7 @@ class Job(BaseModel):
     def _timezone(cls, value: str) -> str:
         try:
             zoneinfo.ZoneInfo(value)
-        except (zoneinfo.ZoneInfoNotFoundError, ValueError):
+        except zoneinfo.ZoneInfoNotFoundError, ValueError:
             msg = f"timezone {value!r} is not an IANA time zone such as 'Europe/London' or 'America/New_York'"
             raise ValueError(msg) from None
         return value

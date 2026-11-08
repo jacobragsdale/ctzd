@@ -133,11 +133,11 @@ class Storage:
         self.root = root.rstrip("/")
 
     @classmethod
-    def local(cls, root: str) -> "Storage":
+    def local(cls, root: str) -> Storage:
         return cls(pafs.LocalFileSystem(), root)
 
     @classmethod
-    def azure(cls, *, account: str, container_path: str, sas_token: str | None) -> "Storage":
+    def azure(cls, *, account: str, container_path: str, sas_token: str | None) -> Storage:
         filesystem = pafs.AzureFileSystem(account_name=account, sas_token=sas_token)
         return cls(filesystem, container_path)
 

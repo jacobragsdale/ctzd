@@ -59,7 +59,7 @@ class Args(BaseModel):
     timezone: str = "UTC"
 
 
-def _setup_parsers(sub: "argparse._SubParsersAction[argparse.ArgumentParser]", common: argparse.ArgumentParser) -> None:
+def _setup_parsers(sub: argparse._SubParsersAction[argparse.ArgumentParser], common: argparse.ArgumentParser) -> None:
     sub.add_parser("setup", parents=[common], help="check the laptop and install what is missing")
     login = sub.add_parser("login", parents=[common], help="log in to GitHub with a one-time code")
     mode = login.add_mutually_exclusive_group(required=True)
@@ -68,7 +68,7 @@ def _setup_parsers(sub: "argparse._SubParsersAction[argparse.ArgumentParser]", c
     login.add_argument("--no-browser", action="store_true", help="do not open the browser")
 
 
-def _app_parsers(sub: "argparse._SubParsersAction[argparse.ArgumentParser]", common: argparse.ArgumentParser) -> None:
+def _app_parsers(sub: argparse._SubParsersAction[argparse.ArgumentParser], common: argparse.ArgumentParser) -> None:
     new = sub.add_parser("new", parents=[common], help="create a new app and its GitHub repo")
     new.add_argument("name")
     new.add_argument("--sbu", required=True, help="business unit, such as fi")
@@ -103,7 +103,7 @@ def _app_parsers(sub: "argparse._SubParsersAction[argparse.ArgumentParser]", com
     sub.add_parser("sync", parents=[common], help="rewrite platform-owned files to this ctzd version")
 
 
-def _ship_parsers(sub: "argparse._SubParsersAction[argparse.ArgumentParser]", common: argparse.ArgumentParser) -> None:
+def _ship_parsers(sub: argparse._SubParsersAction[argparse.ArgumentParser], common: argparse.ArgumentParser) -> None:
     deploy = sub.add_parser("deploy", parents=[common], help="check, commit, push, and wait for the live URL; also resumes auto-deploy after a rollback")
     deploy.add_argument("--message", help="commit message; default: the changed files")
     deploy.add_argument("--detach", action="store_true", help="return right after pushing")
@@ -122,7 +122,7 @@ def _ship_parsers(sub: "argparse._SubParsersAction[argparse.ArgumentParser]", co
     delete.add_argument("--yes", action="store_true")
 
 
-def _ci_parsers(sub: "argparse._SubParsersAction[argparse.ArgumentParser]", common: argparse.ArgumentParser) -> None:
+def _ci_parsers(sub: argparse._SubParsersAction[argparse.ArgumentParser], common: argparse.ArgumentParser) -> None:
     ci_sub = sub.add_parser("ci", parents=[common], help="steps the Jenkins pipeline runs").add_subparsers(dest="action", required=True)
     ci_sub.add_parser("check", parents=[common])
     ci_render = ci_sub.add_parser("render", parents=[common])

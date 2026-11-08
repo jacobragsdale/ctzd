@@ -15,7 +15,7 @@ from ctzd._errors import CtzdError
 
 _DURATION = re.compile(r"(?P<amount>\d+)\s*(?P<unit>[smhd])")
 _UNIT_SECONDS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
-_caches: "weakref.WeakSet[_Cache]" = weakref.WeakSet()
+_caches: weakref.WeakSet[_Cache] = weakref.WeakSet()
 
 
 def parse_ttl(ttl: str | int | timedelta) -> float:

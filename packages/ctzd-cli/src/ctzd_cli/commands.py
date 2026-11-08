@@ -44,7 +44,7 @@ class Context:
     cwd: Path
     platform_factory: Callable[[], api_client.Platform]
     token: Callable[[], str] = auth.require_token
-    run_checks: "CheckRunner" = checks.run_all
+    run_checks: CheckRunner = checks.run_all
     sleep: Callable[[float], None] = time.sleep
     clock: Callable[[], float] = time.monotonic
     now: Callable[[], datetime] = auth.utc_now

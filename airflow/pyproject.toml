@@ -35,3 +35,9 @@ strict-equality-semantics = true  # Do not narrow from ==, in, or match value pa
 [tool.ty.terminal]
 error-on-warning = true
 
+
+[tool.ruff]
+# The house rules from the platform's root, for the Python Airflow runs, which is 3.13: the root targets 3.14.
+extend = "../pyproject.toml"
+target-version = "py313"
+src = ["dags"]

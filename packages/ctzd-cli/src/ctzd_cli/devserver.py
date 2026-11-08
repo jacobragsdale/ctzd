@@ -42,7 +42,7 @@ class Server:
 @dataclass(frozen=True)
 class Started:
     server: Server
-    process: "subprocess.Popen[bytes]"
+    process: subprocess.Popen[bytes]
 
 
 @dataclass(frozen=True)
@@ -75,7 +75,7 @@ def recorded(root: Path) -> Server | None:
     path = root / STATE
     try:
         raw: object = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+    except OSError, ValueError:
         return None
     match raw:
         case {"pid": int(pid), "port": int(port)} if answering(port):
@@ -115,7 +115,7 @@ def stop(root: Path) -> Server | None:
     return server
 
 
-def _spawn(command: Sequence[str], *, cwd: Path, env: Mapping[str, str], log: IO[str]) -> "subprocess.Popen[bytes]":
+def _spawn(command: Sequence[str], *, cwd: Path, env: Mapping[str, str], log: IO[str]) -> subprocess.Popen[bytes]:
     if sys.platform == "win32":
         flags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS
         return subprocess.Popen(list(command), cwd=cwd, env=proc.child_env(env), stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, creationflags=flags)
