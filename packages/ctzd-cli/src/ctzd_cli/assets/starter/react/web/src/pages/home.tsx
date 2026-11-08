@@ -18,10 +18,7 @@ function HomePage(): ReactElement {
     <>
       <TypographyH1>{{title}}</TypographyH1>
       <div className="h-80">
-        <Chart
-          dataset={dataset}
-          layout={{ chart: { kind: "bar", x: "category", y: ["value"] } }}
-        />
+        <Chart dataset={dataset} layout={{ chart: { kind: "bar", x: "category", y: ["value"] } }} />
       </div>
       <div className="h-80">
         <Grid dataset={dataset} layout={{}} />

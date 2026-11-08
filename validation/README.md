@@ -56,8 +56,8 @@ uv run python -m validation.stage2_helm PATH/TO/helm ~/.cache/ctzd-validation/he
    ```
 
    Reinstall the CLI after every change to it. The React pages install basis-ui's packages
-   from the `file:` tarballs the bundled `platform.toml` names; each platform copies them into
-   `$V/npm`, where the agents' sandbox can read them.
+   from the `file:` tarballs the bundled `platform.toml` names: each platform copies them into
+   `$V/npm` and serves them at `/npm/`, as the internal registry will.
 
 3. Check the local platform with the scripted flow, then run the canaries:
 

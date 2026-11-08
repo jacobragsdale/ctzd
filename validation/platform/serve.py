@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import uvicorn
+from starlette.staticfiles import StaticFiles
 
 from ctzd.api import FAKE_FIXTURES
 from ctzd_api import fakes
@@ -139,7 +140,7 @@ def run_platform(root: Path, base: Path) -> None:
         'apps_domain = "ctzd.contoso.com"': 'apps_domain = "ctzd.test"',
         'airflow_url = "https://airflow.ctzd.contoso.com"': 'airflow_url = "http://airflow.ctzd.test"',
         'store_url = "abfs://ctzd@contosoctzdstore.dfs.core.windows.net"': f'store_url = "{store}"',
-    } | npm_packages(base)
+    } | npm_packages(base, f"http://127.0.0.1:{port}/npm")
     wheels = base / "wheels"
     if not wheels.is_dir():
         build_wheels(wheels)
@@ -181,6 +182,8 @@ def run_platform(root: Path, base: Path) -> None:
     api = create_app(services)
     extras = data.rest_app(sources.oauth_secret, {PERSON_TOKEN: PERSON, BOT_TOKEN: ("ctzd-bot", "ctzd", "ctzd@localhost")}, cluster)
     api.include_router(extras.router)
+    # basis-ui's packages, as the internal npm registry will serve them.
+    api.mount("/npm", StaticFiles(directory=base / "npm"), name="npm")
     (root / "platform.json").write_text(
         json.dumps(
             {

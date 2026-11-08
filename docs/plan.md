@@ -788,7 +788,10 @@ branch; `ctzd check`'s web install, client, web check, and web build steps;
 and the guidance and the `ctzd-pages` skill. A generated app passes every
 check, `ctzd dev` serves it, and `ctzd shot` sees its chart and grid draw.
 Not run: the Docker image (the tarballs are local paths), Jenkins, a browser
-on Windows.
+on Windows. A `file:` tarball cannot reach Jenkins in any case: pnpm writes its
+path into the lockfile relative to the app, so a build in another folder looks
+in the wrong place. The validation platform serves the tarballs over HTTP for
+that reason; Jenkins needs the internal registry, or such a URL, first.
 
 Not built: the rest of what section 13 lists for the React starter, the
 display formats (2.13, basis-ui 1.13), `ctzd add dataset`, `ctzd add page`, `ctzd api list`,

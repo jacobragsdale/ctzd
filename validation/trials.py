@@ -26,6 +26,7 @@ from pathlib import Path
 import httpx
 
 from validation.harness import REPO, Report, tool
+from validation.platform.serve import TRIAL_RELEASE
 from validation.scenarios import CANARY, CANARY_IN_APP, PERSONAS, SCENARIOS, Scenario
 
 TOOL_BIN = "tool/bin"
@@ -185,7 +186,7 @@ def probe(base: Path) -> int:
         report.expect("setup is ready and hands over the served start guide", ok=setup.get("ok") is True and "Start a new app" in str(setup.get("guide")), seen=setup)
         created = ctzd(["new", "probe-app", "--sbu", "fi"], cwd=work, env=env)
         app = work / "probe-app"
-        report.expect("new creates the repo and the app on the channel's release", ok=created.get("ok") is True and (app / ".ctzd" / "version").read_text() == "2\n", seen=created)
+        report.expect("new creates the repo and the app on the channel's release", ok=created.get("ok") is True and (app / ".ctzd" / "version").read_text() == f"{TRIAL_RELEASE}\n", seen=created)
         first = ctzd(["status", "--wait"], cwd=app, env=env)
         report.expect("the starter app builds, deploys, and is released as v1", ok=first.get("ok") is True and first.get("release") == 1, seen=first)
         dashboards = platform.api("/local/dashboards")
@@ -431,11 +432,11 @@ def run_trial(base: Path, job: Job) -> Trial:
         env = person_env(base, platform, trial_dir / "home")
         prompt = PERSON_PROMPT.format(persona=PERSONAS[job.persona], goal=scenario.goal, facts=scenario.facts, done=DONE, give_up=GIVE_UP)
         cwd = arrange(base, trial_dir, aux, platform, scenario)
-        # The agent sees the repositories it pushes to (as on GitHub), the platform's settings, the wheels and npm packages
-        # its apps install, and the browser `ctzd shot` takes pictures with.
+        # The agent sees the repositories it pushes to (as on GitHub), the platform's settings, the wheels its apps
+        # install, and the browser `ctzd shot` takes pictures with.
         settings = aux / "platform"
         browsers = Path.home() / ".cache" / "ms-playwright"
-        readable = (settings / "platform.toml", settings / "gitconfig", base / "wheels", base / "npm", base / TOOL_BIN.split("/", maxsplit=1)[0], browsers)
+        readable = (settings / "platform.toml", settings / "gitconfig", base / "wheels", base / TOOL_BIN.split("/", maxsplit=1)[0], browsers)
         agent = Conversation(trial_dir, str(uuid.uuid4()), job.model, cwd, writable=(settings / "github",), readable=readable)
         person = Conversation(trial_dir, str(uuid.uuid4()), job.person_model, aux / "person")
         message = scenario.opening

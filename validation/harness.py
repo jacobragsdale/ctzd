@@ -31,9 +31,13 @@ def build_wheels(target: Path) -> Path:
     return target
 
 
-def npm_packages(base: Path) -> dict[str, str]:
-    """The firm's npm packages copied into `base/npm`, where a trial's sandbox can read them: replacements for the
-    bundled platform.toml's `file:` paths, which point into the operator's home. SHIM (MVP), until a registry serves them."""
+def npm_packages(base: Path, url: str) -> dict[str, str]:
+    """The firm's npm packages, copied into `base/npm` and served from `url`: replacements for the bundled
+    platform.toml's `file:` paths, which point into the operator's home. SHIM (MVP), until a registry serves them.
+
+    A URL, not a `file:` path, because pnpm writes a tarball's path into the lockfile relative to the app, and
+    the build's workspace is not where the person's app is.
+    """
     target = base / "npm"
     target.mkdir(parents=True, exist_ok=True)
     found: dict[str, str] = {}
@@ -45,7 +49,7 @@ def npm_packages(base: Path) -> dict[str, str]:
             partial = target / f".{source.name}.{os.getpid()}"
             shutil.copyfile(source, partial)
             partial.replace(copied)
-        found[f'"{spec}"'] = f'"file:{copied}"'
+        found[f'"{spec}"'] = f'"{url}/{source.name}"'
     return found
 
 
