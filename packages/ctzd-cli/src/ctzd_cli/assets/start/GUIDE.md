@@ -41,9 +41,8 @@ and rename it only with their agreement.
    source by name.
 2. Their business unit: `fi` (Fixed Income) is the one known today. If
    `ctzd new` says "Unknown business unit", its `next` lists the known ones.
-3. The kind of app: `--ui streamlit` (default, for most dashboards),
-   `--ui dash` (when they or their team ask for Dash), or `--ui none` (only
-   scheduled jobs, such as a weekly email).
+3. The kind of app: `--ui react` (the default: a dashboard, with or without
+   scheduled jobs), or `--ui none` (only scheduled jobs, such as a weekly email).
 4. A short name: 3 to 30 lowercase letters, digits, or hyphens, starting with
    a letter, without the business unit (`bond-prices`, not `fi-bond-prices`).
    The dashboard will live at `https://SBU-NAME.ctzd.contoso.com`. Confirm the
@@ -68,7 +67,7 @@ access" means the app's owner must add them; tell the person.
 
 - Work from `path`: every app command finds the app from the current folder.
 - Read `path/AGENTS.md` and the skills in `path/.agents/skills/`, starting with
-  `ctzd-workflow`, `ctzd-layout`, and the `sbu-SBU` skill, before you write
+  `ctzd-workflow`, `ctzd-pages`, and the `sbu-SBU` skill, before you write
   code. If you were started in a parent folder, your agent did not load them:
   read them by path.
 - For later sessions, suggest the person starts their agent in the app folder,

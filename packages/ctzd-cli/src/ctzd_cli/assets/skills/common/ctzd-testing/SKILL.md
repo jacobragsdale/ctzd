@@ -25,12 +25,13 @@ test. Fix the code or the test.
    nothing to publish returns nonzero and sends nothing.
 3. **Loaders.** Against fake sources: the loader returns the columns logic
    needs; a missing column raises `ctzd.DataError`.
-4. **The page.** It renders without an exception against fake sources, plus one
-   test per interaction that matters (see `ctzd-streamlit`, `ctzd-dash`).
+4. **Each dataset.** Through the app, against fake sources: it answers the
+   rows the page needs (see `ctzd-data`). The pages themselves are checked by
+   `ctzd check`'s `web check` and `web build`, not by Python tests.
 5. **Each job.** `run(day)` returns 0, writes its table, sends its messages
    (see `ctzd-jobs`).
 
-Do not test Streamlit, Dash, pandas, or ctzd themselves, log text, or private
+Do not test React, parallax, pandas, or ctzd themselves, log text, or private
 helpers directly.
 
 ## Rules

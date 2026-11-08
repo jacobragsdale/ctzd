@@ -18,7 +18,12 @@ them. Never pass on a raw error, and never ask them to run anything.
 | `format` | The formatter could not parse a file. | The syntax error at the file and line in `detail`. |
 | `lint` | ruff findings it could not fix: `CODE message --> file:line`. | Fix each one (`python-standards`). Never add an ignore. |
 | `types` | ty findings: `file:line:col: error[rule] message`. | Fix the types (`python-standards`). |
-| `layers` | `app.X is not allowed to import Y: app.X.mod -> Y (l.N)`. | Move the code to the right layer (`ctzd-layout`). |
+| `layers` | `app.X is not allowed to import Y: app.X.mod -> Y (l.N)`. | Move the code to the right layer (`AGENTS.md`, "Where code goes"). |
+| `web install` | pnpm could not install the page's packages; `detail` is its error. | A network error: retry. A package the registry lacks: remove it from `web/package.json`. |
+| `client` | The datasets did not import, or the page's client could not be generated from them. | The traceback names the dataset or row type at fault (`ctzd-data`). |
+| `numbers` | Python or SQL that rounds or formats a number: `file:line: what`. | Remove the rounding; the page and `ctzd.display` round when they show it. |
+| `web check` | The pages' formatting, lint, or types: each problem names the file, the rule, and what to use instead. | Follow the message (`ctzd-pages`). Never add a disable comment. |
+| `web build` | The pages did not build; a React Compiler error names the component. | See "When a check fails" in `ctzd-pages`. |
 | `sql` | `src/app/data/sql/x.sql: <parser message>`: the file does not parse as Oracle or SQL Server. | One statement per file, binds as `:name` or `%(name)s`, no templating. |
 | `tests` | The last 80 lines of pytest. | Fix the failing test or the code. Any warning fails a test (`ChainedAssignmentError`, a deprecation): fix what warns. |
 
@@ -41,7 +46,7 @@ previous release. Read `log_tail` for the real cause; by what the stage does:
   automatically. Usual causes: an import error, or a query, `ctzd.read_table`,
   or source lookup that runs when the module is imported. Keep reads inside
   functions. Reproduce with `ctzd env --json` and `ctzd dev --json`.
-- **Smoke test.** The live page showed an error box, and the release was
+- **Smoke test.** The live page showed an error or threw one, and the release was
   rolled back. `log_tail` holds `The dashboard shows errors: URL: TEXT`.
   Common causes: a table the page reads was never written in production (the
   page must show a message when its loader returns `None`, see `ctzd-data`;

@@ -24,7 +24,12 @@ function HomePage(): ReactElement {
       <div className="h-80">
         <Chart
           dataset={dataset}
-          layout={{ chart: { kind: "bar", x: "category", y: ["value"] }, formats }}
+          layout={{
+            chart: { kind: "bar" },
+            formats,
+            group_by: ["category"],
+            measures: [{ aggregate: "sum", column: "value" }],
+          }}
         />
       </div>
       <div className="h-80">

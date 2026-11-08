@@ -7,7 +7,7 @@ description: "Read data in a ctzd app: ctzd.query with SQL files and bind parame
 
 ## Rules
 
-- All reads live in loaders in `src/app/data/`. Pages, callbacks, and jobs call loaders.
+- All reads live in loaders in `src/app/data/`. Datasets and jobs call loaders; pages read datasets.
 - A source is a name such as `pricing_db` (names here are examples).
   `ctzd sources --json` lists the ones the platform has. Use only those, and
   the ones the SBU skill or the person names. List each in `app.toml`, then run
@@ -26,8 +26,8 @@ description: "Read data in a ctzd app: ctzd.query with SQL files and bind parame
   no casts to `NUMBER(p,s)` or `DECIMAL(p,s)`, no `round()` or `.round()`, no
   `f"{x:.2f}"`. The page shows each number to the decimals it needs, and
   `ctzd.display` writes numbers into emails and messages (see `ctzd-jobs`).
-  `ctzd check` refuses rounding outside the page code.
-- Cache every dashboard loader with `@ctzd.cached`.
+  `ctzd check` refuses rounding in the app's Python and SQL.
+- Cache every loader a dataset calls with `@ctzd.cached`.
 - "Today's" or "latest" data means the newest date the source has, not the
   clock's date: sources are stamped at close of business, skip weekends and
   holidays, and the platform's clock is UTC, already tomorrow in the evening
@@ -63,6 +63,50 @@ arrives as `float64`, date columns as `datetime64`, text as `str`. A
 whole-number column holding a value beyond 9,007,199,254,740,992 (2**53) fails
 the query with `ctzd.DataError`, because a float64 cannot hold it exactly: it is
 almost always an id, so select it as text.
+
+## Datasets: what the page reads
+
+`src/app/api/datasets.py` declares each dataset: a function of the page's parameters that
+calls loaders and logic and returns a frame, and a row type naming the columns the page gets.
+
+```python
+import datetime as dt
+
+import ctzd
+import pandas as pd
+
+from app.data.loaders import load_prices
+from app.logic.summary import sector_summary
+
+
+class SectorPrice(ctzd.Row):
+    """One sector's bonds and average clean price."""
+
+    sector: str
+    bonds: ctzd.Count
+    avg_price: ctzd.Price
+
+
+@ctzd.dataset(SectorPrice)
+def sector_prices(as_of: dt.date | None = None) -> pd.DataFrame:
+    """Bonds and average clean price per sector, for the day the page asks for."""
+    return sector_summary(load_prices(as_of))
+```
+
+- The function's arguments are the page's parameters: `str`, `int`, `float`, `bool`,
+  `dt.date`, each with a default when the page may leave it out. A dataset only reads.
+- The row type lists the columns in the order the page shows them; the frame may hold
+  more, which the page does not get. A column the row type names and the frame lacks fails
+  the request with a message naming it.
+- Column kinds say how the page rounds a number: `ctzd.Number` (2 decimals), `ctzd.Count`
+  (none), `ctzd.Price`, `ctzd.Price32` (Treasury 32nds), `ctzd.Pct` and `ctzd.Bps` (both
+  fractions: 0.0525 is 5.25% and 525 bp), and `Annotated[float | None, ctzd.money("USD")]`.
+  Text is `str`, dates `dt.date`.
+- The page reads it at `/api/datasets/sector-prices` through the generated client, as Arrow
+  for parallax (see `ctzd-pages`). `ctzd dev` and `ctzd check` regenerate the client after
+  every change here.
+- Test a dataset through the app: `TestClient(ctzd.api.asgi("app.api.datasets"))` from
+  `starlette.testclient`, with `ctzd.testing.fake_sources` around it (see `ctzd-testing`).
 
 ## Loaders
 
