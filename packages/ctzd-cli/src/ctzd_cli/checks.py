@@ -271,9 +271,9 @@ def client(root: Path, mode: Mode) -> Step:
     return Step("client", "fixed", "Regenerated the page's client from the datasets.") if changed else Step("client", "passed")
 
 
-def web_check(root: Path) -> Step:
-    """The pages' formatting, lint and types, at basis-ui's settings."""
-    result = _pnpm(root, "exec", "vp", "check")
+def web_check(root: Path, mode: Mode) -> Step:
+    """The pages' formatting, lint and types, at basis-ui's settings; locally it fixes what it can first."""
+    result = _pnpm(root, "exec", "vp", "check") if mode == "ci" else _pnpm(root, "exec", "vp", "check", "--fix")
     return Step("web check", "passed") if result.ok else Step("web check", "failed", proc.tail(result.output, 60))
 
 
@@ -305,6 +305,6 @@ def run_all(target: Target, *, mode: Mode, fast: bool) -> list[Step]:
         steps.append(client(root, mode))
     steps += [formatting(root, mode), lint(root, mode), types(root), layers(root), sql_files(root), numbers(root)]
     if react:
-        steps += [web_check(root), web_build(root)]
+        steps += [web_check(root, mode), web_build(root)]
     steps.append(Step("tests", "skipped", "--fast") if fast else tests(root))
     return steps

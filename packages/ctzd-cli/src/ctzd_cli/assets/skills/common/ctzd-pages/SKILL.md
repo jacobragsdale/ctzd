@@ -37,7 +37,7 @@ const formats = { avg_price: { decimals: 3 }, bonds: { decimals: 0 } };
 function PricesPage(): ReactElement {
   const dataset = useDataset("sector_prices", prices);
   return (
-    <div className="flex h-96 flex-col">
+    <div className="h-96">
       <Grid dataset={dataset} layout={{ formats }} />
     </div>
   );
@@ -45,19 +45,14 @@ function PricesPage(): ReactElement {
 ```
 
 - `useDataset(name, load)` loads the dataset once into parallax's engine, which runs off the page.
-- `<Grid>` and `<Chart>` fill their container, which must be a flex column with a height:
-  `<div className="flex h-96 flex-col">`, and a chart also takes `className="min-h-0 flex-1"`;
-  without them a chart draws only a sliver. The grid sorts, filters, groups, totals, and exports
-  to Excel by itself.
-- A bar, pie, or donut chart draws groups: `group_by` names the column of categories and
-  `measures` what to draw for each,
-  `<Chart dataset={dataset} layout={{ chart: { kind: "bar" }, group_by: ["sector"], measures: [{ aggregate: "mean", column: "avg_price" }], formats }} />`.
-  `aggregate` is `sum`, `mean`, `min`, `max`, or `count`; for one row per category, `sum` draws
-  each row's value.
-- A line, area, or scatter chart draws columns against a column:
-  `<Chart dataset={dataset} layout={{ chart: { kind: "line", x: "as_of", y: ["yield"], series: "tenor" }, formats }} />`.
-  Other kinds: `heatmap`, `histogram`, `candlestick`, `ohlc`. A chart that shows "No groups to
-  show" is a bar or pie chart without `group_by` and `measures`.
+- `<Grid>` and `<Chart>` fill their container, so give it a height: `<div className="h-96">`.
+  The grid sorts, filters, groups, totals, and exports to Excel by itself.
+- A chart draws columns against a column:
+  `<Chart dataset={dataset} layout={{ chart: { kind: "bar", x: "sector", y: ["avg_price"] }, formats }} />`.
+  `kind` is `line`, `area`, `bar`, `scatter`, `heatmap`, `histogram`, `candlestick`, `ohlc`,
+  `pie`, or `donut`; `series` splits a column into coloured series. To total many rows per
+  category instead, give `group_by: ["sector"]` and `measures: [{ aggregate: "sum", column: "par" }]`
+  (`aggregate` is `sum`, `mean`, `min`, `max`, or `count`).
 - A small chart of rows the page already holds: `<Chart rows={rows} kind="bar" x="sector" y="exposure" />`.
 - `formats` writes each column's numbers: `{ decimals: 2 }`, `{ percent: true }` and
   `{ bps: true }` (both for fractions: 0.0525 is 5.25% and 525 bp), `{ thirty_seconds: "halves" }`
@@ -125,7 +120,7 @@ Rules, which `ctzd check` enforces with the fix in each message:
        return sector_summary(load_prices(as_of))
    ```
 
-4. A page with a bar chart grouped by `sector` with the `mean` of `avg_price` above a grid of the rows, as above.
+4. A page with a bar chart of `avg_price` by `sector` above a grid of the rows, as above.
 
 ## Look at every page you change
 

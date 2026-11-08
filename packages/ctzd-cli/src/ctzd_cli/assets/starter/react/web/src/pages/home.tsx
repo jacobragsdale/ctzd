@@ -21,19 +21,13 @@ function HomePage(): ReactElement {
   return (
     <>
       <TypographyH1>{{title}}</TypographyH1>
-      <div className="flex h-80 flex-col">
+      <div className="h-80">
         <Chart
-          className="min-h-0 flex-1"
           dataset={dataset}
-          layout={{
-            chart: { kind: "bar" },
-            formats,
-            group_by: ["category"],
-            measures: [{ aggregate: "sum", column: "value" }],
-          }}
+          layout={{ chart: { kind: "bar", x: "category", y: ["value"] }, formats }}
         />
       </div>
-      <div className="flex h-80 flex-col">
+      <div className="h-80">
         <Grid dataset={dataset} layout={{ formats }} />
       </div>
     </>

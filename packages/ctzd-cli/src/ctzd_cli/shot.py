@@ -107,10 +107,7 @@ def _inspect(page: Page, shot: Shot) -> None:
     if isinstance(canvases, list):
         for box in canvases:
             if isinstance(box, list) and len(box) == _BOX_SIDES and isinstance(box[1], int | float) and 0 < box[1] < _SMALL_CHART_PX:
-                shot.problems.append(
-                    f"a grid or chart is {int(box[1])} px tall: put it in a container with a height that is a flex column, "
-                    'such as <div className="flex h-80 flex-col">, and give a chart className="min-h-0 flex-1"'
-                )
+                shot.problems.append(f'a grid or chart is {int(box[1])} px tall: give its container a height, such as <div className="h-80">')
 
 
 def _picture(page: Page, path: Path) -> None:
