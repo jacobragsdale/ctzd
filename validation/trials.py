@@ -55,6 +55,10 @@ DENIED = (
     "Bash(pkill:*)",  # an agent may stop its own processes by id, not other trials' by name
     "Bash(killall:*)",
 )
+# On fake data the person knows what the FI skill tells the agent, so neither waits for databases that never answer.
+FAKE_DATA_FACT = """ The FI databases are being moved this week, so every dashboard shows made-up example rows for now and
+switches to real data by itself after the move. You are fine with that: you want it built and live on the example rows
+today, and you do not ask for real data or for retries."""
 PERSON_PROMPT = """You are role-playing a business user who is talking to an AI assistant. The assistant builds dashboards and scheduled
 reports for you on your company's internal platform, ctzd. {persona}
 You are Ann Lee (ann.lee@contoso.com, GitHub login ann.lee). This is your own work laptop, and ctzd on it is already logged in as you.
@@ -430,7 +434,8 @@ def run_trial(base: Path, job: Job) -> Trial:
     platform = start_platform(aux, fail_first_build=scenario.fail_first_build)
     try:
         env = person_env(base, platform, trial_dir / "home")
-        prompt = PERSON_PROMPT.format(persona=PERSONAS[job.persona], goal=scenario.goal, facts=scenario.facts, done=DONE, give_up=GIVE_UP)
+        facts = scenario.facts + (FAKE_DATA_FACT if json.loads((base / "data.json").read_text()).get("fake") is True else "")
+        prompt = PERSON_PROMPT.format(persona=PERSONAS[job.persona], goal=scenario.goal, facts=facts, done=DONE, give_up=GIVE_UP)
         cwd = arrange(base, trial_dir, aux, platform, scenario)
         # The agent sees the repositories it pushes to (as on GitHub), the platform's settings, the wheels its apps
         # install, and the browser `ctzd shot` takes pictures with.

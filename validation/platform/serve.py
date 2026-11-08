@@ -66,10 +66,15 @@ Each item has `isin`, `issuer`, `rating`, `coupon_pct`, `maturity_date`,
 
 """
 
-FAKE_DATA_NOTE = """**This week the databases are being moved, and no laptop or app can reach
-them.** Until then `fi_pricing` and `fi_trading` answer from each app's own
-`fixtures/` folder, on this laptop (`ctzd dev --fake`) and live: write made-up
-rows with the columns below in `fixtures/SOURCE/NAME.csv` and build on those.
+FAKE_DATA_NOTE = """**The FI databases are being moved this week: `fi_pricing` and `fi_trading`
+cannot be reached from any laptop or app, and every connection to them is
+refused.** Do not try them, wait for them, or retry them. Until the move is
+done, both sources answer from each app's own `fixtures/` folder, on this
+laptop (`ctzd dev --fake`) and in the live app alike: write made-up rows with
+the columns below in `fixtures/SOURCE/NAME.csv`, build on those, and deploy on
+them when the person agrees. The person knows about the move and expects
+made-up rows for now; the live app switches to real data by itself once the
+move is done, with no change to the app.
 
 """
 

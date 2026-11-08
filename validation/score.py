@@ -14,6 +14,7 @@ import sys
 from collections import Counter
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import oracledb
 
@@ -64,6 +65,9 @@ TECHNICAL_WORDS = (
 )
 _WORDS = re.compile(r"(?<![\w.-])(" + "|".join(re.escape(word) for word in TECHNICAL_WORDS) + r")(?![\w-])", re.IGNORECASE)
 _LINK = re.compile(r"https?://[^\s)>\]`'\"]+")
+# A link to the app on this laptop. A live link is one to an app the trial's platform serves (`fi-NAME.ctzd.test`): the
+# guides' production address (`*.ctzd.contoso.com`) or a GitHub or Jenkins link is not one the person can open.
+_LAPTOP_LINK = re.compile(r"https?://(?:localhost|127\.0\.0\.1)(?::\d+)?(?:[/?#]|$)")
 # Text a person would not write: a file path, a file name with a code extension, or a ctzd command.
 _PATHS = re.compile(r"(?<![\w/])(?:[\w.-]+/)+[\w.-]+|\b[\w-]+\.(?:py|tsx?|sql|csv|toml|json|env)\b|\bctzd [a-z]+")
 _SUPPRESSION = re.compile(r"#\s*(noqa|ty:\s*ignore|type:\s*ignore)")
@@ -158,7 +162,7 @@ def score_trial(trial_dir: Path) -> Score:
         minutes=round(sum(float(turn["seconds"]) for turn in trial["turns"]) / 60, 1),
         error=trial["error"],
     )
-    score_messages(score, trial["turns"])
+    score_messages(score, trial["turns"], app_hosts(trial_dir))
     for name, given, result, is_error in tool_uses(trial_dir):
         score.tool_calls += 1
         if "Permission to use" in result and "denied" in result:
@@ -183,16 +187,24 @@ def score_trial(trial_dir: Path) -> Score:
     return score
 
 
-def score_messages(score: Score, turns: list[dict[str, object]]) -> None:
+def app_hosts(trial_dir: Path) -> set[str]:
+    """The hosts of the apps the trial's platform serves, from its saved state."""
+    path = trial_dir / "platform-state.json"
+    apps = json.loads(path.read_text()).get("apps") if path.is_file() else None
+    return {urlsplit(str(status.get("url"))).hostname or "" for status in apps.values() if isinstance(status, dict)} - {""} if isinstance(apps, dict) else set()
+
+
+def score_messages(score: Score, turns: list[dict[str, object]], hosts: set[str]) -> None:
     """What the person read: when the first link reached them, which technical words, and the tokens behind it."""
     elapsed = 0.0
     for turn in turns:
         text = str(turn.get("agent") or "")
         reached = elapsed + float(str(turn.get("agent_seconds") or turn.get("seconds") or 0))
-        links = _LINK.findall(text)
-        if links and score.first_link_minutes is None:
+        links = [link.rstrip(".,;:!?") for link in _LINK.findall(text)]
+        live = any(urlsplit(link).hostname in hosts for link in links)
+        if (live or any(_LAPTOP_LINK.match(link) for link in links)) and score.first_link_minutes is None:
             score.first_link_minutes = round(reached / 60, 1)
-        if any(".ctzd." in link for link in links) and score.first_live_link_minutes is None:
+        if live and score.first_live_link_minutes is None:
             score.first_live_link_minutes = round(reached / 60, 1)
         prose = _LINK.sub(" ", text)
         for found in _PATHS.findall(prose):
