@@ -88,18 +88,28 @@ Rules, which `ctzd check` enforces with the fix in each message:
   theme's tokens (`bg-muted`, `text-muted-foreground`), no `style`, no arbitrary values such as
   `p-[13px]`, no `dark:` classes. When nothing fits, tell the person the look is the firm's.
 - Never round or format a number yourself (`toFixed`, `Math.round`, `toLocaleString`,
-  `Intl.NumberFormat`): use the number components or parallax's `formats`.
+  `Intl.NumberFormat`): use the number components or parallax's `formats`, and
+  `numberText(value, { decimals })` from `@basis/ui` for a number inside a string.
 - Never call `fetch`: data comes only through `#api/client.ts`.
 - Under each page's title, say where its numbers come from and the date they are for.
 
-## Add a page
+## Add a dataset and a page
 
-1. Add its dataset to `src/app/api/datasets.py` (see `ctzd-data`).
-2. Write `web/src/pages/NAME.tsx`, exporting `NamePage`.
-3. List it in `web/src/routes.ts`: `createRoute({ component: NamePage, getParentRoute: () => rootRoute, path: "/name" })`,
-   and add the route to `rootRoute.addChildren([...])`.
-4. Run `ctzd dev`, then `ctzd shot /name --json`. Look at the picture it names in `picture`, and
+Two commands write a working slice, which passes `ctzd check` as written; then you edit it:
+
+1. `ctzd add dataset NAME --source SOURCE --json` writes `src/app/data/sql/NAME.sql`, a loader,
+   the dataset and its row type in `src/app/api/datasets.py`, and a test, lists the source in
+   `app.toml`, and regenerates the client. Without `--source`, the loader returns example rows.
+   Write the query, then make the row type's fields the query's columns (`ctzd-data`).
+2. `ctzd add page PAGE --dataset NAME --json` writes `web/src/pages/PAGE.tsx`, showing the
+   dataset as a bar chart and a grid with each column's format from its row type, routes it at
+   `/PAGE`, and links it from the header (`web/src/nav.ts`). Change the chart's columns and kind
+   to answer the person's question.
+3. Run `ctzd dev`, then `ctzd shot /PAGE --json`. Look at the picture it names in `picture`, and
    fix each line in `problems` before you give the person the link.
+
+`ctzd api list --json` names every dataset's route, client function, parameters, and columns
+with their formats: read it instead of the generated client.
 
 ## A worked example: "today's bond prices by sector"
 

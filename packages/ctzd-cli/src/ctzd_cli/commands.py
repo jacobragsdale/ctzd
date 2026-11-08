@@ -11,7 +11,7 @@ from typing import Protocol, assert_never
 
 from pydantic import ValidationError
 
-from ctzd_cli import api_client, appconfig, assets, auth, catalogue, checks, config, devserver, gitops, proc, release, render, scaffold, setup_checks, sync
+from ctzd_cli import api_client, appconfig, assets, auth, catalogue, checks, config, devserver, generate, gitops, proc, release, render, scaffold, setup_checks, sync
 from ctzd_cli import api_models as m
 from ctzd_cli import shot as shooting
 from ctzd_cli.appconfig import AppConfig, AppSection, Job, SourcesSection, Ui
@@ -386,6 +386,72 @@ def add_job(ctx: Context, *, name: str, schedule: str, size: appconfig.Size, tim
         summary=f"Added job {name} on schedule {schedule!r} ({timezone}).",
         data={"job": name, "files": files},
         next_steps=[f"Write the job in src/app/jobs/{name}.py, then run `ctzd run {name} --local`."],
+    )
+
+
+def _react_app(ctx: Context) -> Path:
+    root, app = _app(ctx)
+    if app.app.ui != "react":
+        msg = "This app has no pages; it runs only scheduled jobs."
+        raise UsageError(msg, hint="Datasets and pages belong to an app made with `ctzd new NAME --ui react`.")
+    return root
+
+
+def add_dataset(ctx: Context, *, name: str, source: str | None) -> Outcome:
+    """A dataset with its row type, loader, SQL file when it reads a source, and test; then the regenerated client."""
+    root = _react_app(ctx)
+    files = generate.add_dataset(root, name, source)
+    refreshed = generate.refresh_client(root)
+    if refreshed.state == "failed":
+        return Outcome(summary=f"Added dataset {name}, but the page's client could not be regenerated.", data={"files": files, "output": refreshed.detail}, ok=False)
+    route = name.replace("_", "-")
+    steps = [
+        f"Write its query in src/app/data/sql/{name}.sql" if source is not None else f"Replace the example rows in load_{name} in src/app/data/loaders.py with a real loader (ctzd-data)",
+        f"and its columns in the row type in src/app/api/datasets.py; then `ctzd add page PAGE --dataset {name}`, or read it in a page through `{generate.camel(name)}()`.",
+    ]
+    return Outcome(
+        summary=f"Added dataset {name}, served at /api/datasets/{route}; the page's client has `{generate.camel(name)}()`.",
+        data={"dataset": name, "route": f"/api/datasets/{route}", "function": generate.camel(name), "files": files},
+        next_steps=[" ".join(steps)],
+    )
+
+
+def add_page(ctx: Context, *, name: str, dataset: str) -> Outcome:
+    """A page showing a dataset as a chart and a grid, routed and linked from the header."""
+    root = _react_app(ctx)
+    refreshed = generate.refresh_client(root)
+    if refreshed.state == "failed":
+        return Outcome(summary="The page's client could not be regenerated, so no page was added.", data={"output": refreshed.detail}, ok=False)
+    files, routed = generate.add_page(root, name, dataset)
+    route_step = [] if routed else [f"web/src/routes.ts no longer has the starter's shape: add a route for /{name} to {generate.pascal(name)}Page there yourself."]
+    return Outcome(
+        summary=f"Added the page /{name}, showing {dataset} as a chart and a grid.",
+        data={"page": f"/{name}", "files": files, "routed": routed},
+        next_steps=[*route_step, f"Run `ctzd dev`, then `ctzd shot /{name}`, and look at the picture."],
+    )
+
+
+def api_list(ctx: Context) -> Outcome:
+    """Each dataset's route, client function, parameters, and columns, from the regenerated document."""
+    root = _react_app(ctx)
+    refreshed = generate.refresh_client(root)
+    if refreshed.state == "failed":
+        return Outcome(summary="The datasets could not be read.", data={"output": refreshed.detail}, ok=False)
+    found = generate.datasets(root)
+    return Outcome(
+        summary=f"{len(found)} dataset(s): " + ", ".join(dataset.name for dataset in found) + "." if found else "No datasets yet; `ctzd add dataset NAME` adds one.",
+        data={
+            "datasets": [
+                {
+                    "name": dataset.name,
+                    "route": dataset.path,
+                    "function": dataset.function,
+                    "parameters": dataset.parameters,
+                    "columns": [{"name": column.name, "type": column.kind, "format": column.format} for column in dataset.columns],
+                }
+                for dataset in found
+            ]
+        },
     )
 
 

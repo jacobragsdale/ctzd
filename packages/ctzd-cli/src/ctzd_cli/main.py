@@ -57,6 +57,8 @@ class Args(BaseModel):
     commit: str | None = None
     url: str | None = None
     page: str = "/"
+    source: str | None = None
+    dataset: str | None = None
     argv: tuple[str, ...] = ()
     timezone: str = "UTC"
 
@@ -102,7 +104,16 @@ def _app_parsers(sub: argparse._SubParsersAction[argparse.ArgumentParser], commo
     run.add_argument("--timeout", type=float, default=_DEPLOY_TIMEOUT)
     sub.add_parser("sources", parents=[common], help="list the data sources the platform knows")
     add = sub.add_parser("add", parents=[common], help="add a part to the app")
-    add_job = add.add_subparsers(dest="action", required=True).add_parser("job", parents=[common], help="add a scheduled job")
+    add_sub = add.add_subparsers(dest="action", required=True)
+    add_dataset = add_sub.add_parser("dataset", parents=[common], help="add a dataset the pages read, with its loader and test")
+    add_dataset.add_argument("name", help="such as sector_prices")
+    add_dataset.add_argument("--source", help="the source it reads, as `ctzd sources` names it; without it, the loader returns example rows")
+    add_page = add_sub.add_parser("page", parents=[common], help="add a page that shows a dataset as a chart and a grid")
+    add_page.add_argument("name", help="the page's path, such as sector-prices")
+    add_page.add_argument("--dataset", required=True, help="the dataset it shows")
+    api = sub.add_parser("api", parents=[common], help="the app's datasets").add_subparsers(dest="action", required=True)
+    api.add_parser("list", parents=[common], help="each dataset's route, client function, parameters, and columns")
+    add_job = add_sub.add_parser("job", parents=[common], help="add a scheduled job")
     add_job.add_argument("name")
     add_job.add_argument("--schedule", required=True, help="five-field cron, such as '0 7 * * 1-5'")
     add_job.add_argument("--timezone", default="UTC", help="IANA time zone the schedule runs in, such as Europe/London (default UTC)")
@@ -177,6 +188,9 @@ HANDLERS: dict[str, Handler] = {
     "dev": lambda a, ctx: commands.dev(ctx, port=a.port, stop=a.stop),
     "shot": lambda a, ctx: commands.shot(ctx, page=a.page),
     "docs ui": lambda a, ctx: commands.docs_ui(ctx, name=a.name),
+    "add dataset": lambda a, ctx: commands.add_dataset(ctx, name=_required(a.name, "NAME"), source=a.source),
+    "add page": lambda a, ctx: commands.add_page(ctx, name=_required(a.name, "NAME"), dataset=_required(a.dataset, "--dataset")),
+    "api list": lambda _a, ctx: commands.api_list(ctx),
     "run": lambda a, ctx: commands.run_job(ctx, job=_required(a.job, "JOB"), local=a.local, wait=a.wait, timeout=a.timeout),
     "exec": lambda a, ctx: commands.exec_command(ctx, argv=a.argv),
     "sources": lambda _a, ctx: commands.sources(ctx),

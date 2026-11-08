@@ -234,9 +234,9 @@ client and to the theme's components and tokens.
 | `ctzd dev [--port N] [--fake]`, `ctzd dev --stop` | Starts the app locally in the background, against real data or, with `--fake`, the fake sources in `fixtures/`, and returns its URL; run again, it restarts it. For a React app it runs the API and the page server together and regenerates the client when the API changes. `--stop` stops it, so an agent never has to find and kill processes. |
 | `ctzd shot [PATH]` | A picture of a page `ctzd dev` serves (default `/`), under `.ctzd/shots/`, and each problem on it, one line each. Not a gate. |
 | `ctzd exec -- COMMAND` | Runs a command in the app's environment with its source credentials, as `ctzd dev` does, such as a look at what a loader returns from the live source. Agents never read or load `.env` themselves. |
-| `ctzd add dataset NAME --source SRC` (planned) | Writes a dataset's SQL file, loader, route, fixture, and test, and regenerates the client. |
-| `ctzd add page NAME --kind grid\|chart\|kpi\|detail --dataset NAME` (planned) | Writes a route and its page from a recipe, wired to the dataset's generated hook. |
-| `ctzd api list` (planned) | Each dataset with its parameters, columns, and hook name, so an agent never reads the generated client. |
+| `ctzd add dataset NAME [--source SRC]` | Writes a dataset's row type, loader, SQL file (with `--source`, which it lists in `app.toml`), and test, and regenerates the client. |
+| `ctzd add page NAME --dataset NAME` | Writes a page showing the dataset as a bar chart and a grid, with each column's format from its row type, routes it, and links it from the header. |
+| `ctzd api list` | Each dataset with its route, client function, parameters, and columns with their formats, so an agent never reads the generated client. |
 | `ctzd add package NAME [--npm]` (planned) | Adds a Python or npm package from the internal registry. |
 | `ctzd docs ui [COMPONENT]` | The component catalogue of the installed `@basis/ui` (`catalogue.json`, basis-ui step 1.15), by family, or one component's props, variants, and example. |
 | `ctzd run JOB [--local] [--wait]` | Runs a job in Airflow and prints the run link, `--wait` follows it to success or failure; `--local` runs it on the laptop. |
