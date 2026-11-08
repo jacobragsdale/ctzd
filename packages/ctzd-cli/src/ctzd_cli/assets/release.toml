@@ -30,4 +30,5 @@ dev = [
 dependencies = ["basis-api", "basis-core", "ctzd-core[api]"]
 
 [ui.none]
-dependencies = []
+# SHIM (MVP): basis-core is listed directly so that the platform's git source for it applies.
+dependencies = ["basis-core"]

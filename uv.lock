@@ -79,7 +79,7 @@ wheels = [
 [[package]]
 name = "basis-api"
 version = "0.0.0"
-source = { git = "https://github.com/jacobragsdale/basis?subdirectory=packages%2Fapi&branch=main#e0e099fa38413d557f8522ba47d39b64380792af" }
+source = { git = "https://github.com/jacobragsdale/basis?subdirectory=packages%2Fapi&branch=main#6f62ec6b0c06645d858fe740da4200671843652a" }
 dependencies = [
     { name = "basis-core" },
     { name = "cryptography" },
@@ -92,7 +92,7 @@ dependencies = [
 [[package]]
 name = "basis-core"
 version = "0.0.0"
-source = { git = "https://github.com/jacobragsdale/basis?subdirectory=packages%2Fcore&branch=main#e0e099fa38413d557f8522ba47d39b64380792af" }
+source = { git = "https://github.com/jacobragsdale/basis?subdirectory=packages%2Fcore&branch=main#6f62ec6b0c06645d858fe740da4200671843652a" }
 dependencies = [
     { name = "grimp" },
     { name = "httpx2" },
@@ -502,6 +502,7 @@ name = "ctzd-core"
 version = "0.2.0"
 source = { editable = "packages/ctzd-core" }
 dependencies = [
+    { name = "basis-core" },
     { name = "httpx" },
     { name = "mssql-python", extra = ["pyarrow"] },
     { name = "numpy" },
@@ -521,6 +522,7 @@ api = [
 [package.metadata]
 requires-dist = [
     { name = "basis-api", marker = "extra == 'api'", git = "https://github.com/jacobragsdale/basis?subdirectory=packages%2Fapi&branch=main" },
+    { name = "basis-core", git = "https://github.com/jacobragsdale/basis?subdirectory=packages%2Fcore&branch=main" },
     { name = "httpx", specifier = ">=0.28" },
     { name = "mssql-python", extras = ["pyarrow"], specifier = ">=1.17" },
     { name = "numpy", specifier = ">=2.5" },
