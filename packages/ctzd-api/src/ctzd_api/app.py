@@ -113,10 +113,6 @@ def _app_routes(api: FastAPI, services: Services) -> None:
     def build(login: Login, sbu: str, name: str, commit: str) -> m.Build:
         return service.build_for_commit(services, login, AppRef(sbu, name), commit)
 
-    @api.get("/v1/apps/{sbu}/{name}/builds/{number}/screenshot")
-    def screenshot(login: Login, sbu: str, name: str, number: int) -> Response:
-        return Response(content=service.screenshot(services, login, AppRef(sbu, name), number), media_type="image/png")
-
     @api.post("/v1/apps/{sbu}/{name}/rollback")
     def rollback(login: Login, sbu: str, name: str, request: m.RollbackRequest) -> m.RollbackAccepted:
         return service.rollback(services, login, AppRef(sbu, name), request.release)

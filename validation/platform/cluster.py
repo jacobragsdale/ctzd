@@ -106,7 +106,6 @@ class JobRun:
 class AppRecord:
     builds: list[JenkinsBuild] = field(default_factory=list)
     consoles: dict[int, str] = field(default_factory=dict)
-    artifacts: dict[int, dict[str, bytes]] = field(default_factory=dict)
     seen: set[str] = field(default_factory=set)
     state: AppState = field(default_factory=lambda: AppState(release=None, paused=False))
     dashboard: Dashboard | None = None
@@ -179,7 +178,7 @@ class LocalCluster:
         with record.lock:
             number = len(record.builds) + 1
             url = f"http://jenkins.local/job/ctzd-apps/job/{repo}/job/main/{number}/"
-            record.builds.append(JenkinsBuild(number, commit, building=True, result=None, url=url, description=None, failed_stage=None, artifacts=()))
+            record.builds.append(JenkinsBuild(number, commit, building=True, result=None, url=url, description=None, failed_stage=None))
             console: list[str] = []
             try:
                 result, stage, description = self._pipeline(repo, record, number, commit, console)
@@ -188,8 +187,7 @@ class LocalCluster:
                 console.append(f"pipeline error: {err!r}")
             record.consoles[number] = "\n".join(console)
             (self.root / "builds" / repo / f"{number}.console.log").write_text(record.consoles[number])
-            artifacts = tuple(record.artifacts.get(number, {}))
-            record.builds[number - 1] = JenkinsBuild(number, commit, building=False, result=result, url=url, description=description, failed_stage=stage, artifacts=artifacts)
+            record.builds[number - 1] = JenkinsBuild(number, commit, building=False, result=result, url=url, description=description, failed_stage=stage)
 
     def _pipeline(self, repo: str, record: AppRecord, number: int, commit: str, console: list[str]) -> tuple[str, str | None, str | None]:
         workspace = self.root / "builds" / repo / str(number)
@@ -208,9 +206,9 @@ class LocalCluster:
         if number == self.fail_build:
             console.append("#12 pushing contosoctzd.azurecr.io/apps/image\nerror: failed to push: 503 Service Unavailable: the registry is temporarily unavailable")
             return "FAILURE", "Image", None
-        return self._deploy(repo, record, number=number, commit=commit, workspace=workspace, console=console)
+        return self._deploy(repo, record, commit=commit, workspace=workspace, console=console)
 
-    def _deploy(self, repo: str, record: AppRecord, *, number: int, commit: str, workspace: Path, console: list[str]) -> tuple[str, str | None, str | None]:  # noqa: PLR0913 - the build's whole context
+    def _deploy(self, repo: str, record: AppRecord, *, commit: str, workspace: Path, console: list[str]) -> tuple[str, str | None, str | None]:
         image = f"local/{repo}:{commit[:12]}"
         code, _ = self._ctzd(workspace, "ci", "render", "--image", image, "--out", str(workspace / ".out"), console=console)
         if code != 0:
@@ -218,7 +216,7 @@ class LocalCluster:
         values = HelmValues.model_validate_json((workspace / ".out" / "helm-values.json").read_bytes())
         spec = AirflowSpec.model_validate_json((workspace / ".out" / "airflow-spec.json").read_bytes())
         if values.enabled:
-            failed = self._roll_out(repo, record, number=number, workspace=workspace, values=values, console=console)
+            failed = self._roll_out(repo, record, workspace=workspace, values=values, console=console)
             if failed is not None:
                 return "FAILURE", failed, None
         self._register_jobs(workspace, spec)
@@ -230,17 +228,14 @@ class LocalCluster:
         record.state = AppState(release=number_released, paused=False)
         return "SUCCESS", None, f"release v{number_released}"
 
-    def _roll_out(self, repo: str, record: AppRecord, *, number: int, workspace: Path, values: HelmValues, console: list[str]) -> str | None:  # noqa: PLR0913 - the build's whole context
+    def _roll_out(self, repo: str, record: AppRecord, *, workspace: Path, values: HelmValues, console: list[str]) -> str | None:
         """Start the new dashboard and smoke-test it; on failure the previous one keeps serving. Returns the failed stage."""
         previous = record.dashboard
         started = self._start_dashboard(repo, workspace, values, console)
         if started is None:
             return "Deploy"  # like helm --atomic: the old dashboard keeps serving
         record.dashboard = started
-        shot = workspace / "screenshot.png"
-        code, _ = self._ctzd(workspace, "ci", "smoke", "--url", f"http://127.0.0.1:{started.port}", "--screenshot", str(shot), console=console)
-        if shot.is_file():
-            record.artifacts.setdefault(number, {})["screenshot.png"] = shot.read_bytes()
+        code, _ = self._ctzd(workspace, "ci", "smoke", "--url", f"http://127.0.0.1:{started.port}", console=console)
         if code != 0:
             _terminate(started)
             record.dashboard = previous  # like helm rollback: the previous release keeps serving
@@ -354,12 +349,6 @@ class LocalJenkins:
             if build in record.builds:
                 return "\n".join(record.consoles.get(build.number, "").splitlines()[-lines:])
         return ""
-
-    def artifact(self, build: JenkinsBuild, name: str) -> bytes:
-        for record in self.cluster.apps.values():
-            if build in record.builds:
-                return record.artifacts.get(build.number, {}).get(name, b"")
-        return b""
 
     def trigger(self, job: str, parameters: dict[str, str]) -> None:
         if job == ROLLBACK_JOB:

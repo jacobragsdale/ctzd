@@ -23,7 +23,6 @@ class JenkinsBuild:
     url: str
     description: str | None
     failed_stage: str | None
-    artifacts: tuple[str, ...]
 
 
 class GitHub(Protocol):
@@ -40,7 +39,6 @@ class GitHub(Protocol):
 class Jenkins(Protocol):
     def builds(self, repo: str) -> list[JenkinsBuild]: ...
     def console_tail(self, build: JenkinsBuild, lines: int) -> str: ...
-    def artifact(self, build: JenkinsBuild, name: str) -> bytes: ...
     def trigger(self, job: str, parameters: dict[str, str]) -> None: ...
 
 

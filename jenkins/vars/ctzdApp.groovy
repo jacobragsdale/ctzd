@@ -9,7 +9,7 @@
 def call(Map config = [:]) {
     // The one ctzd version every build uses, released together with the chart it renders values for.
     def defaults = [
-        cliVersion: '0.2.0',
+        cliVersion: '0.3.0',
         registry: 'contosoctzd.azurecr.io',
         baseImage: 'contosoctzd.azurecr.io/ctzd/base:py3.13',
         namespace: 'ctzd-apps',
@@ -97,7 +97,7 @@ def call(Map config = [:]) {
                 when { allOf { branch 'main'; expression { env.PAUSED != 'true' && env.HAS_DASHBOARD == 'true' } } }
                 steps {
                     script {
-                        def status = sh(script: '"$CTZD" ci smoke --url "$APP_SCHEME://$HOST" --screenshot screenshot.png --json', returnStatus: true)
+                        def status = sh(script: '"$CTZD" ci smoke --url "$APP_SCHEME://$HOST" --json', returnStatus: true)
                         if (status != 0) {
                             sh 'helm rollback "$FULLNAME" --namespace "$NAMESPACE" --wait --timeout 5m'
                             error('The dashboard showed an error after the rollout; the previous release is back.')
@@ -128,7 +128,6 @@ def call(Map config = [:]) {
             }
         }
         post {
-            always { archiveArtifacts artifacts: 'screenshot.png', allowEmptyArchive: true }
             success {
                 script {
                     if (env.BRANCH_NAME == 'main' && env.PAUSED == 'true') {

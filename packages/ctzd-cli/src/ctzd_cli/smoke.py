@@ -1,11 +1,11 @@
-"""`ctzd ci smoke`: open the live dashboard in a browser, fail on an error box, save a screenshot.
+"""`ctzd ci smoke`: open the live dashboard in a headless browser and fail on an error box, a 5xx, or a page that never loads.
+
+The 5xx are those the page's own requests get. Every problem is reported as text.
 
 Needs the `ctzd[ci]` extra and a Playwright Chromium on the Jenkins agent.
 """
 
-import contextlib
 from dataclasses import dataclass, field
-from pathlib import Path
 
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Page, Response, ViewportSize, sync_playwright
@@ -16,15 +16,6 @@ _ERROR_SELECTORS: dict[Ui, tuple[str, ...]] = {"streamlit": ('[data-testid="stEx
 _READY_SELECTORS: dict[Ui, str] = {"streamlit": '[data-testid="stApp"]', "dash": "#react-entry-point", "none": "body"}
 _SETTLE_MS = 4_000
 _VIEWPORT = ViewportSize(width=1440, height=900)
-# Taller screenshots are scaled down until the agent reading them cannot make out the text.
-_MAX_HEIGHT = 2_400
-# Streamlit scrolls inside its own container, so a full-page screenshot would show only the
-# first screen. This measures the scrolling content of containers about as tall as the window;
-# smaller ones, such as a table's own scroll area, would make the page look far longer than it is.
-_CONTENT_HEIGHT_JS = """() => Math.max(document.documentElement.scrollHeight, ...Array.from(document.querySelectorAll('*'))
-    .filter((e) => ['auto', 'scroll'].includes(getComputedStyle(e).overflowY) && e.scrollHeight > e.clientHeight
-        && e.clientHeight >= 0.8 * window.innerHeight)
-    .map((e) => e.getBoundingClientRect().top + e.scrollHeight))"""
 _SERVER_ERROR = 500
 _TIMEOUT_MS = 60_000
 
@@ -72,17 +63,8 @@ def _check(page: Page, url: str, ui: Ui, result: SmokeResult, timeout_ms: int) -
             result.problems.append(f"{url}: {errors.first.inner_text(timeout=5_000)[:500]}")
 
 
-def _screenshot_whole_page(page: Page, path: Path) -> None:
-    height: object = page.evaluate(_CONTENT_HEIGHT_JS)
-    if isinstance(height, int | float) and height > _VIEWPORT["height"]:
-        page.set_viewport_size(ViewportSize(width=_VIEWPORT["width"], height=min(int(height) + 40, _MAX_HEIGHT)))
-        page.wait_for_timeout(1_000)
-    page.screenshot(path=str(path), full_page=True)
-    page.set_viewport_size(_VIEWPORT)
-
-
-def smoke(url: str, *, ui: Ui, screenshot: Path, timeout_ms: int = _TIMEOUT_MS) -> SmokeResult:
-    """Every problem the page shows, as text; the screenshot is taken whatever happened, so the agent can see it."""
+def smoke(url: str, *, ui: Ui, timeout_ms: int = _TIMEOUT_MS) -> SmokeResult:
+    """Every problem the dashboard shows, as text; for Streamlit, its other pages are checked too when the first one is fine."""
     result = SmokeResult()
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
@@ -90,8 +72,6 @@ def smoke(url: str, *, ui: Ui, screenshot: Path, timeout_ms: int = _TIMEOUT_MS) 
             page = browser.new_page(viewport=_VIEWPORT)
             _watch_server_errors(page, result)
             _check(page, url, ui, result, timeout_ms)
-            with contextlib.suppress(PlaywrightError):
-                _screenshot_whole_page(page, screenshot)
             if ui == "streamlit" and not result.problems:
                 links = page.locator('[data-testid="stSidebarNavLink"]')
                 others = [href for href in (links.nth(i).get_attribute("href") for i in range(links.count())) if href is not None and href.rstrip("/") != url.rstrip("/")]

@@ -102,7 +102,6 @@ class Build(_Model):
     url: str | None = None
     log_tail: str | None = None
     release: int | None = None
-    has_screenshot: bool = False
 
 
 class AppStatus(_Model):

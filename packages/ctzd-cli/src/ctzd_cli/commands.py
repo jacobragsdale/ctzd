@@ -19,7 +19,6 @@ from ctzd_cli.errors import CliError, NotFoundError, UsageError
 from ctzd_cli.releases import ReleaseSource, require_usable, upgrade_hint
 
 ENV_FILE = ".env"
-SCREENSHOTS = ".ctzd/screenshots"
 _POLL_SECONDS = 10.0
 _DEFAULT_JOB = Job(name="refresh", schedule="0 6 * * *")
 # Commands that work inside an app; each refreshes the app's guidance before it runs.
@@ -388,23 +387,13 @@ def wait_for_build(ctx: Context, platform: api_client.Platform, app: AppConfig, 
     return build
 
 
-def _save_screenshot(root: Path, platform: api_client.Platform, app: AppConfig, build: m.Build) -> str | None:
-    if not build.has_screenshot or build.number is None:
-        return None
-    shots = root / SCREENSHOTS
-    shots.mkdir(parents=True, exist_ok=True)
-    shot = shots / (f"v{build.release}.png" if build.release is not None else f"build-{build.number}.png")
-    shot.write_bytes(platform.screenshot(app.app.sbu, app.app.name, build.number))
-    return str(shot)
-
-
-def _build_outcome(root: Path, platform: api_client.Platform, app: AppConfig, commit: str, build: m.Build) -> Outcome:
-    data: dict[str, object] = {"commit": commit, "build": build.model_dump(), "screenshot": _save_screenshot(root, platform, app, build)}
+def _build_outcome(platform: api_client.Platform, app: AppConfig, commit: str, build: m.Build) -> Outcome:
+    data: dict[str, object] = {"commit": commit, "build": build.model_dump()}
     if build.state == "failed":
         return Outcome(
             summary=f"The deploy failed at {build.stage or 'an unknown step'}. Production still runs the previous release.",
             data=data,
-            next_steps=["Read build.log_tail (and the screenshot, if there is one), fix the cause, then run `ctzd deploy` again.", "See the ctzd-troubleshoot skill."],
+            next_steps=["Read build.log_tail, fix the cause, then run `ctzd deploy` again.", "See the ctzd-troubleshoot skill."],
             ok=False,
         )
     if build.state != "succeeded":
@@ -506,7 +495,7 @@ def deploy(ctx: Context, *, message: str | None, detach: bool, timeout: float) -
     if detach:
         return Outcome(summary="Pushed; Jenkins is building it.", data={"commit": commit, "committed": committed}, next_steps=["Run `ctzd status --wait`."])
     build = wait_for_build(ctx, platform, app, commit, timeout=timeout)
-    return _build_outcome(root, platform, app, commit, build)
+    return _build_outcome(platform, app, commit, build)
 
 
 def status(ctx: Context, *, wait: bool, timeout: float) -> Outcome:
@@ -517,7 +506,7 @@ def status(ctx: Context, *, wait: bool, timeout: float) -> Outcome:
         if commit is None:
             msg = "This app has no commits yet."
             raise UsageError(msg)
-        return _build_outcome(root, platform, app, commit, wait_for_build(ctx, platform, app, commit, timeout=timeout))
+        return _build_outcome(platform, app, commit, wait_for_build(ctx, platform, app, commit, timeout=timeout))
     current = platform.status(app.app.sbu, app.app.name)
     paused = " Auto-deploy is paused after a rollback; the next `ctzd deploy` resumes it." if current.paused else ""
     release_text = f"v{current.release}" if current.release is not None else "nothing yet"
@@ -620,13 +609,13 @@ def ci_release(ctx: Context, *, image: str, commit: str, now: Callable[[], objec
     return Outcome(summary=f"Tagged {commit[:8]} as {name}.", data={"release": number, "tag": name})
 
 
-def ci_smoke(ctx: Context, *, url: str, screenshot: Path) -> Outcome:
+def ci_smoke(ctx: Context, *, url: str) -> Outcome:
     _root, app = _app(ctx)
     from ctzd_cli import smoke  # noqa: PLC0415 - playwright comes with the optional ci extra, so import it only here.
 
-    result = smoke.smoke(url, ui=app.app.ui, screenshot=screenshot)
+    result = smoke.smoke(url, ui=app.app.ui)
     return Outcome(
         summary="The dashboard rendered without errors." if result.ok else "The dashboard shows errors: " + "; ".join(result.problems),
-        data={"pages": result.pages, "problems": result.problems, "screenshot": str(screenshot)},
+        data={"pages": result.pages, "problems": result.problems},
         ok=result.ok,
     )

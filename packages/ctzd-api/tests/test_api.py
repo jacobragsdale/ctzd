@@ -59,7 +59,6 @@ def build(number: int, *, commit: str, result: str | None, description: str | No
         url=f"https://jenkins.contoso.com/job/ctzd-apps/job/fi-bond-prices/job/main/{number}/",
         description=description,
         failed_stage=failed_stage,
-        artifacts=(),
     )
 
 

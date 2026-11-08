@@ -76,10 +76,6 @@ class FakePlatform:
         self.asked.append(commit)
         return self.builds.pop(0) if len(self.builds) > 1 else self.builds[0]
 
-    def screenshot(self, sbu: str, name: str, number: int) -> bytes:
-        del sbu, name, number
-        return b"\x89PNG fake"
-
     def rollback(self, sbu: str, name: str, release: int | None) -> m.RollbackAccepted:
         raise NotImplementedError
 

@@ -49,12 +49,11 @@ def context(app: Path, platform: FakePlatform, runner: commands.CheckRunner = pa
 def test_deploy_pushes_and_reports_the_live_release(repo: tuple[Path, Path]) -> None:
     app, remote = repo
     (app / "src" / "app" / "logic" / "summary.py").write_text('"""changed"""\n')
-    platform = FakePlatform([m.Build(number=8, state="running"), m.Build(number=8, state="succeeded", release=4, has_screenshot=True)])
+    platform = FakePlatform([m.Build(number=8, state="running"), m.Build(number=8, state="succeeded", release=4)])
     outcome = commands.deploy(context(app, platform), message=None, detach=False, timeout=60)
     assert outcome.ok
     assert outcome.data["release"] == 4
     assert outcome.data["url"] == "https://fi-bond-prices.ctzd.contoso.com"
-    assert (app / ".ctzd" / "screenshots" / "v4.png").read_bytes() == b"\x89PNG fake"
     assert git(remote, "rev-parse", "main") == git(app, "rev-parse", "HEAD")
     assert platform.resumed == 1
     assert "summary.py" in git(app, "log", "-1", "--format=%s")

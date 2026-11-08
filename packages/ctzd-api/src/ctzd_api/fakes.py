@@ -59,9 +59,6 @@ class FakeJenkins:
     def console_tail(self, build: JenkinsBuild, lines: int) -> str:
         return "\n".join(self.consoles.get(build.number, "").splitlines()[-lines:])
 
-    def artifact(self, build: JenkinsBuild, name: str) -> bytes:
-        return f"{name} of build {build.number}".encode()
-
     def trigger(self, job: str, parameters: dict[str, str]) -> None:
         self.triggered.append((job, parameters))
 

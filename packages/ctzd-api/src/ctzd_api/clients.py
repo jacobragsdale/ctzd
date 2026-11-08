@@ -126,17 +126,12 @@ class _Action(_Reply):
     lastBuiltRevision: _Revision | None = None  # noqa: N815 - Jenkins' JSON field name.
 
 
-class _Artifact(_Reply):
-    relativePath: str  # noqa: N815 - Jenkins' JSON field name.
-
-
 class _Build(_Reply):
     number: int
     building: bool
     result: str | None
     url: str
     description: str | None = None
-    artifacts: tuple[_Artifact, ...] = ()
     actions: tuple[_Action, ...] = ()
 
 
@@ -160,7 +155,7 @@ class JenkinsClient:
         self._http = httpx.Client(timeout=_TIMEOUT, auth=(user, api_token))
 
     def builds(self, repo: str) -> list[JenkinsBuild]:
-        tree = "builds[number,building,result,url,description,artifacts[relativePath],actions[lastBuiltRevision[SHA1]]]{0,30}"
+        tree = "builds[number,building,result,url,description,actions[lastBuiltRevision[SHA1]]]{0,30}"
         response = self._http.get(f"{self._url}/job/{self._folder}/job/{repo}/job/main/api/json", params={"tree": tree})
         if response.status_code == httpx.codes.NOT_FOUND:
             return []
@@ -168,18 +163,7 @@ class JenkinsClient:
         for build in _Builds.model_validate_json(_check(response).content).builds:
             commit = next((action.lastBuiltRevision.SHA1 for action in build.actions if action.lastBuiltRevision is not None), None)
             failed = None if build.building or build.result in {None, "SUCCESS"} else self._failed_stage(build.url)
-            found.append(
-                JenkinsBuild(
-                    number=build.number,
-                    commit=commit,
-                    building=build.building,
-                    result=build.result,
-                    url=build.url,
-                    description=build.description,
-                    failed_stage=failed,
-                    artifacts=tuple(artifact.relativePath for artifact in build.artifacts),
-                )
-            )
+            found.append(JenkinsBuild(number=build.number, commit=commit, building=build.building, result=build.result, url=build.url, description=build.description, failed_stage=failed))
         return found
 
     def _failed_stage(self, build_url: str) -> str | None:
@@ -190,9 +174,6 @@ class JenkinsClient:
 
     def console_tail(self, build: JenkinsBuild, lines: int) -> str:
         return "\n".join(_check(self._http.get(f"{build.url}consoleText")).text.splitlines()[-lines:])
-
-    def artifact(self, build: JenkinsBuild, name: str) -> bytes:
-        return _check(self._http.get(f"{build.url}artifact/{name}")).content
 
     def trigger(self, job: str, parameters: dict[str, str]) -> None:
         _check(self._http.post(f"{self._url}/job/{job}/buildWithParameters", data=parameters))

@@ -7,6 +7,7 @@ agent does, and checks what it printed and what reached the fakes.
 """
 
 import datetime as dt
+import re
 import shutil
 import socket
 import subprocess
@@ -41,7 +42,7 @@ BUILD_URL = f"https://jenkins.contoso.com/job/ctzd-apps/job/{REPO_NAME}/job/main
 def release_archive(number: int, *, files: dict[str, str] | None = None, requires_cli: str | None = None) -> bytes:
     manifest = SEED["release.toml"].replace("release = 1\n", f"release = {number}\n", 1)
     if requires_cli is not None:
-        manifest = manifest.replace('requires_cli = "0.2.0"', f'requires_cli = "{requires_cli}"', 1)
+        manifest = re.sub(r'^requires_cli = ".*"$', f'requires_cli = "{requires_cli}"', manifest, count=1, flags=re.MULTILINE)
     return fakes.archive(SEED | {"release.toml": manifest} | (files or {}))
 
 
@@ -222,14 +223,13 @@ def shipping(run: Run) -> None:
     report.expect("deploy cleared the rollback pause", ok=not world.kube.state(REPO_NAME).paused)
     commit = pushed.text("commit")
     world.jenkins.by_repo[REPO_NAME] = [
-        JenkinsBuild(12, commit, building=False, result="SUCCESS", url=BUILD_URL, description="checks passed; auto-deploy is paused after a rollback", failed_stage=None, artifacts=())
+        JenkinsBuild(12, commit, building=False, result="SUCCESS", url=BUILD_URL, description="checks passed; auto-deploy is paused after a rollback", failed_stage=None)
     ]
     nothing = run_ctzd(["status", "--wait"], cwd=app, env=env)
     report.expect("a build that deployed nothing is not reported as live", ok=not nothing.ok and "nothing was deployed" in nothing.text("summary"), seen=nothing.raw)
-    world.jenkins.by_repo[REPO_NAME] = [JenkinsBuild(13, commit, building=False, result="SUCCESS", url=BUILD_URL, description=f"release v{DEPLOYED}", failed_stage=None, artifacts=("screenshot.png",))]
+    world.jenkins.by_repo[REPO_NAME] = [JenkinsBuild(13, commit, building=False, result="SUCCESS", url=BUILD_URL, description=f"release v{DEPLOYED}", failed_stage=None)]
     live = run_ctzd(["status", "--wait"], cwd=app, env=env)
-    shot = app / ".ctzd" / "screenshots" / f"v{DEPLOYED}.png"
-    report.expect("a deployed build reports its release, URL, and screenshot", ok=live.ok and f"v{DEPLOYED} is live" in live.text("summary") and shot.is_file(), seen=live.raw)
+    report.expect("a deployed build reports its release and URL", ok=live.ok and f"v{DEPLOYED} is live" in live.text("summary") and live.text("url").startswith(f"https://{REPO_NAME}."), seen=live.raw)
     tagged = run_ctzd(["ci", "release", "--image", "reg/fi-bond-prices:abc", "--commit", commit], cwd=app, env=env)
     listed = run_ctzd(["releases"], cwd=app, env=env)
     report.expect("ci release tags the commit and releases lists it", ok=tagged.ok and "v1" in listed.text("summary"), seen=(tagged.raw, listed.raw))

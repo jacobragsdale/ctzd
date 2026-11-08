@@ -14,7 +14,6 @@ from ctzd_cli.errors import CliError
 
 ROLLBACK_JOB = "ctzd-rollback"
 DELETE_JOB = "ctzd-delete"
-SCREENSHOT = "screenshot.png"
 SHARED_STORE_SAS_ENTRY = "ctzd-shared-store-sas"
 _RELEASE = re.compile(r"release v(\d+)")
 _LEVELS: dict[Permission, int] = {"none": 0, "read": 1, "triage": 1, "write": 2, "maintain": 2, "admin": 3}
@@ -122,15 +121,7 @@ def to_build(build: JenkinsBuild | None, *, log_tail: str | None) -> m.Build:
     else:
         state = "failed"
     found = _RELEASE.search(build.description or "")
-    return m.Build(
-        number=build.number,
-        state=state,
-        stage=build.failed_stage,
-        url=build.url,
-        log_tail=log_tail if state == "failed" else None,
-        release=None if found is None else int(found.group(1)),
-        has_screenshot=SCREENSHOT in build.artifacts,
-    )
+    return m.Build(number=build.number, state=state, stage=build.failed_stage, url=build.url, log_tail=log_tail if state == "failed" else None, release=None if found is None else int(found.group(1)))
 
 
 def status(services: Services, login: str, app: AppRef) -> m.AppStatus:
@@ -165,16 +156,6 @@ def build_for_commit(services: Services, login: str, app: AppRef, commit: str) -
     build = max(matching, key=lambda item: item.number, default=None)
     tail = services.jenkins.console_tail(build, 60) if build is not None and not build.building and build.result not in {None, "SUCCESS"} else None
     return to_build(build, log_tail=tail)
-
-
-def screenshot(services: Services, login: str, app: AppRef, number: int) -> bytes:
-    repo = _repo(services, app)
-    require(services, login, repo, "read")
-    build = next((item for item in services.jenkins.builds(repo) if item.number == number), None)
-    if build is None or SCREENSHOT not in build.artifacts:
-        msg = f"Build {number} of {repo} has no screenshot."
-        raise NotFoundError(msg)
-    return services.jenkins.artifact(build, SCREENSHOT)
 
 
 def rollback(services: Services, login: str, app: AppRef, target: int | None) -> m.RollbackAccepted:

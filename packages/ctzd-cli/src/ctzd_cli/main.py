@@ -57,7 +57,6 @@ class Args(BaseModel):
     url: str | None = None
     argv: tuple[str, ...] = ()
     timezone: str = "UTC"
-    screenshot: Path | None = None
 
 
 def _setup_parsers(sub: "argparse._SubParsersAction[argparse.ArgumentParser]", common: argparse.ArgumentParser) -> None:
@@ -135,7 +134,6 @@ def _ci_parsers(sub: "argparse._SubParsersAction[argparse.ArgumentParser]", comm
     ci_release.add_argument("--commit", required=True)
     ci_smoke = ci_sub.add_parser("smoke", parents=[common])
     ci_smoke.add_argument("--url", required=True)
-    ci_smoke.add_argument("--screenshot", type=Path, required=True)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -183,7 +181,7 @@ HANDLERS: dict[str, Handler] = {
     "ci check": lambda _a, ctx: commands.ci_check(ctx),
     "ci render": lambda a, ctx: commands.ci_render(ctx, image=_required(a.image, "--image"), release_number=a.release, out=_required(a.out, "--out")),
     "ci release": lambda a, ctx: commands.ci_release(ctx, image=_required(a.image, "--image"), commit=_required(a.commit, "--commit"), now=lambda: datetime.now(UTC)),
-    "ci smoke": lambda a, ctx: commands.ci_smoke(ctx, url=_required(a.url, "--url"), screenshot=_required(a.screenshot, "--screenshot")),
+    "ci smoke": lambda a, ctx: commands.ci_smoke(ctx, url=_required(a.url, "--url")),
 }
 
 

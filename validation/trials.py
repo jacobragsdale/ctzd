@@ -191,7 +191,7 @@ def probe(base: Path) -> int:
         report.expect("the dashboard runs", ok=isinstance(dashboards, dict) and "fi-probe-app" in dashboards, seen=dashboards)
         (app / "src" / "app" / "ui" / "main.py").write_text((app / "src" / "app" / "ui" / "main.py").read_text().replace("st.title(", 'st.caption("probe")\nst.title('))
         deployed = ctzd(["deploy"], cwd=app, env=env)
-        report.expect("a change deploys as v2 with a screenshot", ok=deployed.get("ok") is True and deployed.get("release") == SECOND_RELEASE and deployed.get("screenshot") is not None, seen=deployed)
+        report.expect("a change deploys as v2", ok=deployed.get("ok") is True and deployed.get("release") == SECOND_RELEASE, seen=deployed)
         added = ctzd(["add", "job", "refresh", "--schedule", "0 6 * * 1-5"], cwd=app, env=env)
         job = app / "src" / "app" / "jobs" / "refresh.py"
         report.expect("add job writes a module", ok=added.get("ok") is True and job.is_file(), seen=added)
@@ -437,16 +437,13 @@ def run_trial(base: Path, job: Job) -> Trial:
 
 
 def collect(trial_dir: Path, platform: Platform) -> None:
-    """What the scorer needs from the platform before it stops: apps, releases, runs, messages, and the last screenshots."""
+    """What the scorer needs from the platform before it stops: apps, releases, runs, and messages."""
     apps = sorted(path.name.removesuffix(".git") for path in (platform.root / "platform" / "github").glob("*.git"))
     statuses: dict[str, object] = {}
     state: dict[str, object] = {"apps": statuses, "dashboards": platform.api("/local/dashboards"), "runs": platform.api("/local/runs"), "teams": platform.api("/local/teams")}
     for repo in apps:
         sbu, _, name = repo.partition("-")
         statuses[repo] = platform.api(f"/v1/apps/{sbu}/{name}")
-        builds = sorted((platform.root / "platform" / "builds" / repo).glob("*/screenshot.png"), key=lambda path: int(path.parent.name))
-        if builds:
-            shutil.copy(builds[-1], trial_dir / f"{repo}-last-screenshot.png")
     with contextlib.suppress(httpx.HTTPError, ValueError):
         listing = httpx.get(f"{platform.mailpit}/api/v1/messages", params={"limit": 1000}, timeout=10).json()
         sender = f"ctzd-{platform.port}@contoso.com"
