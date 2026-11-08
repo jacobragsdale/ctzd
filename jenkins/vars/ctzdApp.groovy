@@ -14,7 +14,7 @@ def call(Map config = [:]) {
         baseImage: 'contosoctzd.azurecr.io/ctzd/base:py3.13',
         namespace: 'ctzd-apps',
         chart: 'oci://contosoctzd.azurecr.io/helm/ctzd-app',
-        chartVersion: '0.2.0',
+        chartVersion: '0.3.0',
         dagsRepo: 'https://github.contoso.com/ctzd-platform/ctzd-dags.git',
         appScheme: 'https',
     ]

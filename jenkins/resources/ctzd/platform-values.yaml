@@ -1,10 +1,17 @@
 # Platform settings for the ctzd-app chart (proposal for the infrastructure owner).
-ingressClassName: nginx
-tlsSecretName: ctzd-wildcard-tls
+# The citizen cluster's Gateway (Envoy Gateway) and its HTTPS listener for *.ctzd.contoso.com, which holds the
+# wildcard certificate and admits HTTPRoutes from ctzd-apps.
+gateway:
+  name: ctzd
+  namespace: envoy-gateway-system
+  sectionName: https
 smtpConfigMapName: ctzd-smtp
 serviceAccountName: ctzd-app
-# Company sign-in: set enabled to true once an oauth2-proxy for Entra ID serves these URLs.
+# Company sign-in: set enabled to true once the Entra ID app registration accepts the apps' callback URLs
+# (https://<sbu>-<app>.ctzd.contoso.com/oauth2/callback) and its client secret is synced from Key Vault into the
+# ctzd-oidc-client Secret in ctzd-apps, under the key client-secret. Replace the zeros with the tenant and client ids.
 auth:
   enabled: false
-  url: "https://auth.ctzd.contoso.com/oauth2/auth"
-  signin: "https://auth.ctzd.contoso.com/oauth2/start?rd=$scheme://$host$escaped_request_uri"
+  issuer: "https://login.microsoftonline.com/00000000-0000-0000-0000-000000000000/v2.0"
+  clientID: "00000000-0000-0000-0000-000000000000"
+  clientSecretName: ctzd-oidc-client

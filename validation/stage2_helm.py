@@ -2,9 +2,11 @@
 
     uv run python -m validation.stage2_helm HELM [WORK_DIR]
 
-Checks that each pod mounts only its app's source secrets, that the sign-in
-annotations appear only when `auth.enabled` is set, and that the chart refuses
-`auth.enabled` without its URLs. Installing into a cluster stays unrun here.
+Checks that each pod mounts only its app's source secrets, that the app's
+HTTPRoute attaches to the platform Gateway with the hour-long timeout, that the
+sign-in SecurityPolicy appears only when `auth.enabled` is set, and that the
+chart refuses `auth.enabled` without its settings. Installing into a cluster
+stays unrun here.
 """
 
 import shutil
@@ -52,19 +54,28 @@ def main() -> int:
         seen=manifest,
     )
     report.expect("no shared all-sources secret is mounted", ok="ctzd-sources" not in manifest)
-    report.expect("sign-in is off by default", ok="auth-url" not in manifest)
+    report.expect(
+        "the app's HTTPRoute attaches to the platform Gateway for its host, with an hour's timeout",
+        ok="kind: HTTPRoute" in manifest
+        and "kind: Ingress" not in manifest
+        and "sectionName: https\n" in manifest
+        and '- "fi-bond-prices.ctzd.contoso.com"' in manifest
+        and "request: 3600s" in manifest,
+        seen=manifest,
+    )
+    report.expect("sign-in is off by default", ok="kind: SecurityPolicy" not in manifest)
     signed = helm(binary, "template", "fi-bond-prices", str(CHART), "-f", str(PLATFORM_VALUES), "-f", str(values), "--set", "auth.enabled=true")
     report.expect(
-        "with auth.enabled the ingress asks the sign-in proxy",
-        ok=signed.returncode == 0 and "nginx.ingress.kubernetes.io/auth-url:" in signed.stdout and "nginx.ingress.kubernetes.io/auth-signin:" in signed.stdout,
+        "with auth.enabled the route gets an OIDC SecurityPolicy with the app's own callback",
+        ok=signed.returncode == 0 and "kind: SecurityPolicy" in signed.stdout and 'redirectURL: "https://fi-bond-prices.ctzd.contoso.com/oauth2/callback"' in signed.stdout,
         seen=signed.stdout[-1500:] + signed.stderr,
     )
     blank = helm(binary, "template", "fi-bond-prices", str(CHART), "-f", str(values), "--set", "auth.enabled=true")
-    report.expect("auth.enabled without its URLs is refused", ok=blank.returncode != 0 and "auth.url is required" in blank.stderr, seen=blank.stderr)
+    report.expect("auth.enabled without its settings is refused", ok=blank.returncode != 0 and "auth.issuer is required" in blank.stderr, seen=blank.stderr)
     none = work / "none.json"
     none.write_text(render.helm_values(config.load(), app("none", ()), image="i", release=1).model_dump_json(by_alias=True))
     empty = helm(binary, "template", "fi-bond-prices", str(CHART), "-f", str(PLATFORM_VALUES), "-f", str(none))
-    report.expect("an app without a dashboard renders nothing", ok=empty.returncode == 0 and "kind: Deployment" not in empty.stdout, seen=empty.stdout[:500])
+    report.expect("an app without a dashboard renders nothing", ok=empty.returncode == 0 and "kind: Deployment" not in empty.stdout and "kind: HTTPRoute" not in empty.stdout, seen=empty.stdout[:500])
     return report.finish()
 
 

@@ -1,0 +1,32 @@
+{{- if and .Values.enabled .Values.auth.enabled }}
+# Company sign-in at the Gateway, with Envoy Gateway's built-in OpenID Connect and Entra ID as the provider.
+# Envoy sends a browser without a session to Entra ID, takes it back on /oauth2/callback, and keeps the session
+# in encrypted cookies for this host. Requests reach the app only once signed in. No sign-in proxy runs, and app
+# code never handles identity.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: {{ .Values.fullname }}
+  labels:
+    {{- include "ctzd-app.labels" . | nindent 4 }}
+spec:
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: {{ .Values.fullname }}
+  oidc:
+    provider:
+      issuer: {{ required "auth.issuer is required when auth.enabled" .Values.auth.issuer | quote }}
+    clientID: {{ required "auth.clientID is required when auth.enabled" .Values.auth.clientID | quote }}
+    # An Opaque Secret in this namespace that holds the client secret under the key client-secret.
+    clientSecret:
+      name: {{ required "auth.clientSecretName is required when auth.enabled" .Values.auth.clientSecretName }}
+    # Envoy Gateway handles these paths only on the route the policy targets, so each app has its own callback
+    # URL, which Entra ID must accept as a redirect URI. Both sit under /oauth2/, clear of the app's own pages.
+    redirectURL: "https://{{ .Values.host }}/oauth2/callback"
+    logoutPath: /oauth2/logout
+    # offline_access makes Entra ID issue a refresh token. Envoy uses it to renew the session when the ID token
+    # expires (after about an hour), so Streamlit reconnecting its websocket is not sent to the sign-in page.
+    scopes: [openid, offline_access]
+    refreshToken: true
+{{- end }}

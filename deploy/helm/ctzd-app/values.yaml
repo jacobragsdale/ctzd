@@ -20,15 +20,26 @@ env: {}
 sourceSecrets: []
 
 # --- platform settings (platform-values.yaml) ---
-ingressClassName: nginx
-tlsSecretName: ctzd-wildcard-tls
+# The Gateway that the app's HTTPRoute attaches to: the citizen cluster's one Gateway, implemented by Envoy
+# Gateway and owned by the platform, not by this chart. Its listener `sectionName` must serve *.ctzd.contoso.com
+# over HTTPS with the wildcard certificate and admit HTTPRoutes from this namespace. TLS ends at that listener,
+# so apps carry no certificate settings.
+gateway:
+  name: ctzd
+  namespace: envoy-gateway-system
+  sectionName: https
 # Each source's Key Vault secret is synced into a Kubernetes secret of the same name, holding one
 # key CTZD_SOURCE_<NAME>; a pod mounts only the ones in sourceSecrets.
 smtpConfigMapName: ctzd-smtp
 serviceAccountName: ctzd-app
-# Company sign-in at the ingress: off until an oauth2-proxy for Entra ID exists. When on, nginx asks
-# `url` (the proxy's /oauth2/auth) before every request and sends people without a session to `signin`.
+# Company sign-in at the Gateway, off by default. When on, the chart adds an Envoy Gateway SecurityPolicy to the
+# app's route that signs people in with Entra ID (OpenID Connect) before any request reaches the app; no sign-in
+# proxy runs. Entra ID's app registration must accept each app's https://<host>/oauth2/callback as a redirect URI.
 auth:
   enabled: false
-  url: ""
-  signin: ""
+  # https://login.microsoftonline.com/<tenant-id>/v2.0
+  issuer: ""
+  # The app registration's application (client) id.
+  clientID: ""
+  # An Opaque Secret in this namespace, synced from Key Vault, holding the client secret under the key client-secret.
+  clientSecretName: ""

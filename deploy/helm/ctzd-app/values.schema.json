@@ -16,15 +16,28 @@
     "resources": {"type": "object"},
     "env": {"type": "object", "additionalProperties": {"type": "string"}},
     "sourceSecrets": {"type": "array", "items": {"type": "string", "pattern": "^ctzd-source-[a-z0-9-]+$"}},
-    "ingressClassName": {"type": "string"},
-    "tlsSecretName": {"type": "string"},
+    "gateway": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "namespace", "sectionName"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "namespace": {"type": "string", "minLength": 1},
+        "sectionName": {"type": "string", "minLength": 1}
+      }
+    },
     "smtpConfigMapName": {"type": "string"},
     "serviceAccountName": {"type": "string"},
     "auth": {
       "type": "object",
       "additionalProperties": false,
       "required": ["enabled"],
-      "properties": {"enabled": {"type": "boolean"}, "url": {"type": "string"}, "signin": {"type": "string"}}
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "issuer": {"type": "string"},
+        "clientID": {"type": "string"},
+        "clientSecretName": {"type": "string"}
+      }
     }
   }
 }
