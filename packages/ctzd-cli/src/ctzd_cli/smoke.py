@@ -1,6 +1,7 @@
-"""`ctzd ci smoke`: open the live dashboard in a headless browser and fail on an error box, a 5xx, or a page that never loads.
+"""`ctzd ci smoke`: open the live dashboard in a headless browser and fail on an error the page throws, a 5xx, or a
+page that never loads.
 
-The 5xx are those the page's own requests get. Every problem is reported as text.
+The 5xx are those the page's own requests get, such as a dataset that failed. Every problem is reported as text.
 
 Needs the `ctzd[ci]` extra and a Playwright Chromium on the Jenkins agent.
 """
@@ -31,7 +32,7 @@ class SmokeResult:
 
 
 def _watch_page_errors(page: Page, result: SmokeResult) -> None:
-    """Record any error a React page throws and does not catch; its shell shows no error box of its own to look for."""
+    """Record any error the page throws and does not catch; its shell shows no error box of its own to look for."""
 
     def on_error(error: PlaywrightError) -> None:
         result.problems.append(f"the page threw: {str(error).splitlines()[0][:500]}")
@@ -40,7 +41,7 @@ def _watch_page_errors(page: Page, result: SmokeResult) -> None:
 
 
 def _watch_server_errors(page: Page, result: SmokeResult) -> None:
-    """Record any 5xx the page's own requests get, such as a Dash callback that raised, which shows no error box outside debug mode."""
+    """Record any 5xx the page's own requests get, such as a dataset whose function raised."""
 
     def on_response(response: Response) -> None:
         if response.status >= _SERVER_ERROR:
@@ -73,7 +74,7 @@ def _check(page: Page, url: str, ui: Ui, result: SmokeResult, timeout_ms: int) -
 
 
 def smoke(url: str, *, ui: Ui, timeout_ms: int = _TIMEOUT_MS) -> SmokeResult:
-    """Every problem the dashboard shows, as text; for Streamlit, its other pages are checked too when the first one is fine."""
+    """Every problem the dashboard shows, as text."""
     result = SmokeResult()
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()

@@ -707,8 +707,11 @@ Building the React starter:
    floor, and the model citizens use runs too.
 3. Remove the Streamlit and Dash starters, their skills, and their smoke-test
    paths, and move apps to Python 3.14 (both done on 2026-11-07). The
-   validation harness's trial fixtures are still Streamlit apps and are parked
-   until the agent trials run again.
+   validation harness's trial fixtures became React apps the same day, and its
+   local platform can run on fake data (`serve fake-data`: no databases, each
+   app's `fixtures/` answers for every database source, on the laptop and
+   live). Its scorer reports the three new measures; the new scenarios are
+   still to write.
 
 ## 14. Implementation status
 

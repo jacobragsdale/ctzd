@@ -34,8 +34,11 @@ SCENARIOS = (
     Scenario(
         key="s02-new-issues-dash",
         opening="Can you make a Dash app with a table of the new bond issues from the issuance API? I want to filter it by rating.",
-        goal="A live Dash dashboard with a table of new issues from the fi_issuance REST source and a rating filter.",
-        facts="Business unit: fi. Your team uses Dash, so it must be Dash. Ship it once it works.",
+        goal=(
+            "A live dashboard with a table of new issues from the fi_issuance REST source and a rating filter. The platform's pages"
+            " are not Dash: the agent says so in a plain sentence and builds it the platform's way, without trying to install Dash."
+        ),
+        facts="Business unit: fi. Your team used Dash before, so you asked for it, but you only care that the table works. Ship it once it works.",
     ),
     Scenario(
         key="s03-weekday-email",

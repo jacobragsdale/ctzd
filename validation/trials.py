@@ -3,9 +3,10 @@
     uv run python -m validation.trials probe ROOT                      # the real flow, scripted, no agent
     uv run python -m validation.trials run ROOT SCENARIO[:PERSONA] ... [--model M] [--reps N] [--parallel P]
 
-ROOT holds data.json from `validation.platform.serve data`. Each trial gets its
-own platform, a fresh folder holding only the bootstrap `ctzd` skill, and a
-headless Claude Code agent. A second model plays the person, turn by turn.
+ROOT holds data.json from `validation.platform.serve data` (or `fake-data`), the
+trial `ctzd` and pnpm in ROOT/tool/bin. Each trial gets its own platform, a fresh
+folder holding only the bootstrap `ctzd` skill, and a headless Claude Code agent.
+A second model plays the person, turn by turn.
 """
 
 import argparse
@@ -189,7 +190,8 @@ def probe(base: Path) -> int:
         report.expect("the starter app builds, deploys, and is released as v1", ok=first.get("ok") is True and first.get("release") == 1, seen=first)
         dashboards = platform.api("/local/dashboards")
         report.expect("the dashboard runs", ok=isinstance(dashboards, dict) and "fi-probe-app" in dashboards, seen=dashboards)
-        (app / "src" / "app" / "ui" / "main.py").write_text((app / "src" / "app" / "ui" / "main.py").read_text().replace("st.title(", 'st.caption("probe")\nst.title('))
+        home = app / "web" / "src" / "pages" / "home.tsx"
+        home.write_text(home.read_text().replace("<TypographyH1>", "<TypographyH1>Probe: "))
         deployed = ctzd(["deploy"], cwd=app, env=env)
         report.expect("a change deploys as v2", ok=deployed.get("ok") is True and deployed.get("release") == SECOND_RELEASE, seen=deployed)
         added = ctzd(["add", "job", "refresh", "--schedule", "0 6 * * 1-5"], cwd=app, env=env)
@@ -206,10 +208,14 @@ def probe(base: Path) -> int:
         report.expect("the next deploy clears the pause and goes live", ok=resumed.get("ok") is True and isinstance(resumed.get("release"), int), seen=resumed)
         state = platform.api("/v1/apps/fi/probe-app")
         report.expect("auto-deploy is no longer paused", ok=isinstance(state, dict) and state.get("paused") is False, seen=state)
-        (app / "src" / "app" / "ui" / "main.py").write_text((app / "src" / "app" / "ui" / "main.py").read_text() + '\nst.metric("Broken", frame["no_such_column"].sum())\n')
-        (app / "tests" / "test_ui.py").write_text("def test_nothing() -> None:\n    pass\n")
+        # A dataset that answers 500: its frame lacks a column its row type names.
+        datasets = app / "src" / "app" / "api" / "datasets.py"
+        datasets.write_text(datasets.read_text().replace("return with_share(load_demo())", 'return with_share(load_demo()).drop(columns="share")'))
+        (app / "tests" / "test_datasets.py").write_text("def test_nothing() -> None:\n    pass\n")
         broken = ctzd(["deploy"], cwd=app, env=env)
-        report.expect("a page that raises fails the smoke test and production keeps the previous release", ok=broken.get("ok") is False and "smoke" in str(broken.get("summary")).lower(), seen=broken)
+        report.expect(
+            "a page whose data fails fails the smoke test and production keeps the previous release", ok=broken.get("ok") is False and "smoke" in str(broken.get("summary")).lower(), seen=broken
+        )
     finally:
         platform.stop()
     return report.finish()
@@ -226,6 +232,10 @@ class Turn:
     seconds: float
     agent_turns: int
     stopped: str | None = None
+    # How long the agent worked before its message reached the person; `seconds` adds the person's reply.
+    agent_seconds: float = 0.0
+    # The agent's tokens this turn, as Claude Code reports them: input, output, and cache reads and writes.
+    usage: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass
@@ -241,6 +251,9 @@ class Trial:
     @property
     def cost_usd(self) -> float:
         return sum(turn.cost_usd for turn in self.turns)
+
+
+_USAGE = ("input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens")
 
 
 def _result(stream: Path) -> dict[str, object]:
@@ -295,7 +308,7 @@ class Conversation:
     writable: tuple[Path, ...] = ()
     readable: tuple[Path, ...] = ()
 
-    def agent(self, message: str, *, env: dict[str, str], number: int) -> tuple[str, float, int, str | None]:
+    def agent(self, message: str, *, env: dict[str, str], number: int) -> tuple[str, float, int, str | None, dict[str, int]]:
         settings = self.trial_dir / "agent-settings.json"
         if number == 1:
             settings.write_text(json.dumps({"permissions": {"allow": list(ALLOWED), "deny": list(DENIED), "defaultMode": "dontAsk"}}))
@@ -308,12 +321,14 @@ class Conversation:
             try:
                 subprocess.run(command, cwd=self.cwd, env=env, stdout=out, stderr=subprocess.STDOUT, timeout=AGENT_TIMEOUT, check=False)
             except subprocess.TimeoutExpired:
-                return "", 0.0, 0, "the agent turn timed out"
+                return "", 0.0, 0, "the agent turn timed out", {}
         result = _result(stream)
         cost = result.get("total_cost_usd")
         turns = result.get("num_turns")
         stopped = None if result.get("subtype") == "success" else str(result.get("subtype") or "no result")
-        return str(result.get("result") or ""), float(cost) if isinstance(cost, (int, float)) else 0.0, int(turns) if isinstance(turns, int) else 0, stopped
+        reported = result.get("usage")
+        usage = {str(key): value for key, value in reported.items() if key in _USAGE and isinstance(value, int)} if isinstance(reported, dict) else {}
+        return str(result.get("result") or ""), float(cost) if isinstance(cost, (int, float)) else 0.0, int(turns) if isinstance(turns, int) else 0, stopped, usage
 
     def person(self, message: str, *, prompt: str, number: int) -> str:
         folder = self.cwd
@@ -384,6 +399,13 @@ def arrange(base: Path, trial_dir: Path, aux: Path, platform: Platform, scenario
         logic, test = app / "src" / "app" / "logic" / "summary.py", app / "tests" / "test_logic.py"
         logic.write_text(logic.read_text().replace('("clean_price", "mean")', '("clean_price", "sum")').replace("its average clean price", "its total clean price"))
         test.write_text(test.read_text().replace('["Utilities", "Energy"]', '["Energy", "Utilities"]').replace("[99.0, 95.0]", "[190.0, 99.0]"))
+        served = app / "tests" / "test_datasets.py"
+        served.write_text(
+            served.read_text().replace(
+                '[{"sector": "Utilities", "clean_price": 99.0}, {"sector": "Energy", "clean_price": 95.0}]',
+                '[{"sector": "Energy", "clean_price": 190.0}, {"sector": "Utilities", "clean_price": 99.0}]',
+            )
+        )
         broken = ctzd(["deploy", "--message", "Show totals per sector"], cwd=app, env=env)
         if broken.get("ok") is not True:
             msg = f"could not deploy the bad change: {broken}"
@@ -409,19 +431,22 @@ def run_trial(base: Path, job: Job) -> Trial:
         env = person_env(base, platform, trial_dir / "home")
         prompt = PERSON_PROMPT.format(persona=PERSONAS[job.persona], goal=scenario.goal, facts=scenario.facts, done=DONE, give_up=GIVE_UP)
         cwd = arrange(base, trial_dir, aux, platform, scenario)
-        # The agent sees the repositories it pushes to (as on GitHub), the platform's settings, and the wheels its apps install.
+        # The agent sees the repositories it pushes to (as on GitHub), the platform's settings, the wheels and npm packages
+        # its apps install, and the browser `ctzd shot` takes pictures with.
         settings = aux / "platform"
-        readable = (settings / "platform.toml", settings / "gitconfig", base / "wheels", base / TOOL_BIN.split("/", maxsplit=1)[0])
+        browsers = Path.home() / ".cache" / "ms-playwright"
+        readable = (settings / "platform.toml", settings / "gitconfig", base / "wheels", base / "npm", base / TOOL_BIN.split("/", maxsplit=1)[0], browsers)
         agent = Conversation(trial_dir, str(uuid.uuid4()), job.model, cwd, writable=(settings / "github",), readable=readable)
         person = Conversation(trial_dir, str(uuid.uuid4()), job.person_model, aux / "person")
         message = scenario.opening
         for number in range(1, scenario.max_turns + 1):
             began = time.monotonic()
-            text, cost, turns, stopped = agent.agent(message, env=env, number=number)
+            text, cost, turns, stopped, usage = agent.agent(message, env=env, number=number)
+            agent_seconds = round(time.monotonic() - began, 1)
             reply = person.person(text, prompt=prompt, number=number)
             if DONE in reply and _still_asking(reply):
                 reply = reply.replace(DONE, "").strip()  # "ship it" and "done" in one breath: the work is not done yet
-            trial.turns.append(Turn(agent=text, person=reply, cost_usd=cost, seconds=round(time.monotonic() - began, 1), agent_turns=turns, stopped=stopped))
+            trial.turns.append(Turn(agent=text, person=reply, cost_usd=cost, seconds=round(time.monotonic() - began, 1), agent_turns=turns, stopped=stopped, agent_seconds=agent_seconds, usage=usage))
             if DONE in reply or GIVE_UP in reply or trial.cost_usd > TRIAL_BUDGET_USD:
                 trial.outcome = "done" if DONE in reply else "gave up" if GIVE_UP in reply else "over budget"
                 break
@@ -468,6 +493,10 @@ def main() -> int:
     if str(args.command) == "probe":
         return probe(base)
     model, person_model, reps, parallel = str(args.model), str(args.person_model), int(args.reps), int(args.parallel)
+    # The agent's sandbox hides the operator's home, so the pnpm its pages build with must be next to the trial ctzd.
+    if shutil.which("pnpm", path=str(base / TOOL_BIN)) is None:
+        sys.stderr.write(f"pnpm is not in {base / TOOL_BIN}; see validation/README.md\n")
+        return 2
     known = {scenario.key: scenario for scenario in (*SCENARIOS, CANARY, CANARY_IN_APP)}
     jobs: list[Job] = []
     for index, entry in enumerate(str(item) for item in args.scenarios):

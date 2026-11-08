@@ -31,6 +31,24 @@ def build_wheels(target: Path) -> Path:
     return target
 
 
+def npm_packages(base: Path) -> dict[str, str]:
+    """The firm's npm packages copied into `base/npm`, where a trial's sandbox can read them: replacements for the
+    bundled platform.toml's `file:` paths, which point into the operator's home. SHIM (MVP), until a registry serves them."""
+    target = base / "npm"
+    target.mkdir(parents=True, exist_ok=True)
+    found: dict[str, str] = {}
+    for spec in re.findall(r'"(file:[^"]+)"', PLATFORM_TOML.read_text()):
+        source = Path(spec.removeprefix("file:")).expanduser()
+        copied = target / source.name
+        if not copied.is_file():
+            # A copy under a name of its own first, so trials starting together never read a half-written file.
+            partial = target / f".{source.name}.{os.getpid()}"
+            shutil.copyfile(source, partial)
+            partial.replace(copied)
+        found[f'"{spec}"'] = f'"file:{copied}"'
+    return found
+
+
 def platform_config(work: Path, wheels: Path, *, api_url: str, extra: dict[str, str] | None = None) -> Path:
     """The bundled platform.toml with the internal index replaced by local wheels plus PyPI, and other values overridden."""
     text = _INDEX.sub(

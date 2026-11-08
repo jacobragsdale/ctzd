@@ -1,10 +1,15 @@
 """Run the local platform.
 
     uv run python -m validation.platform.serve data ROOT        # start and seed the shared data containers once
+    uv run python -m validation.platform.serve fake-data ROOT   # or: no containers, every source answers from fixtures/
     uv run python -m validation.platform.serve platform ROOT    # one isolated platform (API, repos, builds) per trial
 
 `platform` writes ROOT/platform.json with the port and the environment a
 trial's agent and person need, then serves until it is stopped.
+
+On fake data, the databases are not started: each live app serves the rows in
+its own `fixtures/` folder, as `ctzd dev --fake` does on the laptop, and the FI
+skill tells the agent so. The REST source, Teams, and email still answer.
 """
 
 import json
@@ -17,12 +22,13 @@ from pathlib import Path
 
 import uvicorn
 
+from ctzd.api import FAKE_FIXTURES
 from ctzd_api import fakes
 from ctzd_api.app import create_app
 from ctzd_api.releases import ReleaseStore
 from ctzd_api.service import Services
 from ctzd_cli import config, releases
-from validation.harness import build_wheels, platform_config
+from validation.harness import build_wheels, npm_packages, platform_config
 from validation.platform import data
 from validation.platform.cluster import LocalAirflow, LocalCluster, LocalGitHub, LocalJenkins, LocalKube, free_port
 
@@ -59,13 +65,20 @@ Each item has `isin`, `issuer`, `rating`, `coupon_pct`, `maturity_date`,
 
 """
 
+FAKE_DATA_NOTE = """**This week the databases are being moved, and no laptop or app can reach
+them.** Until then `fi_pricing` and `fi_trading` answer from each app's own
+`fixtures/` folder, on this laptop (`ctzd dev --fake`) and live: write made-up
+rows with the columns below in `fixtures/SOURCE/NAME.csv` and build on those.
+
+"""
+
 
 SEED_RELEASE = releases.seed().release
 TRIAL_RELEASE = SEED_RELEASE + 1
 """The trials' platform serves the seed and, as both channels' current release, the seed with FI's sources filled in."""
 
 
-def trial_release() -> dict[str, str]:
+def trial_release(*, fake_data: bool = False) -> dict[str, str]:
     """The release after the seed: the seed with the FI champion's sources filled in, as before the pilot."""
     files = releases.seed_files()
     skill_path = "skills/sbu/fi/sbu-fi/SKILL.md"
@@ -73,13 +86,15 @@ def trial_release() -> dict[str, str]:
     start = skill.index("## Sources")
     end = skill.index("## Conventions")
     manifest = re.sub(r"^release = \d+$", f"release = {TRIAL_RELEASE}", files["release.toml"], count=1, flags=re.MULTILINE)
-    return files | {"release.toml": manifest, skill_path: skill[:start] + FI_SOURCES + skill[end:]}
+    sources = FI_SOURCES.replace("\n\n**`fi_pricing`**", "\n\n" + FAKE_DATA_NOTE + "**`fi_pricing`**", 1) if fake_data else FI_SOURCES
+    return files | {"release.toml": manifest, skill_path: skill[:start] + sources + skill[end:]}
 
 
 @dataclass(frozen=True)
 class DataSources:
     password: str
     oauth_secret: str
+    fake: bool = False
 
 
 def start_data(root: Path) -> None:
@@ -89,6 +104,12 @@ def start_data(root: Path) -> None:
     data.seed_oracle(found.password)
     data.seed_mssql(found.password)
     (root / "data.json").write_text(json.dumps({"password": found.password, "oauth_secret": found.oauth_secret}))
+
+
+def fake_data(root: Path) -> None:
+    """No databases: every source answers from the app's own fixtures, on the laptop and live."""
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "data.json").write_text(json.dumps({"password": "", "oauth_secret": secrets.token_hex(12), "fake": True}))
 
 
 def source_values(sources: DataSources, port: int) -> dict[str, str]:
@@ -108,7 +129,7 @@ def source_values(sources: DataSources, port: int) -> dict[str, str]:
 
 def run_platform(root: Path, base: Path) -> None:
     saved = json.loads((base / "data.json").read_text())
-    sources = DataSources(password=saved["password"], oauth_secret=saved["oauth_secret"])
+    sources = DataSources(password=saved["password"], oauth_secret=saved["oauth_secret"], fake=saved.get("fake") is True)
     port = free_port()
     store = root / "store"
     store.mkdir(parents=True, exist_ok=True)
@@ -118,7 +139,7 @@ def run_platform(root: Path, base: Path) -> None:
         'apps_domain = "ctzd.contoso.com"': 'apps_domain = "ctzd.test"',
         'airflow_url = "https://airflow.ctzd.contoso.com"': 'airflow_url = "http://airflow.ctzd.test"',
         'store_url = "abfs://ctzd@contosoctzdstore.dfs.core.windows.net"': f'store_url = "{store}"',
-    }
+    } | npm_packages(base)
     wheels = base / "wheels"
     if not wheels.is_dir():
         build_wheels(wheels)
@@ -132,6 +153,8 @@ def run_platform(root: Path, base: Path) -> None:
     def runtime_env(secret_names: list[str]) -> dict[str, str]:
         # One sender per platform, so each trial finds its own email among everyone's in the shared Mailpit.
         env = {"CTZD_SMTP_HOST": "127.0.0.1", "CTZD_SMTP_PORT": str(data.SMTP_PORT), "CTZD_SMTP_SENDER": f"ctzd-{port}@contoso.com"}
+        if sources.fake:
+            env[FAKE_FIXTURES] = "fixtures"  # the app's own folder: dashboards run in their build's workspace
         for name in secret_names:
             if name in secret_values:
                 env["CTZD_SOURCE_" + name.removeprefix("ctzd-source-").replace("-", "_").upper()] = secret_values[name]
@@ -143,7 +166,8 @@ def run_platform(root: Path, base: Path) -> None:
     cluster = LocalCluster(github=github, root=root, ci_env=ci_env, runtime_env=runtime_env, fail_build=fail_build)
     seed = releases.seed_files()
     gateway = fakes.FakeReleases(
-        channels=f'cli = "0.3.0"\n[channels]\npilot = {TRIAL_RELEASE}\ngeneral = {TRIAL_RELEASE}\n', archives={SEED_RELEASE: fakes.archive(seed), TRIAL_RELEASE: fakes.archive(trial_release())}
+        channels=f'cli = "0.3.0"\n[channels]\npilot = {TRIAL_RELEASE}\ngeneral = {TRIAL_RELEASE}\n',
+        archives={SEED_RELEASE: fakes.archive(seed), TRIAL_RELEASE: fakes.archive(trial_release(fake_data=sources.fake))},
     )
     services = Services(
         github=github,
@@ -175,17 +199,19 @@ def run_platform(root: Path, base: Path) -> None:
 
 
 def main() -> int:
-    if len(sys.argv) < 3 or sys.argv[1] not in {"data", "platform"}:  # noqa: PLR2004 - the command and its folder
+    if len(sys.argv) < 3 or sys.argv[1] not in {"data", "fake-data", "platform"}:  # noqa: PLR2004 - the command and its folder
         sys.stderr.write(__doc__ or "")
         return 2
     root = Path(sys.argv[2]).resolve()
     if sys.argv[1] == "data":
         start_data(root)
+    elif sys.argv[1] == "fake-data":
+        fake_data(root)
     else:
         root.mkdir(parents=True, exist_ok=True)
         base = next((folder for folder in root.parents if (folder / "data.json").is_file()), None)
         if base is None:
-            sys.stderr.write("No data.json above this folder: run `serve data` in a parent folder first.\n")
+            sys.stderr.write("No data.json above this folder: run `serve data` or `serve fake-data` in a parent folder first.\n")
             return 1
         run_platform(root, base)
     return 0

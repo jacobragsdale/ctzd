@@ -112,10 +112,11 @@ def sector_prices(as_of: dt.date | None = None) -> pd.DataFrame:
 ## Fake rows: fixtures/
 
 `fixtures/SOURCE/NAME.csv` holds made-up rows for `src/app/data/sql/NAME.sql` on `SOURCE`, with
-the same column names as the real query; ISO dates (`2026-11-06`) arrive as dates and numbers as
-floats. `ctzd dev --fake` serves them in place of every source, and a source or SQL file without
-a CSV fails, so a fake page never reaches real data. `ctzd add dataset --source` writes one to
-start from. Use them in tests too:
+the same column names as the real query; ISO dates (`2026-11-06`) arrive as dates, numbers as
+floats, and a column named `id` or ending in `_id` as text, as the query selects ids.
+`ctzd dev --fake` serves them in place of every source, and a source or SQL file without a CSV
+fails, so a fake page never reaches real data. `ctzd add dataset --source` writes one to start
+from. Use them in tests too:
 `ctzd.testing.fake_sources(**ctzd.testing.fixture_sources(Path("fixtures")))`. Never put real
 client data in them: they are committed.
 

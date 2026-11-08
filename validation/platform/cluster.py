@@ -247,7 +247,7 @@ class LocalCluster:
 
     def _start_dashboard(self, repo: str, workspace: Path, values: HelmValues, console: list[str]) -> Dashboard | None:
         port = free_port()
-        command = [part.replace("--server.port=8080", f"--server.port={port}").replace("--bind=0.0.0.0:8080", f"--bind=127.0.0.1:{port}") for part in values.command]
+        command = [part.replace("--port=8080", f"--port={port}").replace("--host=0.0.0.0", "--host=127.0.0.1") for part in values.command]
         env = os.environ | values.env | self.runtime_env(list(values.source_secrets)) | {"PATH": f"{workspace / '.venv' / 'bin'}:{os.environ['PATH']}"}
         log = workspace / "dashboard.log"
         with log.open("wb") as out:

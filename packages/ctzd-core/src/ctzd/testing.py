@@ -69,9 +69,15 @@ def fake_sources(**sources: Mapping[str, object]) -> Generator[None]:
 _ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
+def _is_id(column: str) -> bool:
+    return column == "id" or column.endswith("_id")
+
+
 def _fixture(path: Path) -> pd.DataFrame:
-    """A fixture's rows: text that is every row an ISO date becomes a date, as a database's date column arrives."""
-    frame = pd.read_csv(path)
+    """A fixture's rows as the query brings them: a column named `id` or `..._id` stays text, as ids are selected,
+    and text that is every row an ISO date becomes a date, as a database's date column arrives."""
+    header = pd.read_csv(path, nrows=0).columns
+    frame = pd.read_csv(path, dtype={column: "str" for column in header if _is_id(str(column))})
     for column in frame.columns:
         present = frame[column].dropna()
         if not present.empty and pd.api.types.is_string_dtype(present) and present.astype(str).str.fullmatch(_ISO_DATE).all():

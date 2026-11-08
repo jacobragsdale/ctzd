@@ -7,4 +7,4 @@ import pandas as pd
 @ctzd.cached(ttl="15m")
 def load_latest_prices() -> pd.DataFrame:
     frame = ctzd.query("fi_pricing", "sql/latest_prices.sql")
-    return ctzd.require_columns(frame, {"isin": "str", "sector": "str", "clean_price": "float", "as_of_date": "datetime"})
+    return ctzd.require_columns(frame, {"isin": "str", "sector": "str", "clean_price": "float", "as_of_date": "datetime"}, what="latest_prices")

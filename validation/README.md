@@ -39,14 +39,25 @@ uv run python -m validation.stage2_helm PATH/TO/helm ~/.cache/ctzd-validation/he
    uv run python -m validation.platform.serve data ~/.cache/ctzd-validation/trials
    ```
 
-2. Install the CLI the agents use, on its own, so their `PATH` holds only `ctzd`:
+   Or, on a host short of memory, run on fake data: no containers, and every database source
+   answers from each app's own `fixtures/` folder, on the laptop and live. The FI skill tells
+   the agent so, and `score` has no right answers to compare with.
+
+   ```sh
+   uv run python -m validation.platform.serve fake-data ~/.cache/ctzd-validation/trials-fake
+   ```
+
+2. Install the CLI the agents use, and pnpm, on their own, so their `PATH` holds only these:
 
    ```sh
    V=~/.cache/ctzd-validation/trials
    UV_TOOL_DIR=$V/tool UV_TOOL_BIN_DIR=$V/tool/bin uv tool install --force packages/ctzd-cli
+   npm install --global --prefix $V/tool pnpm@12.18.0
    ```
 
-   Reinstall it after every change to the CLI.
+   Reinstall the CLI after every change to it. The React pages install basis-ui's packages
+   from the `file:` tarballs the bundled `platform.toml` names; each platform copies them into
+   `$V/npm`, where the agents' sandbox can read them.
 
 3. Check the local platform with the scripted flow, then run the canaries:
 
@@ -64,7 +75,9 @@ uv run python -m validation.stage2_helm PATH/TO/helm ~/.cache/ctzd-validation/he
    ```
 
 5. Score them. This writes `scores.md`, `scores.json`, `expected.json` (the right answers,
-   from the seeded tables), and one digest per trial under `digests/` for graders:
+   from the seeded tables), and one digest per trial under `digests/` for graders. Each
+   trial's row gives the minutes until the first link reached the person (and the first live
+   link), the agent's tokens, and the technical words in what the person read:
 
    ```sh
    .venv/bin/python -m validation.score $V
