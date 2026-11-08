@@ -156,6 +156,8 @@ def person_env(base: Path, platform: Platform, home: Path) -> dict[str, str]:
         "CLAUDE_CONFIG_DIR": os.environ.get("CLAUDE_CONFIG_DIR", str(real / ".claude")),
         "UV_CACHE_DIR": str(real / ".cache" / "uv"),
         "UV_PYTHON_INSTALL_DIR": str(real / ".local" / "share" / "uv" / "python"),
+        # The browsers `ctzd setup` installs on a laptop, so `ctzd shot` works without each trial downloading them.
+        "PLAYWRIGHT_BROWSERS_PATH": str(real / ".cache" / "ms-playwright"),
     }
     return keep | platform.env | isolation | {"CTZD_HOME": str(home), "PATH": f"{base / TOOL_BIN}:{os.environ['PATH']}"}
 
