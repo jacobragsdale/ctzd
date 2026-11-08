@@ -42,7 +42,7 @@ def main() -> int:
     work.mkdir(parents=True)
     report = Report("stage 2b (Helm chart, offline)")
     values = work / "values.json"
-    values.write_text(render.helm_values(config.load(), app("streamlit", SOURCES), image="reg/apps/fi-bond-prices:abc", release=3).model_dump_json(by_alias=True))
+    values.write_text(render.helm_values(config.load(), app("react", SOURCES), image="reg/apps/fi-bond-prices:abc", release=3).model_dump_json(by_alias=True))
     linted = helm(binary, "lint", str(CHART), "-f", str(PLATFORM_VALUES), "-f", str(values))
     report.expect("the chart lints with the platform values and rendered values", ok=linted.returncode == 0, seen=linted.stdout + linted.stderr)
     rendered = helm(binary, "template", "fi-bond-prices", str(CHART), "-f", str(PLATFORM_VALUES), "-f", str(values))

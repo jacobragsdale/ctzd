@@ -66,7 +66,7 @@ class RollbackJenkins(fakes.FakeJenkins):
 
 
 def app_toml() -> str:
-    return f'[app]\nname = "{APP}"\nsbu = "fi"\nui = "streamlit"\nowners = ["ann.lee@contoso.com"]\n\n[sources]\nuse = ["fi_pricing"]\n\n[[jobs]]\nname = "refresh"\nschedule = "0 6 * * *"\n'
+    return f'[app]\nname = "{APP}"\nsbu = "fi"\nui = "react"\nowners = ["ann.lee@contoso.com"]\n\n[sources]\nuse = ["fi_pricing"]\n\n[[jobs]]\nname = "refresh"\nschedule = "0 6 * * *"\n'
 
 
 def tag(number: int) -> tuple[str, str]:
@@ -86,7 +86,7 @@ class World:
 
 
 def seeded() -> World:
-    kube = fakes.FakeKube(states={REPO_NAME: AppState(release=LIVE, paused=False)}, logs={REPO_NAME: "streamlit started\nGET / 200\n"})
+    kube = fakes.FakeKube(states={REPO_NAME: AppState(release=LIVE, paused=False)}, logs={REPO_NAME: "Uvicorn running\nGET / 200\n"})
     repo = fakes.FakeRepo(permissions={"ann": "admin", "bob": "read"}, files={"app.toml": app_toml()}, tags=[tag(1), tag(BEFORE_LIVE), tag(LIVE)])
     github = fakes.FakeGitHub(tokens={"ann-token": "ann", "bob-token": "bob"}, members={"ann", "bob"}, repos={REPO_NAME: repo})
     jenkins = RollbackJenkins(kube)

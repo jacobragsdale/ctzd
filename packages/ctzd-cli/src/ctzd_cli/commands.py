@@ -254,15 +254,10 @@ def dev(ctx: Context, *, port: int | None, stop: bool) -> Outcome:
         msg = "This app has no dashboard."
         raise UsageError(msg, hint="Run a job locally with `ctzd run JOB --local`.")
     chosen = _dev_port(port, previous=None if stopped is None else stopped.port)
-    if app.app.ui == "react":
-        for step in (checks.web_install(root, "local"), checks.client(root, "local"), checks.web_build(root)):
-            if step.state == "failed":
-                return Outcome(summary=f"The page could not be built ({step.name}).", data={"step": step.name, "output": step.detail}, ok=False)
-        command = _uv_run(root, "uvicorn", "--factory", "ctzd.api:asgi", "--host", "localhost", "--port", str(chosen))
-    elif app.app.ui == "streamlit":
-        command = _uv_run(root, "streamlit", "run", "src/app/ui/main.py", "--server.port", str(chosen), "--server.address", "localhost", "--server.headless", "true")
-    else:
-        command = _uv_run(root, "python", "-c", f"from app.ui.main import app; app.run(debug=True, port={chosen})")
+    for step in (checks.web_install(root, "local"), checks.client(root, "local"), checks.web_build(root)):
+        if step.state == "failed":
+            return Outcome(summary=f"The page could not be built ({step.name}).", data={"step": step.name, "output": step.detail}, ok=False)
+    command = _uv_run(root, "uvicorn", "--factory", "ctzd.api:asgi", "--host", "localhost", "--port", str(chosen))
     match devserver.start(root, command, port=chosen, env=local_env(root, app)):
         case devserver.Started(server, _process):
             return Outcome(

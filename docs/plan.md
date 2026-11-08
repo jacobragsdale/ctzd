@@ -16,9 +16,9 @@ built on basis-ui with a basis-api backend, in one repo and one container
 (Streamlit and Dash go); every number is a float64 that only the display
 rounds; agents look at their pages only through `ctzd shot`, not in the deploy loop; and dashboards are reached
 through Gateway API instead of an Ingress. Version 0.3.0 of the CLI implements
-what section 14 lists as built; the React app waits on basis and basis-ui steps
-that section 16 names, and until it lands `ctzd new` still writes the Streamlit
-and Dash starters.
+what section 14 lists as built: the React starter is `ctzd new`'s only
+dashboard, built against basis's and basis-ui's main branches, and the
+Streamlit and Dash starters are gone.
 
 ## 1. What a citizen developer experiences
 
@@ -107,7 +107,7 @@ basis-ui) and nothing else.
 |---|---|---|
 | Users | Business users with no coding experience, on Windows laptops without admin rights or git, using any AI agent. Claude Code is the primary agent, and citizen developers use the latest models. | That is the audience. Everything below assumes the agent does every technical step. |
 | Repos | One repo per app. An app is at most one dashboard plus any number of scheduled jobs that share its data and logic code. | Clear ownership, small agent context, and the job-plus-dashboard pair is the main speed tool. |
-| UI | One kind of dashboard: a React app on `@basis/ui` and `@basis/parallax`, whose data comes from a basis-api backend in the same repo. One image holds both, and one process serves the API under `/api` and the built UI at `/`, on one origin. Streamlit and Dash are removed in the change that adds the React starter. | The latest models write React well. basis-ui's themed, prebuilt components and parallax's grid, pivot and charts give every app the firm's look and its number and date rules without design work, and one UI means one set of skills. |
+| UI | One kind of dashboard: a React app on `@basis/ui` and `@basis/parallax`, whose data comes from a basis-api backend in the same repo. One image holds both, and one process serves the API under `/api` and the built UI at `/`, on one origin. Streamlit and Dash were removed on 2026-11-07. | The latest models write React well. basis-ui's themed, prebuilt components and parallax's grid, pivot and charts give every app the firm's look and its number and date rules without design work, and one UI means one set of skills. |
 | API | Every route of an app's API is a read-only dataset: parameters in, a table out, served as Arrow for parallax and as JSON. No route writes. | Sources are read-only, so an app has nothing to write; one pattern is one thing for the agent to learn. Writes happen only in jobs. |
 | Numbers | Every number is a float64 from the source to the browser, `NaN` where it is missing; ids are text. Python never rounds or formats a number: the page rounds once, at display, by Excel's rule (15 significant digits, half away from zero, then the shown decimals), and `ctzd.display` writes numbers into messages by the same rule. `ctzd check` refuses rounding in an app's Python and SQL. | One simple type that pandas, numpy, Arrow, and the browser all hold natively. One rule in one place means a number reads the same in the page, an export, and an email, and the same as in Excel, where the firm's users live. Section 6 has the details. |
 | Screenshots | After changing a page, the agent runs `ctzd shot`, which loads the page `ctzd dev` serves in a headless browser (on Windows, the Edge every laptop has), waits for parallax to draw, writes a PNG the agent looks at, and lists each problem: errors, failed requests, and a grid or chart that drew nothing or too small. It is not a gate in `ctzd check`, and deploys and the smoke test take no screenshots. | Decided on 2026-11-07 without screenshots, and reversed the same day by the maintainer: a code check cannot see a chart that draws an empty or squashed canvas, which the first React starter did. Edge means nothing to download on a laptop. |
@@ -201,7 +201,7 @@ when each part moves.
 [app]
 name = "bond-prices"
 sbu = "fi"
-ui = "react"              # react | none (until the React starter lands: streamlit | dash | none)
+ui = "react"              # react | none
 size = "s"                # s | m | l
 owners = ["ann.lee@contoso.com"]
 
@@ -480,10 +480,10 @@ and `ctzd-workflow`:
 | `ctzd-troubleshoot` | Reading failed checks, builds, and rollouts, with common fixes; roll back first. |
 | `sbu-<sbu>` | The SBU's sources, glossary, column kinds, and the numbers people check against. |
 
-`ctzd-streamlit`, `ctzd-dash`, `ctzd-layout`, `ctzd-testing`, and
-`python-standards` go with the Streamlit and Dash starters: their content moves
-into the generators, the check messages, and the skills above. Until then the
-current platform release ships them.
+`ctzd-streamlit`, `ctzd-dash`, and `ctzd-layout` went with the Streamlit and
+Dash starters; `AGENTS.md` and `ctzd-pages` hold what the layout skill taught.
+`ctzd-testing` and `python-standards` stay for now, and fold into the
+generators, the check messages, and the skills above as those grow.
 
 ## 9. Onboarding, distribution, and platform releases
 
@@ -703,8 +703,9 @@ Building the React starter:
    link, technical words in messages to the person, and tokens. Haiku stays the
    floor, and the model citizens use runs too.
 3. Remove the Streamlit and Dash starters, their skills, and their smoke-test
-   paths in the change that makes the React starter the one `ctzd new` writes,
-   and move apps to Python 3.14 in the same platform release.
+   paths, and move apps to Python 3.14 (both done on 2026-11-07). The
+   validation harness's trial fixtures are still Streamlit apps and are parked
+   until the agent trials run again.
 
 ## 14. Implementation status
 

@@ -45,9 +45,9 @@ def test_a_started_server_answers_until_it_is_stopped(tmp_path: Path) -> None:
 
 
 def test_a_server_that_exits_at_once_reports_its_output(tmp_path: Path) -> None:
-    command = [sys.executable, "-c", "import sys; print('No module named streamlit'); sys.exit(3)"]
+    command = [sys.executable, "-c", "import sys; print('No module named uvicorn'); sys.exit(3)"]
     failed = devserver.start(tmp_path, command, port=_free(), env={})
-    assert failed == devserver.Failed(reason="stopped right away (exit 3)", log="No module named streamlit")
+    assert failed == devserver.Failed(reason="stopped right away (exit 3)", log="No module named uvicorn")
     assert not (tmp_path / devserver.STATE).exists()
 
 

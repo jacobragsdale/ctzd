@@ -1,4 +1,4 @@
-"""`@ctzd.cached`: an in-process TTL cache for loaders, identical in Streamlit, Dash, and jobs."""
+"""`@ctzd.cached`: an in-process TTL cache for loaders, identical in datasets and jobs."""
 
 import functools
 import re

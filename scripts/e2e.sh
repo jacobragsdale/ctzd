@@ -23,7 +23,7 @@ text = re.sub(
 PY
 export CTZD_PLATFORM_CONFIG="$work/platform.toml" CTZD_HOME="$work/home"
 status=0
-for ui in streamlit dash none; do
+for ui in react none; do
     app="e2e-$ui"
     rm -rf "${work:?}/apps/$app"
     uv run ctzd new "$app" --sbu fi --ui "$ui" --offline --owner e2e@contoso.com --dir "$work/apps" >/dev/null

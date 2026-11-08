@@ -121,7 +121,7 @@ def prepare(work: Path) -> None:
     (dags / "README.md").write_text("specs written by Jenkins\n")
     publish(work, dags, "ctzd-dags")
     env = {"CTZD_PLATFORM_CONFIG": str(cfg), "CTZD_HOME": str(work / "home"), "PATH": "/usr/bin:/bin:" + str(Path(tool("uv")).parent)}
-    for name, ui in (("dry-jobs", "none"), ("dry-page", "streamlit")):
+    for name, ui in (("dry-jobs", "none"), ("dry-page", "react")):
         created = ctzd_json(["new", name, "--sbu", "fi", "--ui", ui, "--offline", "--owner", "ann.lee@contoso.com", "--dir", str(work / "apps")], work, env)
         if created.get("ok") is not True:
             msg = f"could not create {name}: {created}"

@@ -30,18 +30,6 @@ def test_react_values_run_the_app_server_with_the_api_s_readiness() -> None:
     assert values.model_dump(by_alias=True)["readinessPath"] == "/health/ready"
 
 
-def test_streamlit_values_run_streamlit_with_its_health_endpoint() -> None:
-    values = render.helm_values(config.load(), app_config(ui="streamlit"), image="i", release=None)
-    assert values.command[:2] == ("streamlit", "run")
-    assert values.readiness_path == "/_stcore/health"
-
-
-def test_dash_values_serve_with_gunicorn() -> None:
-    values = render.helm_values(config.load(), app_config(ui="dash"), image="i", release=None)
-    assert values.command[0] == "gunicorn"
-    assert values.readiness_path == "/healthz"
-
-
 def test_jobs_only_app_has_no_dashboard() -> None:
     assert not render.helm_values(config.load(), app_config(ui="none"), image="i", release=None).enabled
 

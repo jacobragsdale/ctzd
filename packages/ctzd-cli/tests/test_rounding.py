@@ -58,8 +58,7 @@ def test_python_that_leaves_numbers_alone_passes(tmp_path: Path, line: str) -> N
     assert rounding.problems(tmp_path) == []
 
 
-def test_page_code_and_tests_are_not_checked(tmp_path: Path) -> None:
-    write(tmp_path, "src/app/ui/main.py", "x = f'{price:.2f}'\n")
+def test_tests_are_not_checked(tmp_path: Path) -> None:
     write(tmp_path, "tests/test_logic.py", "assert round(price, 2) == 1.5\n")
     assert rounding.problems(tmp_path) == []
 

@@ -1,6 +1,6 @@
 ---
 name: ctzd
-description: "Set up ctzd on this computer, start a new ctzd app (a Streamlit or Dash dashboard, or scheduled jobs), or open an existing one to change or fix it. Use when the person mentions ctzd or a ctzd link (https://SBU-NAME.ctzd.contoso.com), names one of their dashboards, reports, or scheduled emails, or wants one built, changed, or fixed. Use it before looking for the app anywhere else."
+description: "Set up ctzd on this computer, start a new ctzd app (a dashboard, scheduled jobs, or both), or open an existing one to change or fix it. Use when the person mentions ctzd or a ctzd link (https://SBU-NAME.ctzd.contoso.com), names one of their dashboards, reports, or scheduled emails, or wants one built, changed, or fixed. Use it before looking for the app anywhere else."
 ---
 
 # ctzd

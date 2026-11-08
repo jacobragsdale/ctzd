@@ -7,23 +7,21 @@ include_external_packages = True
 name = datasets and jobs sit above data and logic; each layer stays independent of its neighbour
 type = layers
 layers =
-    (app.ui) | app.api | app.jobs
+    app.api | app.jobs
     app.data | app.logic
 
 [importlinter:contract:pure-logic]
-name = logic is pure: no I/O, no UI framework, no ctzd
+name = logic is pure: no I/O and no ctzd
 type = forbidden
 source_modules =
     app.logic
 forbidden_modules =
     ctzd
-    dash
     httpx
     mssql_python
     oracledb
-    streamlit
 
-[importlinter:contract:pages-use-loaders]
+[importlinter:contract:datasets-use-loaders]
 name = datasets reach data only through app.data
 type = forbidden
 source_modules =
@@ -33,12 +31,3 @@ forbidden_modules =
     mssql_python
     oracledb
 allow_indirect_imports = True
-
-[importlinter:contract:loaders-have-no-ui]
-name = loaders never import a UI framework
-type = forbidden
-source_modules =
-    app.data
-forbidden_modules =
-    dash
-    streamlit

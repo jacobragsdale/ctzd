@@ -6,7 +6,6 @@ addopts = [
     "--strict-config",
     "--import-mode=importlib",
     "-m", "not integration",
-    "-p", "no:dash",
     "--cov=app.logic",
     "--cov-branch",
     "--cov-report=term-missing:skip-covered",

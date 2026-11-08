@@ -2,8 +2,7 @@
 
 ctzd is a platform for citizen developers: business users with no coding experience who ask an AI
 coding agent to build dashboards and scheduled jobs, and get back a link to the running app. A
-dashboard is a React app on basis-ui with a basis-api backend, in one repo and one container (the
-Streamlit and Dash starters stay until the React one lands; [docs/plan.md](docs/plan.md) section 13).
+dashboard is a React app on basis-ui with a basis-api backend, in one repo and one container.
 The agent does every technical step through the `ctzd` command line. Apps run on Kubernetes; Jenkins
 builds them; Airflow schedules their jobs.
 

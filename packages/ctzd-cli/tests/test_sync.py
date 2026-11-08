@@ -47,7 +47,7 @@ def test_changing_a_managed_pyproject_table_is_drift_but_dependencies_are_not(tm
     make_app(tmp_path)
     path = tmp_path / "pyproject.toml"
     text = path.read_text()
-    path.write_text(text.replace('dependencies = ["ctzd-fi>=0.1", "streamlit>=1.66"]', 'dependencies = ["ctzd-fi>=0.1", "plotly>=6", "streamlit>=1.66"]'))
+    path.write_text(text.replace('"ctzd-fi>=0.1"]', '"ctzd-fi>=0.1", "plotly>=6"]'))
     assert sync.drift(tmp_path, config.load(), SEED, "react") == []
     path.write_text(path.read_text().replace('"ruff==0.17.3"', '"ruff==0.18.0"'))
     assert sync.drift(tmp_path, config.load(), SEED, "react") == [sync.Drift("pyproject.toml [dependency-groups.dev]", "changed")]

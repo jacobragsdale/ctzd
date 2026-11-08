@@ -12,13 +12,8 @@ from playwright.sync_api import Page, Response, ViewportSize, sync_playwright
 
 from ctzd_cli.appconfig import Ui
 
-_ERROR_SELECTORS: dict[Ui, tuple[str, ...]] = {
-    "streamlit": ('[data-testid="stException"]',),
-    "dash": (".dash-fe-error__title", '[data-dash-is-loading="true"] .dash-fe-error'),
-    "react": (),
-    "none": (),
-}
-_READY_SELECTORS: dict[Ui, str] = {"streamlit": '[data-testid="stApp"]', "dash": "#react-entry-point", "react": "#root > *", "none": "body"}
+_ERROR_SELECTORS: dict[Ui, tuple[str, ...]] = {"react": (), "none": ()}
+_READY_SELECTORS: dict[Ui, str] = {"react": "#root > *", "none": "body"}
 _SETTLE_MS = 4_000
 _VIEWPORT = ViewportSize(width=1440, height=900)
 _SERVER_ERROR = 500
@@ -88,11 +83,6 @@ def smoke(url: str, *, ui: Ui, timeout_ms: int = _TIMEOUT_MS) -> SmokeResult:
             if ui == "react":
                 _watch_page_errors(page, result)
             _check(page, url, ui, result, timeout_ms)
-            if ui == "streamlit" and not result.problems:
-                links = page.locator('[data-testid="stSidebarNavLink"]')
-                others = [href for href in (links.nth(i).get_attribute("href") for i in range(links.count())) if href is not None and href.rstrip("/") != url.rstrip("/")]
-                for href in others:
-                    _check(page, href, ui, result, timeout_ms)
         finally:
             browser.close()
     return result

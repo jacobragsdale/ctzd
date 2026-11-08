@@ -8,7 +8,7 @@ metadata:
   annotations:
     ctzd.contoso.com/release: {{ .Values.release | toString | quote }}
 spec:
-  # Streamlit keeps each viewer's session in memory, so one replica per dashboard.
+  # One replica per dashboard: small, and a rollout replaces it in seconds.
   replicas: 1
   revisionHistoryLimit: 3
   strategy:

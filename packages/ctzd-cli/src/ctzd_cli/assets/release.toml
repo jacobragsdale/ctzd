@@ -23,12 +23,6 @@ dev = [
 ]
 
 # What `ctzd new` adds to [project].dependencies for each kind of app.
-[ui.streamlit]
-dependencies = ["streamlit>=1.66"]
-
-[ui.dash]
-dependencies = ["dash[ag-grid]>=4.5", "gunicorn>=26.2"]
-
 [ui.react]
 # The page's npm packages are in starter/react/web/package.json.
 # SHIM (MVP): basis-api and basis-core are listed directly so that the platform's git sources for them apply (uv

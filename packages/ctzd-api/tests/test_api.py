@@ -20,7 +20,7 @@ APP_TOML = """
 [app]
 name = "bond-prices"
 sbu = "fi"
-ui = "streamlit"
+ui = "react"
 owners = ["ann.lee@contoso.com"]
 
 [[jobs]]
@@ -93,7 +93,7 @@ def test_requests_without_a_token_are_refused(client: TestClient) -> None:
 
 
 def test_a_member_creates_an_app_repo(client: TestClient, world: Services) -> None:
-    response = client.post("/v1/apps", headers=BOB, json={"sbu": "fi", "name": "curve-viewer", "ui": "dash", "owners": ["bob@contoso.com"]})
+    response = client.post("/v1/apps", headers=BOB, json={"sbu": "fi", "name": "curve-viewer", "ui": "react", "owners": ["bob@contoso.com"]})
     assert response.status_code == 201
     assert response.json()["clone_url"] == "https://github.contoso.com/ctzd-apps/fi-curve-viewer.git"
     assert world.github.permission("fi-curve-viewer", "bob") == "admin"
@@ -102,9 +102,9 @@ def test_a_member_creates_an_app_repo(client: TestClient, world: Services) -> No
 @pytest.mark.parametrize(
     ("body", "status"),
     [
-        ({"sbu": "fi", "name": "bond-prices", "ui": "streamlit", "owners": ["a@contoso.com"]}, 409),
-        ({"sbu": "zz", "name": "new-app", "ui": "streamlit", "owners": ["a@contoso.com"]}, 400),
-        ({"sbu": "fi", "name": "Bad_Name", "ui": "streamlit", "owners": ["a@contoso.com"]}, 400),
+        ({"sbu": "fi", "name": "bond-prices", "ui": "react", "owners": ["a@contoso.com"]}, 409),
+        ({"sbu": "zz", "name": "new-app", "ui": "react", "owners": ["a@contoso.com"]}, 400),
+        ({"sbu": "fi", "name": "Bad_Name", "ui": "react", "owners": ["a@contoso.com"]}, 400),
     ],
 )
 def test_create_refuses_duplicates_unknown_units_and_bad_names(client: TestClient, body: dict[str, object], status: int) -> None:

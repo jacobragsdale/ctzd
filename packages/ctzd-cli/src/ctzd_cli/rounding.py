@@ -4,8 +4,7 @@ Every number is a float64 from the source to the page. The page rounds each one
 once, when it shows it, by the rule the firm's spreadsheets use, and
 `ctzd.display` does the same for text a job writes into an email or a message.
 Rounding anywhere earlier changes the data, and two places that round differently
-show two numbers for one value. So the gate refuses, in `src/app/` outside the
-page code in `src/app/ui/`:
+show two numbers for one value. So the gate refuses, in `src/app/`:
 
 - in Python: `round()`, the `.round()`, `.around()` and `.rint()` of pandas and
   numpy, the `decimal` module, number formats in f-strings, `format()`,
@@ -196,12 +195,11 @@ def sql_problems(path: Path, root: Path) -> list[str]:
 
 
 def problems(root: Path) -> list[str]:
-    """Every place the app's Python outside `src/app/ui/`, and its SQL, round or format a number."""
+    """Every place the app's Python and SQL round or format a number."""
     app = root / "src" / "app"
     found: list[str] = []
     for path in sorted(app.glob("**/*.py")):
-        if (app / "ui") not in path.parents:
-            found.extend(python_problems(path, root))
+        found.extend(python_problems(path, root))
     for path in sorted((app / "data" / "sql").glob("**/*.sql")):
         found.extend(sql_problems(path, root))
     return found

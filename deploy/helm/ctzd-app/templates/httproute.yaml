@@ -25,7 +25,7 @@ spec:
       backendRefs:
         - name: {{ .Values.fullname }}
           port: 80
-      # Streamlit talks to the browser over a websocket that can sit idle for a long time. An hour, as the
+      # A page can hold a request open for a long time, as a slow dataset does. An hour, as the
       # ingress-nginx read and send timeouts were: Envoy Gateway also raises the route's idle timeout to match,
       # in place of Envoy's five-minute stream idle default (unless the Gateway's listener sets its own).
       timeouts:

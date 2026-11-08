@@ -6,21 +6,10 @@ from ctzd_cli.appconfig import AppConfig
 from ctzd_cli.config import PlatformConfig, dag_id, source_secret
 
 PORT = 8080
-_STREAMLIT = (
-    "streamlit",
-    "run",
-    "src/app/ui/main.py",
-    f"--server.port={PORT}",
-    "--server.address=0.0.0.0",
-    "--server.headless=true",
-    "--browser.gatherUsageStats=false",
-    "--client.toolbarMode=viewer",
-)
-_DASH = ("gunicorn", "app.ui.main:server", f"--bind=0.0.0.0:{PORT}", "--workers=2", "--threads=4", "--timeout=120")
 # One process serves the datasets under /api and the built pages at /.
 _REACT = ("uvicorn", "--factory", "ctzd.api:asgi", "--host=0.0.0.0", f"--port={PORT}", "--proxy-headers")
-_COMMANDS = {"react": _REACT, "streamlit": _STREAMLIT, "dash": _DASH}
-_READINESS = {"react": "/health/ready", "streamlit": "/_stcore/health"}
+_COMMANDS = {"react": _REACT}
+_READINESS = {"react": "/health/ready"}
 
 
 class _Model(BaseModel):

@@ -39,7 +39,7 @@ def test_the_seed_is_the_bundled_folder() -> None:
     assert "locked/Dockerfile" in SEED.files
     assert "guidance/AGENTS.md" in SEED.files
     assert "release.toml" not in SEED.files
-    assert set(SEED.ui) == {"react", "streamlit", "dash", "none"}
+    assert set(SEED.ui) == {"react", "none"}
 
 
 def test_a_folder_without_a_manifest_or_with_a_bad_one_is_refused() -> None:

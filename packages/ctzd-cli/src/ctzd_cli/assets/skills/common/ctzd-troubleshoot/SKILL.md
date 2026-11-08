@@ -64,7 +64,7 @@ being unavailable during **Image build**, needs no change: `ctzd deploy --json`
 with nothing new builds again when the last build failed.
 
 The smoke test also fails when a request behind the page answers with a server
-error, such as a Dash callback that raised; `build.log_tail` names the request.
+error, such as a dataset that raised; `build.log_tail` names the request.
 
 `ok: true` with "The build is still running": run `ctzd status --wait --json`.
 

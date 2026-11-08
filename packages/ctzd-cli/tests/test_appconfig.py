@@ -12,7 +12,7 @@ VALID = """
 [app]
 name = "bond-prices"
 sbu = "fi"
-ui = "streamlit"
+ui = "react"
 owners = ["ann.lee@contoso.com"]
 
 [[jobs]]
@@ -47,7 +47,7 @@ def test_duplicate_job_names_are_rejected() -> None:
 
 def test_unknown_keys_are_rejected() -> None:
     with pytest.raises(CliError, match="replicas"):
-        appconfig.parse(VALID.replace('ui = "streamlit"', 'ui = "streamlit"\nreplicas = 3'))
+        appconfig.parse(VALID.replace('ui = "react"', 'ui = "react"\nreplicas = 3'))
 
 
 def test_render_round_trips() -> None:

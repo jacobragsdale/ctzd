@@ -26,7 +26,7 @@ spec:
     redirectURL: "https://{{ .Values.host }}/oauth2/callback"
     logoutPath: /oauth2/logout
     # offline_access makes Entra ID issue a refresh token. Envoy uses it to renew the session when the ID token
-    # expires (after about an hour), so Streamlit reconnecting its websocket is not sent to the sign-in page.
+    # expires (after about an hour), so a page left open keeps loading its data without going back to the sign-in page.
     scopes: [openid, offline_access]
     refreshToken: true
 {{- end }}

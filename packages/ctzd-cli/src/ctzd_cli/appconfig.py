@@ -19,7 +19,7 @@ SOURCE = re.compile(r"[a-z][a-z0-9_]{0,62}")
 _CRON_FIELD = re.compile(r"[\d*/,\-A-Za-z]+")
 _CRON_FIELDS = 5
 Size = Literal["s", "m", "l"]
-Ui = Literal["react", "streamlit", "dash", "none"]
+Ui = Literal["react", "none"]
 
 _CONFIG = ConfigDict(extra="forbid", frozen=True, validate_default=True, revalidate_instances="always", allow_inf_nan=False)
 
