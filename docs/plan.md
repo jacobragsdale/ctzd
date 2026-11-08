@@ -492,10 +492,12 @@ generators, the check messages, and the skills above as those grow.
 Python builds, runs `uv tool install ctzd`, and runs `ctzd setup`. Setup
 installs MinGit when git is missing and reports whether the person still needs
 to log in, which the agent then does with the two-step `ctzd login`. With the
-React starter, setup also installs Node and Vite+ from the internal registry
-(Node as a wheel, such as `nodejs-wheel-binaries`, or from a generic mirror of
-its downloads; section 13's laptop spike decides) and points pnpm at the
-registry. The uv, MinGit, Python, and Node downloads come from the platform
+React app, setup also installs Node 26 into ctzd's own folder, from the zip
+the platform host serves (`node_url`) or else the Node wheel through uv, and
+pnpm 12.18.0 into ctzd's npm prefix from the internal npm registry, which it
+makes the laptop's default; every page step finds both through ctzd's own
+PATH. Vite+ comes with each app's packages. None of this has run on Windows
+yet; section 13's laptop spike checks each route. The uv, MinGit, Python, and Node downloads come from the platform
 host or the registry, so laptops need no access to github.com, pypi.org, or
 npmjs.com.
 

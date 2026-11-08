@@ -13,7 +13,7 @@ from packaging.version import InvalidVersion, Version
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from ctzd_cli import api_models as m
-from ctzd_cli import proc, rounding, sync
+from ctzd_cli import node, proc, rounding, sync
 from ctzd_cli.appconfig import AppConfig
 from ctzd_cli.config import PlatformConfig
 from ctzd_cli.errors import CliError
@@ -243,8 +243,11 @@ _WRITE_OPENAPI = "from pathlib import Path; import ctzd.api; print(ctzd.api.writ
 
 
 def _pnpm(root: Path, *args: str) -> proc.Completed:
-    pnpm = proc.which("pnpm", hint="Run `ctzd setup`, which installs Node and pnpm.")
-    return proc.run([pnpm, *args], cwd=root / WEB, timeout=_TOOL_TIMEOUT)
+    pnpm = node.which("pnpm")
+    if pnpm is None:
+        msg = "pnpm is not installed."
+        raise CliError(msg, hint="Run `ctzd setup`, which installs Node and pnpm.")
+    return proc.run([pnpm, *args], cwd=root / WEB, env=node.env(), timeout=_TOOL_TIMEOUT)
 
 
 def web_install(root: Path, mode: Mode) -> Step:

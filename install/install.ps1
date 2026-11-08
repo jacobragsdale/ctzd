@@ -29,6 +29,10 @@ if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
 Add-UserPath $Bin
 # `ctzd setup` unpacks a private git here when the laptop has none; agents may need it for a merge conflict.
 Add-UserPath (Join-Path $env:LOCALAPPDATA 'ctzd\mingit\cmd')
+# `ctzd setup` also puts Node here (from the platform host's zip, or the Node wheel through uv) and pnpm, from the
+# internal npm registry, for a React app's pages. Unverified on Windows: see docs/spikes/laptop-toolchain.md.
+Add-UserPath (Join-Path $env:LOCALAPPDATA 'ctzd\node')
+Add-UserPath (Join-Path $env:LOCALAPPDATA 'ctzd\npm')
 
 # 2. Point uv at the internal package index and the internal mirror of Python builds.
 $uvConfigDir = Join-Path $env:APPDATA 'uv'
@@ -46,5 +50,5 @@ default = true
 uv tool install --upgrade ctzd
 if ($LASTEXITCODE -ne 0) { throw 'uv could not install ctzd from the internal package index.' }
 
-# 4. Check the rest (git, login, agent setup) and tell the agent what to do next.
+# 4. Check the rest (git, Node, pnpm, login, agent setup) and tell the agent what to do next.
 & (Join-Path $Bin 'ctzd.exe') setup --json

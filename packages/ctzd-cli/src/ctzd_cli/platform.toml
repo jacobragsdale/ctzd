@@ -19,6 +19,7 @@ registry = "contosoctzd.azurecr.io"
 base_image = "contosoctzd.azurecr.io/ctzd/base:py3.14"
 store_url = "abfs://ctzd@contosoctzdstore.dfs.core.windows.net"
 mingit_url = "https://ctzd.contoso.com/downloads/MinGit-64-bit.zip"
+node_url = "https://ctzd.contoso.com/downloads/node-v26.13.0-win-x64.zip"
 
 # The package index every app installs from; written into each app's pyproject.toml.
 [[python.index]]
@@ -39,6 +40,9 @@ subdirectory = "packages/core"
 
 # SHIM (MVP): a React app's pages take basis-ui's packages from the tarballs basis-ui packs from its main branch on
 # this machine, until the internal npm registry serves them.
+[npm]
+registry = "https://npm.contoso.com/"
+
 [npm.packages]
 "@basis/ui" = "file:~/dev/basis-ui-dist/basis-ui.tgz"
 "@basis/parallax" = "file:~/dev/basis-ui-dist/basis-parallax.tgz"

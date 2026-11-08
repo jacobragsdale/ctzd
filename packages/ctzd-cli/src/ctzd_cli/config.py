@@ -33,6 +33,8 @@ class PlatformUrls(_Model):
     base_image: str
     store_url: str
     mingit_url: str
+    # Node's Windows zip, which `ctzd setup` unpacks into ctzd's own folder; without it, setup installs the Node wheel.
+    node_url: str | None = None
 
 
 class PackageIndex(_Model):
@@ -55,6 +57,8 @@ class NpmConfig(_Model):
     serves them."""
 
     packages: dict[str, str] = Field(default_factory=dict)
+    # The internal npm registry, which `ctzd setup` makes the user's default and installs pnpm from.
+    registry: str | None = None
 
     def spec(self, name: str) -> str:
         found = self.packages.get(name)
