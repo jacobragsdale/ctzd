@@ -11,7 +11,8 @@ uv build --quiet --package ctzd-core --out-dir "$work/wheels"
 uv build --quiet --package ctzd-fi --out-dir "$work/wheels"
 
 # The bundled platform config with the internal index swapped for local wheels plus PyPI, and, when
-# CTZD_BASIS_UI_URL is set, basis-ui's packages taken from there (basis-ui.tgz and basis-parallax.tgz).
+# CTZD_BASIS_UI_URL is set (a URL, or `file:` and a folder), basis-ui's packages taken from there
+# (basis-ui.tgz and basis-parallax.tgz), as CI packs them from basis-ui's main branch.
 # It prints "react" when a React app can be built here: pnpm is installed and both packages are reachable.
 react=$(python3 - "$repo/packages/ctzd-cli/src/ctzd_cli/platform.toml" "$work" "${CTZD_BASIS_UI_URL:-}" <<'PY'
 import os, pathlib, re, shutil, sys

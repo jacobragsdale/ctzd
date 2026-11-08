@@ -24,18 +24,55 @@ jobs:
 
   template:
     runs-on: ubuntu-latest
+    env:
+      # The runner's cores: parallax's engine builds with one rustc job unless told more.
+      CARGO_BUILD_JOBS: 4
     steps:
       - uses: actions/checkout@v7
+      # A React app takes @basis/ui and @basis/parallax from basis-ui's main branch, packed here as
+      # ~/dev/basis-ui-dist/pack.sh packs them on the development host.
+      - uses: actions/checkout@v7
+        with:
+          repository: jacobragsdale/basis-ui
+          ref: main
+          path: basis-ui
+      - uses: voidzero-dev/setup-vp@v1.22.0
+        with:
+          node-version-file: basis-ui/.node-version
+      - uses: actions/cache@v4
+        with:
+          path: ~/.local/share/pnpm/store
+          key: pnpm-store-${{ hashFiles('basis-ui/pnpm-lock.yaml') }}
+          restore-keys: pnpm-store-
+      - run: rustup toolchain install
+        working-directory: basis-ui/packages/parallax
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: basis-ui/packages/parallax -> target
+      - name: Install wasm-bindgen
+        working-directory: basis-ui/packages/parallax
+        run: |
+          version=$(cargo metadata --format-version 1 --locked | jq -r '.packages[] | select(.name == "wasm-bindgen") | .version')
+          curl -sSL "https://github.com/wasm-bindgen/wasm-bindgen/releases/download/${version}/wasm-bindgen-${version}-x86_64-unknown-linux-musl.tar.gz" | tar xz
+          sudo install -m 755 "wasm-bindgen-${version}-x86_64-unknown-linux-musl/wasm-bindgen" /usr/local/bin/
+      - name: Pack @basis/ui and @basis/parallax
+        working-directory: basis-ui
+        run: |
+          vp install
+          vp run @basis/ui#build
+          vp run @basis/parallax#build
+          dist="$RUNNER_TEMP/basis-ui-dist"
+          mkdir -p "$dist"
+          (cd packages/ui && vp pm pack --pack-destination "$dist")
+          (cd packages/parallax && vp pm pack --pack-destination "$dist")
+          mv "$dist"/basis-ui-*.tgz "$dist/basis-ui.tgz"
+          mv "$dist"/basis-parallax-*.tgz "$dist/basis-parallax.tgz"
+          echo "CTZD_BASIS_UI_URL=file:$dist" >> "$GITHUB_ENV"
+      - run: npm install --global pnpm@12.18.0
       - uses: astral-sh/setup-uv@v10.3.3
         with:
           version: "0.13.6"
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "26"
-      - run: npm install --global pnpm@12.18.0
       - run: uv sync --locked
-      # A React app needs basis-ui's packages; until basis-ui publishes them at a URL, set as
-      # CTZD_BASIS_UI_URL here, e2e.sh checks the jobs-only app and says it skipped the React one.
       - run: scripts/e2e.sh
 
   airflow:
