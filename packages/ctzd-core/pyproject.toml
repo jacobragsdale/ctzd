@@ -18,6 +18,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dash = ["dash>=4.5"]
+# A React app's API: ctzd.api builds a basis-api service from the app's datasets.
+api = ["basis-api"]
 
 [build-system]
 requires = ["uv_build>=0.13.6,<0.14"]

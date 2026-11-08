@@ -26,6 +26,17 @@ name = "internal"
 url = "https://pypi.contoso.com/simple"
 default = true
 
+# SHIM (MVP): every app takes basis from its main branch until basis is on the internal index.
+[python.sources.basis-api]
+git = "https://github.com/jacobragsdale/basis"
+branch = "main"
+subdirectory = "packages/api"
+
+[python.sources.basis-core]
+git = "https://github.com/jacobragsdale/basis"
+branch = "main"
+subdirectory = "packages/core"
+
 # Resources per app.toml size. Requests stay small so idle dashboards cost little.
 [sizes.s]
 cpu_request = "100m"

@@ -8,7 +8,7 @@ requires-python = ">=3.14"
 dev = [
     "ctzd[ci]",
     "ctzd-api",
-    "ctzd-core[dash]",
+    "ctzd-core[api,dash]",
     "ctzd-fi",
     "httpx2>=2.16",  # starlette.testclient prefers it
     "pandas-stubs>=3.1",
@@ -32,6 +32,9 @@ ctzd = { workspace = true }
 ctzd-api = { workspace = true }
 ctzd-core = { workspace = true }
 ctzd-fi = { workspace = true }
+# SHIM (MVP): basis tracks its main branch while the React starter takes shape; pin a release once basis cuts one.
+basis-api = { git = "https://github.com/jacobragsdale/basis", branch = "main", subdirectory = "packages/api" }
+basis-core = { git = "https://github.com/jacobragsdale/basis", branch = "main", subdirectory = "packages/core" }
 
 
 [tool.ruff]
@@ -89,7 +92,7 @@ strict-equality-semantics = true  # Do not narrow from ==, in, or match value pa
 error-on-warning = true
 
 [tool.pytest.ini_options]
-addopts = "-ra --strict-markers --strict-config --import-mode=importlib -m 'not integration' -p no:dash"  # dash registers a pytest plugin that warns on load; nothing here uses it
+addopts = "-ra --strict-markers --strict-config --import-mode=importlib -m 'not integration' -p no:dash -p no:basis"  # dash's plugin warns on load; basis-core's blocks sockets, which the dev-server tests open
 testpaths = ["packages", "kits"]
 norecursedirs = [".*", "build", "dist", "node_modules", "assets", "airflow"]  # assets/ holds app templates, tested by generating an app
 xfail_strict = true  # An xfail that starts passing is a failure, not a silent pass.
