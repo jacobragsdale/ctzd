@@ -1,8 +1,7 @@
 """Process-wide test seams installed by `ctzd.testing`.
 
-This is a module global rather than a ContextVar because Streamlit's AppTest
-runs the page script in another thread, which would not see a ContextVar the
-test had set.
+They are a module global, guarded by a lock, so every thread the code under
+test runs on sees what the test installed.
 """
 
 import threading

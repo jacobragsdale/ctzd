@@ -126,7 +126,7 @@ rotate: a terse manager, a detailed analyst, someone who uses the wrong words
 | # | Request | What it tests |
 |---|---|---|
 | 1 | "Today's bond prices by sector from the FI pricing database", then "ship it" | The happy path; SQL kept in files with bind parameters |
-| 2 | A Dash table of new issues from the REST API, filterable by rating | The REST client, paging, the `ctzd-dash` skill |
+| 2 | A Dash table of new issues from the REST API, filterable by rating | The REST client, paging; saying plainly that pages are not Dash and building it the platform's way |
 | 3 | "Email me the sector summary every weekday at 7" | Asking where the person is, the job's time zone, the email attachment, `run --wait` |
 | 4 | A dashboard backed by a deliberately slow query | Moving the query into a job that writes to the store |
 | 5 | "Yesterday's change broke the chart", where the bad change passes the smoke test | `rollback` first, then the fix, and the pause clearing on the next deploy |
