@@ -746,6 +746,24 @@ page compute a number the same way.
 | 1 | FI (fixed income) pilots with 3–5 citizen developers building real apps. Skills are tuned from what goes wrong. | Pilot apps reach production without platform-team help. |
 | 2 | All SBUs. | — |
 
+What comes first, from the review of 2026-11-09, before anything large is
+built: the platform is unproven on the three things it stands on, the toolchain
+on a Windows desktop, Cursor reading the guidance, and a Haiku-class model
+building React pages from these skills. In order:
+
+1. Run the desktop kit (`docs/spikes/desktop-toolchain.md`) on one real
+   desktop, steps 7 to 9 included.
+2. Run one Cursor session by hand with Haiku, from `ctzd new` in a parent
+   folder to a deploy.
+3. Rerun trials s01 to s04, and s11, on the React app with fake data
+   (`serve fake-data`). The harness needs a Cursor runner, or hand-run
+   sessions scored with the same rubric.
+4. Rerun the Jenkins dry run (`validation/stage2_jenkins.py`) on a React app,
+   which also tries the lock and the `ctzd-check` agent label.
+
+Their results decide whether the release work and the data and email work are
+worth carrying further as designed.
+
 Phase 0 spikes:
 
 - **The desktop toolchain**, which now decides whether the platform has a UI at
