@@ -13,5 +13,15 @@ addopts = [
 ]
 testpaths = ["tests"]
 xfail_strict = true
-filterwarnings = ["error"]
+# A warning the app's own code or its tests raise or cause fails the tests; a dependency deprecating something does not, and
+# `ctzd check` lists it instead, so a deprecation, the usual way to avoid breaking an app, never breaks one.
+# ChainedAssignmentError always fails: under pandas 3 such an assignment changes nothing.
+filterwarnings = [
+    "default",
+    "error:::(app|tests)\\b|test_",
+    "default::DeprecationWarning",
+    "default::PendingDeprecationWarning",
+    "default::FutureWarning",
+    "error::pandas.errors.ChainedAssignmentError",
+]
 markers = ["integration: needs a real source; excluded from the default run"]

@@ -145,11 +145,11 @@ def run_platform(root: Path, base: Path) -> None:
         'apps_domain = "ctzd.contoso.com"': 'apps_domain = "ctzd.test"',
         'airflow_url = "https://airflow.ctzd.contoso.com"': 'airflow_url = "http://airflow.ctzd.test"',
         'store_url = "abfs://ctzd@contosoctzdstore.dfs.core.windows.net"': f'store_url = "{store}"',
-    } | npm_packages(base, f"http://127.0.0.1:{port}/npm")
+    }
     wheels = base / "wheels"
     if not wheels.is_dir():
         build_wheels(wheels)
-    cfg = platform_config(root, wheels, api_url=f"http://127.0.0.1:{port}", extra=extra)
+    cfg = platform_config(root, wheels, api_url=f"http://127.0.0.1:{port}", extra=extra, npm=npm_packages(base, f"http://127.0.0.1:{port}/npm"))
     gitconfig = root / "gitconfig"
     gitconfig.write_text(f'[user]\n\tname = {PERSON[1]}\n\temail = {PERSON[2]}\n[url "{root / "github"}/"]\n\tinsteadOf = https://{GITHUB_HOST}/ctzd-apps/\n[init]\n\tdefaultBranch = main\n')
     secret_values = source_values(sources, port)

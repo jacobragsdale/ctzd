@@ -37,7 +37,7 @@ def scaffold(root: Path, *, platform: PlatformConfig, app: AppConfig, release: m
     sbu = platform.sbu(app.app.sbu)
     tokens = {"name": platform.repo_name(app.app.sbu, app.app.name), "title": title_for(app.app.name), "sbu_name": sbu.name}
     if app.app.ui == "react":
-        tokens |= {f"npm:{package}": platform.npm.spec(package) for package in platform.npm.packages}
+        tokens |= {f"npm:{package}": spec for package, spec in sync.npm_pins(platform, release).items()}
     write_files(root, assets.starter_files(release, app.app.ui, tokens))
     for job in app.jobs:
         write_files(root, assets.job_files(release, job.name))

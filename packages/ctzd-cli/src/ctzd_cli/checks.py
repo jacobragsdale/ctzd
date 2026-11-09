@@ -1,5 +1,6 @@
 """`ctzd check`: every gate, the same locally and in Jenkins."""
 
+import datetime as dt
 import re
 import tomllib
 from dataclasses import dataclass
@@ -13,8 +14,8 @@ from packaging.version import InvalidVersion, Version
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from ctzd_cli import api_models as m
-from ctzd_cli import node, proc, rounding, sync
-from ctzd_cli.appconfig import AppConfig
+from ctzd_cli import assets, node, proc, rounding, sync
+from ctzd_cli.appconfig import AppConfig, Ui
 from ctzd_cli.config import PlatformConfig
 from ctzd_cli.errors import CliError
 from ctzd_cli.releases import ReleaseSource, require_usable
@@ -43,6 +44,8 @@ class Step:
     detail: str = ""
     # Files this step changed that belong in their own platform commit; see `ctzd deploy`.
     paths: tuple[str, ...] = ()
+    # Something the agent should tell the person or act on although the step passed.
+    warning: str | None = None
 
 
 def _uv() -> str:
@@ -143,12 +146,36 @@ def _local_release(target: Target, recorded: int | None) -> m.PlatformRelease:
     return base if sync.same_build(target.platform, base, chosen, target.app.app.ui) else chosen
 
 
+# The build files that decide what the checks refuse: a release that changes one of them, a dev tool pin, or the npm
+# pins (basis-ui's lint and components) is breaking, whether or not its manifest says so.
+_CHECK_FILES = frozenset({"ruff.toml", "ty.toml", "pytest.toml", ".importlinter", "web/vite.config.ts", "web/tsconfig.json"})
+
+
+def is_breaking(platform: PlatformConfig, base: m.PlatformRelease, chosen: m.PlatformRelease, ui: Ui) -> bool:
+    """Whether moving from `base` to `chosen` can make an app that passes today fail."""
+    if chosen.breaking:
+        return True
+    one, other = assets.locked_files(base, ui), assets.locked_files(chosen, ui)
+    files = any(one.get(path) != other.get(path) for path in _CHECK_FILES)
+    pins = base.python.dev != chosen.python.dev or (ui == "react" and sync.npm_pins(platform, base) != sync.npm_pins(platform, chosen))
+    return files or pins
+
+
 def platform_files(target: Target, mode: Mode) -> Step:
     if mode == "ci":
         return _ci_platform_files(target)
     recorded = sync.recorded_release(target.root)
     try:
         release = _local_release(target, recorded)
+    except CliError as err:
+        return Step("platform files", "failed", _described(err))
+    return platform_files_at(target, release)
+
+
+def platform_files_at(target: Target, release: m.PlatformRelease) -> Step:
+    """Bring the app's build files to `release`, locally."""
+    recorded = sync.recorded_release(target.root)
+    try:
         changed = sync.write_build(target.root, target.platform, release, target.app.app.ui)
         changed += raise_core(target, release)
     except CliError as err:
@@ -287,14 +314,164 @@ def web_build(root: Path) -> Step:
     return Step("web build", "passed") if result.ok else Step("web build", "failed", proc.tail(result.output, 40))
 
 
+_DEPRECATION = re.compile(r"^\s*(?P<where>\S+?:\d+): (?P<kind>DeprecationWarning|PendingDeprecationWarning|FutureWarning): (?P<message>.+)$", re.MULTILINE)
+_SHOWN_DEPRECATIONS = 5
+
+
+def has_logic(root: Path) -> bool:
+    """Whether `src/app/logic` holds any code; the coverage floor applies only to code that exists."""
+    folder = root / "src" / "app" / "logic"
+    return any(path.read_text(encoding="utf-8").strip() for path in folder.rglob("*.py")) if folder.is_dir() else False
+
+
+def deprecations(output: str) -> list[str]:
+    """The deprecations pytest's warnings summary lists, once each: a dependency will remove something the app uses."""
+    found: list[str] = []
+    for match in _DEPRECATION.finditer(output):
+        line = f"{match.group('where')}: {match.group('kind')}: {match.group('message').strip()}"
+        if line not in found:
+            found.append(line)
+    return found
+
+
 def tests(root: Path) -> Step:
-    result = _tool(root, "pytest", "-q", "--no-header", "-p", "no:cacheprovider")
-    return Step("tests", "passed", proc.tail(result.output, 3)) if result.ok else Step("tests", "failed", proc.tail(result.output, 80))
+    # With no logic there is nothing to cover, and coverage of nothing reads 0%.
+    floor = () if has_logic(root) else ("--cov-fail-under=0",)
+    result = _tool(root, "pytest", "-q", "--no-header", "-p", "no:cacheprovider", *floor)
+    if not result.ok:
+        return Step("tests", "failed", proc.tail(result.output, 80))
+    found = deprecations(result.output)
+    if not found:
+        return Step("tests", "passed", proc.tail(result.output, 3))
+    shown = found[:_SHOWN_DEPRECATIONS] + ([f"... and {len(found) - _SHOWN_DEPRECATIONS} more."] if len(found) > _SHOWN_DEPRECATIONS else [])
+    note = "The tests pass, but a package the app uses has deprecated something it calls. It still works; change the code before that package removes it:"
+    return Step("tests", "passed", "\n".join([proc.tail(result.output, 3), note, *shown]), warning=note)
 
 
-def run_all(target: Target, *, mode: Mode, fast: bool) -> list[Step]:
+UPGRADE_RECORD = ".ctzd/upgrade.json"
+_RETRY_BREAKING = dt.timedelta(days=1)
+
+
+class _Tried(BaseModel):
+    """A breaking release this app did not pass, and when; it is tried again a day later, not on every check."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    release: int
+    tried_at: dt.datetime
+    failed: tuple[str, ...]
+
+
+def _read_tried(root: Path) -> _Tried | None:
+    path = root / UPGRADE_RECORD
+    try:
+        return _Tried.model_validate_json(path.read_bytes()) if path.is_file() else None
+    except ValidationError:
+        return None
+
+
+def _snapshot(root: Path, paths: set[str]) -> dict[str, bytes | None]:
+    return {path: (root / path).read_bytes() if (root / path).is_file() else None for path in sorted(paths)}
+
+
+def _restore(root: Path, saved: dict[str, bytes | None]) -> None:
+    for path, data in saved.items():
+        target = root / path
+        if data is None:
+            target.unlink(missing_ok=True)
+        else:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(data)
+
+
+def _stay_note(base: m.PlatformRelease, chosen: m.PlatformRelease, failed: tuple[str, ...]) -> str:
+    deadline = f"by {chosen.deadline:%d %B %Y}, when it is applied anyway" if chosen.deadline is not None else "before it is required"
+    return (
+        f"Platform release {chosen.release} changes what the checks refuse, and this app does not pass them yet ({', '.join(failed)}), "
+        f"so it stays on platform release {base.release}. Run `ctzd sync`, then `ctzd check`, and fix what it reports {deadline}."
+    )
+
+
+def _pending_breaking(target: Target, now: dt.datetime) -> tuple[m.PlatformRelease, m.PlatformRelease] | None:
+    """The recorded release and the channel's, when the channel's is breaking for this app and not yet past its deadline."""
+    recorded = sync.recorded_release(target.root)
+    if recorded is None:
+        return None
+    try:
+        chosen = _local_release(target, recorded)
+        base = require_usable(target.releases.get(recorded))
+    except CliError:
+        return None
+    if chosen.release == base.release or not is_breaking(target.platform, base, chosen, target.app.app.ui):
+        return None
+    # Past its deadline a breaking release applies like any other.
+    return None if chosen.deadline is not None and now.date() >= chosen.deadline else (base, chosen)
+
+
+@dataclass(frozen=True)
+class _Stay:
+    """The app stays on `base` for now: `chosen`, the channel's release, is breaking for it."""
+
+    base: m.PlatformRelease
+    chosen: m.PlatformRelease
+
+
+def _breaking_move(target: Target, *, fast: bool, now: dt.datetime) -> _Stay | list[Step] | None:
+    """Nothing breaking pending (None); the steps of a breaking release the app passed and now has; or the app stays."""
+    pending = _pending_breaking(target, now)
+    if pending is None:
+        return None
+    base, chosen = pending
+    tried = _read_tried(target.root)
+    recently = tried is not None and tried.release == chosen.release and now - tried.tried_at < _RETRY_BREAKING
+    # A check without tests cannot tell whether the app passes, so it stays; so does one that failed it within a day.
+    if fast or recently:
+        return _Stay(base, chosen)
+    steps = _try_release(target, base, chosen, now)
+    return _Stay(base, chosen) if steps is None else steps
+
+
+def _try_release(target: Target, base: m.PlatformRelease, chosen: m.PlatformRelease, now: dt.datetime) -> list[Step] | None:
+    """Run every check on `chosen` and return them when they pass; else put the build files back, record it, and return None."""
+    ui = target.app.app.ui
+    touched = {*assets.locked_files(base, ui), *assets.locked_files(chosen, ui), sync.VERSION_FILE, "pyproject.toml", "uv.lock", *(sync.WEB_FILES if ui == "react" else ())}
+    saved = _snapshot(target.root, touched)
+    steps = _run(target, "local", fast=False, first=platform_files_at(target, chosen))
+    failed = tuple(step.name for step in steps if step.state == "failed")
+    if not failed:
+        (target.root / UPGRADE_RECORD).unlink(missing_ok=True)
+        return steps
+    _restore(target.root, saved)
+    record = target.root / UPGRADE_RECORD
+    record.parent.mkdir(parents=True, exist_ok=True)
+    record.write_text(_Tried(release=chosen.release, tried_at=now, failed=failed).model_dump_json(), encoding="utf-8")
+    return None
+
+
+def run_all(target: Target, *, mode: Mode, fast: bool, candidate: m.PlatformRelease | None = None, now: dt.datetime | None = None) -> list[Step]:
+    """Every gate. Locally, a breaking release of the channel is tried first and kept only when the app passes on it;
+    `candidate` forces the move to that release, as the platform's check of a release before it is promoted does."""
+    if mode == "ci":
+        return _run(target, mode, fast=fast, first=platform_files(target, mode))
+    if candidate is not None:
+        return _run(target, mode, fast=fast, first=platform_files_at(target, candidate))
+    moment = now or dt.datetime.now(dt.UTC)
+    staying = _breaking_move(target, fast=fast, now=moment)
+    if staying is None:
+        return _run(target, mode, fast=fast, first=platform_files(target, mode))
+    if not isinstance(staying, _Stay):
+        return staying
+    base, chosen = staying.base, staying.chosen
+    first = platform_files_at(target, base)
+    tried = _read_tried(target.root)
+    failed = tried.failed if tried is not None and tried.release == chosen.release else ("not tried yet: run `ctzd check` without --fast",)
+    note = _stay_note(base, chosen, failed)
+    first = Step(first.name, first.state, "\n".join(part for part in (first.detail, note) if part), paths=first.paths, warning=note)
+    return _run(target, mode, fast=fast, first=first)
+
+
+def _run(target: Target, mode: Mode, *, fast: bool, first: Step) -> list[Step]:
     root = target.root
-    steps = [platform_files(target, mode)]
+    steps = [first]
     if steps[0].state == "failed" and mode == "ci":
         return steps
     steps.append(environment(root, mode))

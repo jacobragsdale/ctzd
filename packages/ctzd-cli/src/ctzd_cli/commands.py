@@ -499,10 +499,11 @@ def check(ctx: Context, *, fast: bool) -> Outcome:
 
 def _check_outcome(steps: list[checks.Step]) -> Outcome:
     failed = [step for step in steps if step.state == "failed"]
+    warnings = [f"{step.name}: {step.warning}" for step in steps if step.warning is not None]
     return Outcome(
         summary="All checks passed." if not failed else "Checks failed: " + ", ".join(step.name for step in failed) + ".",
         data={"steps": [{"name": step.name, "state": step.state, "detail": step.detail} for step in steps]},
-        next_steps=["Fix the failures above, then run `ctzd check` again."] if failed else [],
+        next_steps=(["Fix the failures above, then run `ctzd check` again."] if failed else []) + warnings,
         ok=not failed,
     )
 
@@ -625,6 +626,19 @@ def platform_changes(ctx: Context, root: Path, git: gitops.Git) -> list[str]:
     pyproject = (root / "pyproject.toml").read_text(encoding="utf-8") if (root / "pyproject.toml").is_file() else None
     if _outside_managed(git.show("pyproject.toml")) == _outside_managed(pyproject):
         paths += [path for path in changed if path in {"pyproject.toml", "uv.lock"}]
+    # The same for the pages: the firm's npm pins in web/package.json and pnpm's overrides, with the lockfile.
+    recorded = sync.recorded_release(root)
+    if recorded is not None and any(path in changed for path in sync.WEB_FILES):
+        with contextlib.suppress(CliError):
+            release_files = ctx.releases.get(recorded)
+            platform = config.load()
+            web = [sync.PACKAGE_JSON, sync.PNPM_WORKSPACE]
+            if all(
+                sync.outside_managed_web(path, git.show(path), platform, release_files)
+                == sync.outside_managed_web(path, (root / path).read_text(encoding="utf-8") if (root / path).is_file() else None, platform, release_files)
+                for path in web
+            ):
+                paths += [path for path in changed if path in sync.WEB_FILES]
     return sorted(paths)
 
 
@@ -634,17 +648,28 @@ def platform_commit_message(root: Path, paths: list[str]) -> str:
     return f"{verb} platform files to platform release {recorded}"
 
 
+def _fixed_by_checks(before: set[str], after: list[str]) -> list[str]:
+    """Files the checks' automatic fixes changed that were clean before them: the app's code and pages, not the client
+    the checks regenerate from the person's datasets."""
+    generated = ("web/openapi.json", "web/src/api/generated/")
+    return [path for path in after if path not in before and (path.endswith(".py") or path.startswith("web/src/")) and not path.startswith(generated)]
+
+
 def deploy(ctx: Context, *, message: str | None, detach: bool, timeout: float) -> Outcome:
     root, app = _platform_app(ctx)
+    git = gitops.open_repo(root, token=ctx.token(), identity=auth.identity() or ("ctzd", "ctzd@localhost"))
+    before = set(git.changed_paths())
     steps = ctx.run_checks(_target(ctx, root, app), mode="local", fast=False)
     gate = _check_outcome(steps)
     if not gate.ok:
         gate.summary = "Not deployed. " + gate.summary
         return gate
-    git = gitops.open_repo(root, token=ctx.token(), identity=auth.identity() or ("ctzd", "ctzd@localhost"))
     platform = ctx.platform_factory()
-    # The platform's own changes go in a commit of their own, before the person's change.
+    # The platform's own changes go in a commit of their own, before the person's change; with an upgrade, so do the
+    # automatic fixes the new release's checks made to code the person had not touched.
     platform_paths = platform_changes(ctx, root, git)
+    if sync.VERSION_FILE in platform_paths:
+        platform_paths = sorted({*platform_paths, *_fixed_by_checks(before, git.changed_paths())})
     upgraded = git.commit_paths(platform_paths, platform_commit_message(root, platform_paths))
     changed = git.changed_paths()
     paused = platform.status(app.app.sbu, app.app.name).paused
@@ -659,9 +684,12 @@ def deploy(ctx: Context, *, message: str | None, detach: bool, timeout: float) -
     git.push_main()
     commit = git.head() or ""
     if detach:
-        return Outcome(summary="Pushed; Jenkins is building it.", data={"commit": commit, "committed": committed}, next_steps=["Run `ctzd status --wait`."])
+        return Outcome(summary="Pushed; Jenkins is building it.", data={"commit": commit, "committed": committed}, next_steps=["Run `ctzd status --wait`.", *gate.next_steps])
     build = wait_for_build(ctx, platform, app, commit, timeout=timeout)
-    return _build_outcome(ctx, platform, app, commit, build)
+    outcome = _build_outcome(ctx, platform, app, commit, build)
+    # What a passing check warned about (a release the app stays off, a deprecation) still reaches the agent.
+    outcome.next_steps += gate.next_steps
+    return outcome
 
 
 def status(ctx: Context, *, wait: bool, timeout: float) -> Outcome:
@@ -748,9 +776,19 @@ def delete(ctx: Context, *, confirmed: bool) -> Outcome:
 # ---------------------------------------------------------------- steps Jenkins runs
 
 
-def ci_check(ctx: Context) -> Outcome:
+def ci_check(ctx: Context, *, candidate: int | None = None) -> Outcome:
+    """Jenkins' checks against the app's recorded release; with `candidate`, the platform's check of a release before it
+    is promoted: the app moved to that release, with every automatic fix, as an upgrade on a desktop would do."""
     root, app = _app(ctx)
-    return _check_outcome(ctx.run_checks(_target(ctx, root, app), mode="ci", fast=False))
+    if candidate is None:
+        return _check_outcome(ctx.run_checks(_target(ctx, root, app), mode="ci", fast=False))
+    release = require_usable(ctx.releases.get(candidate))
+    steps = checks.run_all(_target(ctx, root, app), mode="local", fast=False, candidate=release)
+    outcome = _check_outcome(steps)
+    git = gitops.open_repo(root, token=None, identity=None)
+    outcome.data["changed"] = git.changed_paths() if (root / ".git").exists() else []
+    outcome.summary = f"On platform release {candidate}: {outcome.summary}"
+    return outcome
 
 
 def ci_render(ctx: Context, *, image: str, release_number: int | None, out: Path) -> Outcome:

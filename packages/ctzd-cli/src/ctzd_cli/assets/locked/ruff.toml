@@ -9,7 +9,16 @@ src = ["src"]
 extend-exclude = [".agents", ".claude"]
 
 [lint]
-select = ["ALL"]
+# Every family ruff 0.17.3 has, by name rather than "ALL", so a newer ruff adds no family by itself: a release that
+# adds a family, or raises the ruff pin, changes what the check refuses and is marked breaking (assets/release.toml).
+# Left out: D and DOC (docstrings only where they say what code and types cannot) and CPY (copyright headers are a
+# legal decision, not a lint fix).
+select = [
+    "A", "AIR", "ANN", "ARG", "ASYNC", "B", "BLE", "C4", "C90", "COM", "DJ", "DTZ", "E", "EM", "ERA", "EXE", "F", "FA",
+    "FAST", "FBT", "FIX", "FLY", "FURB", "G", "I", "ICN", "INP", "INT", "ISC", "LOG", "N", "NPY", "PD", "PERF", "PGH",
+    "PIE", "PLC", "PLE", "PLR", "PLW", "PT", "PTH", "PYI", "Q", "RET", "RSE", "RUF", "S", "SIM", "SLF", "SLOT", "T10",
+    "T20", "TC", "TD", "TID", "TRY", "UP", "W", "YTT",
+]
 ignore = [
     "COM812",  # Conflicts with the formatter.
     "ISC001",  # Conflicts with the formatter.
@@ -17,8 +26,6 @@ ignore = [
     "TC001",  # Moving imports under TYPE_CHECKING breaks code that reads annotations at runtime.
     "TC002",
     "TC003",
-    "CPY001",  # Copyright headers are a legal decision, not a lint fix.
-    "D",  # Docstrings only where they say what code and types cannot.
 ]
 
 [lint.per-file-ignores]

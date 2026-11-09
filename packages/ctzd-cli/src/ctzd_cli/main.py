@@ -62,6 +62,7 @@ class Args(BaseModel):
     dataset: str | None = None
     argv: tuple[str, ...] = ()
     timezone: str = "UTC"
+    candidate: int | None = None
 
 
 def _setup_parsers(sub: argparse._SubParsersAction[argparse.ArgumentParser], common: argparse.ArgumentParser) -> None:
@@ -147,7 +148,8 @@ def _ship_parsers(sub: argparse._SubParsersAction[argparse.ArgumentParser], comm
 
 def _ci_parsers(sub: argparse._SubParsersAction[argparse.ArgumentParser], common: argparse.ArgumentParser) -> None:
     ci_sub = sub.add_parser("ci", parents=[common], help="steps the Jenkins pipeline runs").add_subparsers(dest="action", required=True)
-    ci_sub.add_parser("check", parents=[common])
+    ci_check = ci_sub.add_parser("check", parents=[common])
+    ci_check.add_argument("--candidate", type=int, help="for the platform's own CI: move the app to this platform release first, with every automatic fix")
     ci_render = ci_sub.add_parser("render", parents=[common])
     ci_render.add_argument("--image", required=True)
     ci_render.add_argument("--release", type=int)
@@ -206,7 +208,7 @@ HANDLERS: dict[str, Handler] = {
     "rollback": lambda a, ctx: commands.rollback(ctx, target=a.target, timeout=a.timeout),
     "sync": lambda _a, ctx: commands.sync_files(ctx),
     "delete": lambda a, ctx: commands.delete(ctx, confirmed=a.yes),
-    "ci check": lambda _a, ctx: commands.ci_check(ctx),
+    "ci check": lambda a, ctx: commands.ci_check(ctx, candidate=a.candidate),
     "ci render": lambda a, ctx: commands.ci_render(ctx, image=_required(a.image, "--image"), release_number=a.release, out=_required(a.out, "--out")),
     "ci release": lambda a, ctx: commands.ci_release(ctx, image=_required(a.image, "--image"), commit=_required(a.commit, "--commit"), now=lambda: datetime.now(UTC)),
     "ci smoke": lambda a, ctx: commands.ci_smoke(ctx, url=_required(a.url, "--url")),

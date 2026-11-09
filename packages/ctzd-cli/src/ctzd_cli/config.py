@@ -9,6 +9,7 @@ from pathlib import Path
 from packaging.requirements import InvalidRequirement, Requirement
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from ctzd_cli.api_models import PackageIndex
 from ctzd_cli.errors import CliError
 
 _CONFIG = ConfigDict(extra="forbid", frozen=True, validate_default=True, revalidate_instances="always", allow_inf_nan=False)
@@ -37,37 +38,20 @@ class PlatformUrls(_Model):
     node_url: str | None = None
 
 
-class PackageIndex(_Model):
-    name: str
-    url: str
-    default: bool = False
-    format: str | None = None
-
-
-class PythonConfig(_Model):
-    """The package index apps install from. Tool pins and the Python range ship in platform releases."""
-
-    index: tuple[PackageIndex, ...] = Field(min_length=1)
-    sources: dict[str, dict[str, str]] = Field(default_factory=dict)
-
-
 class NpmConfig(_Model):
-    """Where an app's pages get the firm's npm packages, by name: a version range, or a `file:` path that may start
-    with `~`. SHIM (MVP): basis-ui's packages are tarballs it packs from its main branch, until the internal registry
-    serves them."""
+    """The internal npm registry, which `ctzd setup` makes the user's default and installs pnpm from. Which versions an
+    app's pages use is the platform release's (`ReleaseNpm`)."""
 
-    packages: dict[str, str] = Field(default_factory=dict)
-    # The internal npm registry, which `ctzd setup` makes the user's default and installs pnpm from.
     registry: str | None = None
 
-    def spec(self, name: str) -> str:
-        found = self.packages.get(name)
-        if found is None:
-            msg = f"The platform config names no source for the npm package {name!r}."
-            raise CliError(msg, hint="Add it to [npm.packages] in the platform config.")
-        if found.startswith("file:~"):
-            return "file:" + str(Path(found.removeprefix("file:")).expanduser())
-        return found
+
+class ReleaseOverrides(_Model):
+    """For the platform's own tests only (scripts/e2e.sh, validation/): values that replace what every platform release
+    writes into an app, such as a folder of locally built wheels for the internal index. The bundled platform.toml has
+    none: everything written into an app comes from its platform release, so a desktop and Jenkins always agree."""
+
+    python_index: tuple[PackageIndex, ...] | None = None
+    npm_packages: dict[str, str] | None = None
 
 
 class SizeConfig(_Model):
@@ -97,8 +81,8 @@ class PlatformConfig(_Model):
     version: int
     github: GitHubConfig
     platform: PlatformUrls
-    python: PythonConfig
     npm: NpmConfig = Field(default_factory=NpmConfig)
+    release_overrides: ReleaseOverrides | None = None
     sizes: dict[str, SizeConfig]
     sbus: dict[str, SbuConfig]
 

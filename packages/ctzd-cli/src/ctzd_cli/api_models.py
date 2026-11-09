@@ -1,6 +1,7 @@
 """Request and response bodies of the platform API, shared by the CLI and the API server."""
 
-from pathlib import PurePosixPath
+import datetime as dt
+from pathlib import Path, PurePosixPath
 from typing import Literal
 
 from packaging.version import InvalidVersion, Version
@@ -28,10 +29,37 @@ def _version(value: str) -> str:
     return value
 
 
+class PackageIndex(_Model):
+    name: str
+    url: str
+    default: bool = False
+    format: str | None = None
+
+
 class ReleasePython(_Model):
+    """What a release writes into every app's pyproject.toml: the Python range, the build backend, the dev tool pins,
+    and `[tool.uv]`'s package index and sources."""
+
     requires: str
     build_backend: str
     dev: tuple[str, ...]
+    index: tuple[PackageIndex, ...] = Field(min_length=1)
+    sources: dict[str, dict[str, str]] = Field(default_factory=dict)
+
+
+class ReleaseNpm(_Model):
+    """The firm's npm packages a React app's pages pin, by name: a version, or a `file:` path that may start with `~`.
+    A release writes them into `web/package.json`'s dependencies and pnpm's overrides. SHIM (MVP): basis-ui's packages
+    are tarballs it packs from its main branch, until the internal registry serves them."""
+
+    packages: dict[str, str] = Field(default_factory=dict)
+
+
+def expand_spec(spec: str) -> str:
+    """An npm spec as pnpm reads it: `file:~/x` becomes the full path under the home folder."""
+    if spec.startswith("file:~"):
+        return "file:" + str(Path(spec.removeprefix("file:")).expanduser())
+    return spec
 
 
 class ReleaseUi(_Model):
@@ -46,7 +74,12 @@ class PlatformRelease(_Model):
     requires_cli: str
     min_ctzd_core: str
     python: ReleasePython
+    npm: ReleaseNpm = Field(default_factory=ReleaseNpm)
     ui: dict[Ui, ReleaseUi]
+    # A breaking release changes what the checks refuse (the checkers' pins or rules), so an app that passes today may
+    # fail on it. It reaches an app only once the app passes on it, or from `deadline` on; see `ctzd_cli.checks`.
+    breaking: bool = False
+    deadline: dt.date | None = None
     files: dict[str, str]
 
     @field_validator("requires_cli", "min_ctzd_core")

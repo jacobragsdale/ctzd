@@ -14,6 +14,7 @@ web/dist/
 .ctzd/guidance.json
 .ctzd/dev.json
 .ctzd/dev.log
+.ctzd/upgrade.json
 # Agent guidance: ctzd writes it from the current platform release whenever it runs here.
 /AGENTS.md
 /.agents/

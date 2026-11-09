@@ -10,24 +10,24 @@ cd "$repo"
 uv build --quiet --package ctzd-core --out-dir "$work/wheels"
 uv build --quiet --package ctzd-fi --out-dir "$work/wheels"
 
-# The bundled platform config with the internal index swapped for local wheels plus PyPI, and, when
-# CTZD_BASIS_UI_URL is set (a URL, or `file:` and a folder), basis-ui's packages taken from there
+# The bundled platform config, with release overrides that swap the release's internal index for local wheels plus
+# PyPI and, when CTZD_BASIS_UI_URL is set (a URL, or `file:` and a folder), take basis-ui's packages from there
 # (basis-ui.tgz and basis-parallax.tgz), as CI packs them from basis-ui's main branch.
 # It prints "react" when a React app can be built here: pnpm is installed and both packages are reachable.
-react=$(python3 - "$repo/packages/ctzd-cli/src/ctzd_cli/platform.toml" "$work" "${CTZD_BASIS_UI_URL:-}" <<'PY'
-import os, pathlib, re, shutil, sys
-source, work, url = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2]), sys.argv[3].rstrip("/")
-text = re.sub(
-    r'\[\[python\.index\]\]\nname = "internal"\nurl = "[^"]+"\ndefault = true\n',
-    f'[[python.index]]\nname = "local"\nurl = "{work}/wheels"\nformat = "flat"\n\n[[python.index]]\nname = "pypi"\nurl = "https://pypi.org/simple"\ndefault = true\n',
-    source.read_text(),
-)
+react=$(python3 - "$repo/packages/ctzd-cli/src/ctzd_cli" "$work" "${CTZD_BASIS_UI_URL:-}" <<'PY'
+import pathlib, shutil, sys, tomllib
+cli, work, url = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2]), sys.argv[3].rstrip("/")
+text = (cli / "platform.toml").read_text()
+text += f"""
+[release_overrides]
+python_index = [{{name = "local", url = "{work}/wheels", format = "flat"}}, {{name = "pypi", url = "https://pypi.org/simple", default = true}}]
+"""
+specs = tomllib.loads((cli / "assets" / "release.toml").read_text())["npm"]["packages"]
 if url:
-    text = re.sub(r'"@basis/ui" = "[^"]+"', f'"@basis/ui" = "{url}/basis-ui.tgz"', text)
-    text = re.sub(r'"@basis/parallax" = "[^"]+"', f'"@basis/parallax" = "{url}/basis-parallax.tgz"', text)
+    specs = {"@basis/ui": f"{url}/basis-ui.tgz", "@basis/parallax": f"{url}/basis-parallax.tgz"}
+    text += f'npm_packages = {{"@basis/ui" = "{specs["@basis/ui"]}", "@basis/parallax" = "{specs["@basis/parallax"]}"}}\n'
 (work / "platform.toml").write_text(text)
-specs = re.findall(r'"@basis/(?:ui|parallax)" = "([^"]+)"', text)
-local = [pathlib.Path(spec.removeprefix("file:")).expanduser() for spec in specs if spec.startswith("file:")]
+local = [pathlib.Path(spec.removeprefix("file:")).expanduser() for spec in specs.values() if spec.startswith("file:")]
 print("react" if shutil.which("pnpm") and specs and all(path.is_file() for path in local) else "")
 PY
 )

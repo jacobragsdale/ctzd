@@ -2,17 +2,17 @@
 
 import json
 import os
-import re
 import shutil
 import subprocess
 import sys
+import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 CTZD = REPO / ".venv" / "bin" / "ctzd"
 PLATFORM_TOML = REPO / "packages" / "ctzd-cli" / "src" / "ctzd_cli" / "platform.toml"
-_INDEX = re.compile(r'\[\[python\.index\]\]\nname = "internal"\nurl = "[^"]+"\ndefault = true\n')
+RELEASE_TOML = REPO / "packages" / "ctzd-cli" / "src" / "ctzd_cli" / "assets" / "release.toml"
 
 
 def tool(name: str) -> str:
@@ -32,8 +32,8 @@ def build_wheels(target: Path) -> Path:
 
 
 def npm_packages(base: Path, url: str) -> dict[str, str]:
-    """The firm's npm packages, copied into `base/npm` and served from `url`: replacements for the bundled
-    platform.toml's `file:` paths, which point into the operator's home. SHIM (MVP), until a registry serves them.
+    """The firm's npm packages, copied into `base/npm` and served from `url`, by package: replacements for the bundled
+    release's `file:` paths, which point into the operator's home. SHIM (MVP), until a registry serves them.
 
     A URL, not a `file:` path, because pnpm writes a tarball's path into the lockfile relative to the app, and
     the build's workspace is not where the person's app is.
@@ -41,7 +41,9 @@ def npm_packages(base: Path, url: str) -> dict[str, str]:
     target = base / "npm"
     target.mkdir(parents=True, exist_ok=True)
     found: dict[str, str] = {}
-    for spec in re.findall(r'"(file:[^"]+)"', PLATFORM_TOML.read_text()):
+    for package, spec in tomllib.loads(RELEASE_TOML.read_text())["npm"]["packages"].items():
+        if not spec.startswith("file:"):
+            continue
         source = Path(spec.removeprefix("file:")).expanduser()
         copied = target / source.name
         if not copied.is_file():
@@ -49,18 +51,22 @@ def npm_packages(base: Path, url: str) -> dict[str, str]:
             partial = target / f".{source.name}.{os.getpid()}"
             shutil.copyfile(source, partial)
             partial.replace(copied)
-        found[f'"{spec}"'] = f'"{url}/{source.name}"'
+        found[package] = f"{url}/{source.name}"
     return found
 
 
-def platform_config(work: Path, wheels: Path, *, api_url: str, extra: dict[str, str] | None = None) -> Path:
-    """The bundled platform.toml with the internal index replaced by local wheels plus PyPI, and other values overridden."""
-    text = _INDEX.sub(
-        f'[[python.index]]\nname = "local"\nurl = "{wheels}"\nformat = "flat"\n\n[[python.index]]\nname = "pypi"\nurl = "https://pypi.org/simple"\ndefault = true\n', PLATFORM_TOML.read_text()
-    )
-    text = text.replace('api_url = "https://api.ctzd.contoso.com"', f'api_url = "{api_url}"')
+def platform_config(work: Path, wheels: Path, *, api_url: str, extra: dict[str, str] | None = None, npm: dict[str, str] | None = None) -> Path:
+    """The bundled platform.toml with other values overridden, and release overrides: local wheels plus PyPI for the
+    release's internal index, and `npm` for its npm packages."""
+    text = PLATFORM_TOML.read_text().replace('api_url = "https://api.ctzd.contoso.com"', f'api_url = "{api_url}"')
     for old, new in (extra or {}).items():
         text = text.replace(old, new)
+    text += f"""
+[release_overrides]
+python_index = [{{name = "local", url = "{wheels}", format = "flat"}}, {{name = "pypi", url = "https://pypi.org/simple", default = true}}]
+"""
+    if npm is not None and npm:
+        text += "npm_packages = {" + ", ".join(f'"{package}" = "{spec}"' for package, spec in npm.items()) + "}\n"
     path = work / "platform.toml"
     path.write_text(text)
     return path

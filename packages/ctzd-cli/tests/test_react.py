@@ -5,26 +5,43 @@ from pathlib import Path
 
 import pytest
 
-from ctzd_cli import assets, catalogue, config, releases, shot
-from ctzd_cli.config import NpmConfig
+from ctzd_cli import api_models as m
+from ctzd_cli import assets, catalogue, config, releases, shot, sync
 from ctzd_cli.errors import CliError, UsageError
 
 SEED = releases.seed()
 
 
 def test_a_file_source_under_home_is_expanded() -> None:
-    npm = NpmConfig(packages={"@basis/ui": "file:~/dist/basis-ui.tgz", "zod": "4.6.7"})
-    assert npm.spec("@basis/ui") == f"file:{Path.home() / 'dist' / 'basis-ui.tgz'}"
-    assert npm.spec("zod") == "4.6.7"
+    assert m.expand_spec("file:~/dist/basis-ui.tgz") == f"file:{Path.home() / 'dist' / 'basis-ui.tgz'}"
+    assert m.expand_spec("4.6.7") == "4.6.7"
 
 
-def test_a_package_without_a_source_is_refused() -> None:
-    with pytest.raises(CliError, match="no source for the npm package"):
-        NpmConfig().spec("@basis/ui")
+def test_the_bundled_release_pins_basis_ui_s_packages_and_the_platform_config_does_not() -> None:
+    assert set(SEED.npm.packages) >= {"@basis/ui", "@basis/parallax"}
+    assert config.load().release_overrides is None
 
 
-def test_the_bundled_platform_config_names_basis_ui_s_packages() -> None:
-    assert set(config.load().npm.packages) >= {"@basis/ui", "@basis/parallax"}
+def _web(root: Path, ui: str) -> None:
+    (root / "web").mkdir(parents=True)
+    document = {"name": "x", "dependencies": {"@basis/parallax": "1.0.0", "@basis/ui": ui, "react": "19.3.1"}}
+    (root / "web" / "package.json").write_text(json.dumps(document, indent=2) + "\n")
+    (root / "web" / "pnpm-workspace.yaml").write_text(f'overrides:\n  "@basis/ui": "{ui}"\n  typescript: 7.0.2\n')
+
+
+def test_a_release_moves_the_pages_basis_ui_pins_and_leaves_the_rest(tmp_path: Path) -> None:
+    platform = config.load().model_copy(update={"release_overrides": config.ReleaseOverrides(npm_packages={"@basis/ui": "2.0.0", "@basis/parallax": "2.0.0"})})
+    _web(tmp_path, "1.0.0")
+    assert [problem.path for problem in sync.web_drift(tmp_path, platform, SEED)] == [
+        "web/package.json [dependencies.@basis/parallax]",
+        "web/package.json [dependencies.@basis/ui]",
+        "web/pnpm-workspace.yaml [overrides.@basis/ui]",
+    ]
+    assert sync.write_web(tmp_path, platform, SEED) == ["web/package.json", "web/pnpm-workspace.yaml"]
+    assert sync.web_drift(tmp_path, platform, SEED) == []
+    written = json.loads((tmp_path / "web" / "package.json").read_text())
+    assert written["dependencies"] == {"@basis/parallax": "2.0.0", "@basis/ui": "2.0.0", "react": "19.3.1"}
+    assert (tmp_path / "web" / "pnpm-workspace.yaml").read_text() == 'overrides:\n  "@basis/ui": "2.0.0"\n  typescript: 7.0.2\n'
 
 
 def test_a_react_app_locks_its_pages_configuration_and_its_own_dockerfile() -> None:

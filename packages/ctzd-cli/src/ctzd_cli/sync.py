@@ -1,11 +1,15 @@
 """Platform-owned files in an app: write them and detect changes to them.
 
-Build files (the locked files and the managed tables of pyproject.toml) are
-committed and pinned to the platform release in `.ctzd/version`. Guidance
+Build files (the locked files, the managed tables of pyproject.toml, and, in a
+React app, the firm's npm packages in web/package.json and pnpm's overrides)
+are committed and pinned to the platform release in `.ctzd/version`; every
+value comes from that release. Guidance
 (`AGENTS.md` and the skills) is gitignored and rewritten from the channel's
 current release; `.ctzd/guidance.json` records when that last happened.
 """
 
+import json
+import re
 import shutil
 import tomllib
 from dataclasses import dataclass
@@ -42,16 +46,32 @@ def expected_files(release: m.PlatformRelease, ui: Ui) -> dict[str, str]:
 
 # The tables of pyproject.toml the platform owns, as dotted keys.
 MANAGED_PYPROJECT_KEYS = ("project.requires-python", "build-system", "dependency-groups.dev", "tool.uv")
+PACKAGE_JSON = "web/package.json"
+PNPM_WORKSPACE = "web/pnpm-workspace.yaml"
+PNPM_LOCK = "web/pnpm-lock.yaml"
+WEB_FILES = (PACKAGE_JSON, PNPM_WORKSPACE, PNPM_LOCK)
+
+
+def python_index(platform: PlatformConfig, release: m.PlatformRelease) -> tuple[m.PackageIndex, ...]:
+    overrides = platform.release_overrides
+    return release.python.index if overrides is None or overrides.python_index is None else overrides.python_index
+
+
+def npm_pins(platform: PlatformConfig, release: m.PlatformRelease) -> dict[str, str]:
+    """The firm's npm packages and the spec each is pinned to, as pnpm reads it."""
+    overrides = platform.release_overrides
+    packages = release.npm.packages if overrides is None or overrides.npm_packages is None else release.npm.packages | overrides.npm_packages
+    return {name: m.expand_spec(spec) for name, spec in sorted(packages.items())}
 
 
 def managed_pyproject(platform: PlatformConfig, release: m.PlatformRelease) -> dict[str, object]:
     """The parts of pyproject.toml the platform owns, as dotted keys and their values."""
     uv: dict[str, object] = {
         "build-backend": {"module-name": "app"},
-        "index": [index.model_dump(exclude_none=True, exclude_defaults=True) | {"name": index.name, "url": index.url} for index in platform.python.index],
+        "index": [index.model_dump(exclude_none=True, exclude_defaults=True) | {"name": index.name, "url": index.url} for index in python_index(platform, release)],
     }
-    if platform.python.sources:
-        uv["sources"] = dict(platform.python.sources)
+    if release.python.sources:
+        uv["sources"] = dict(release.python.sources)
     values: dict[str, object] = {
         "project.requires-python": release.python.requires,
         "build-system": {"requires": [release.python.build_backend], "build-backend": "uv_build"},
@@ -63,7 +83,82 @@ def managed_pyproject(platform: PlatformConfig, release: m.PlatformRelease) -> d
 
 def same_build(platform: PlatformConfig, one: m.PlatformRelease, other: m.PlatformRelease, ui: Ui) -> bool:
     """Whether two releases would write the same build files for an app of kind `ui`; the recorded number aside."""
-    return assets.locked_files(one, ui) == assets.locked_files(other, ui) and managed_pyproject(platform, one) == managed_pyproject(platform, other)
+    same_web = ui != "react" or npm_pins(platform, one) == npm_pins(platform, other)
+    return assets.locked_files(one, ui) == assets.locked_files(other, ui) and managed_pyproject(platform, one) == managed_pyproject(platform, other) and same_web
+
+
+_OBJECT: TypeAdapter[dict[str, object]] = TypeAdapter(dict[str, object])
+
+
+def _package_json(root: Path) -> dict[str, object] | None:
+    path = root / PACKAGE_JSON
+    if not path.is_file():
+        return None
+    try:
+        return _OBJECT.validate_json(path.read_bytes())
+    except ValidationError:
+        return None
+
+
+def _override_line(package: str) -> re.Pattern[str]:
+    """A line of pnpm-workspace.yaml's overrides that pins `package`."""
+    return re.compile(rf"""^(?P<key>\s+["']?{re.escape(package)}["']?:\s*)(?P<value>\S.*?)\s*$""", re.MULTILINE)
+
+
+def web_drift(root: Path, platform: PlatformConfig, release: m.PlatformRelease) -> list[Drift]:
+    """The firm's npm packages in web/package.json and pnpm's overrides, against the release's pins."""
+    problems: list[Drift] = []
+    document = _package_json(root)
+    dependencies = _OBJECT.validate_python(document.get("dependencies", {})) if document is not None and isinstance(document.get("dependencies"), dict) else {}
+    workspace = (root / PNPM_WORKSPACE).read_text(encoding="utf-8") if (root / PNPM_WORKSPACE).is_file() else ""
+    for package, spec in npm_pins(platform, release).items():
+        if document is None or dependencies.get(package) != spec:
+            problems.append(Drift(f"{PACKAGE_JSON} [dependencies.{package}]", "changed"))
+        stale = [found for found in _override_line(package).finditer(workspace) if found.group("value").strip("\"'") != spec]
+        problems += [Drift(f"{PNPM_WORKSPACE} [overrides.{package}]", "changed")] if stale else []
+    return problems
+
+
+def write_web(root: Path, platform: PlatformConfig, release: m.PlatformRelease) -> list[str]:
+    """Pin the firm's npm packages to `release`'s in web/package.json and pnpm's overrides; return the files changed."""
+    pins = npm_pins(platform, release)
+    changed: list[str] = []
+    document = _package_json(root)
+    if document is not None:
+        dependencies = _OBJECT.validate_python(document.get("dependencies", {})) if isinstance(document.get("dependencies"), dict) else {}
+        updated = {**document, "dependencies": dependencies | pins}
+        if updated != document:
+            (root / PACKAGE_JSON).write_text(json.dumps(updated, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+            changed.append(PACKAGE_JSON)
+    workspace = root / PNPM_WORKSPACE
+    if workspace.is_file():
+        before = workspace.read_text(encoding="utf-8")
+        after = before
+        for package, spec in pins.items():
+            after = _override_line(package).sub(lambda found, spec=spec: f'{found.group("key")}"{spec}"', after)
+        if after != before:
+            workspace.write_text(after, encoding="utf-8")
+            changed.append(PNPM_WORKSPACE)
+    return changed
+
+
+def outside_managed_web(path: str, text: str | None, platform: PlatformConfig, release: m.PlatformRelease) -> object:
+    """A web file without the values the platform manages: what the person may change. None when unreadable."""
+    if text is None:
+        return None
+    packages = set(npm_pins(platform, release))
+    if path == PACKAGE_JSON:
+        try:
+            document = _OBJECT.validate_json(text)
+        except ValidationError:
+            return None
+        dependencies = document.get("dependencies")
+        if isinstance(dependencies, dict):
+            document["dependencies"] = {key: value for key, value in dependencies.items() if key not in packages}
+        return document
+    for package in packages:
+        text = _override_line(package).sub(lambda found: found.group("key"), text)
+    return text
 
 
 def _normalized(text: str) -> str:
@@ -98,6 +193,8 @@ def drift(root: Path, platform: PlatformConfig, release: m.PlatformRelease, ui: 
     for key, value in managed_pyproject(platform, release).items():
         if _lookup(pyproject, key) != value:
             problems.append(Drift(f"pyproject.toml [{key}]", "changed"))
+    if ui == "react":
+        problems += web_drift(root, platform, release)
     return problems
 
 
@@ -137,6 +234,8 @@ def write_build(root: Path, platform: PlatformConfig, release: m.PlatformRelease
         changed.append(path)
     if write_pyproject(root, platform, release):
         changed.append("pyproject.toml")
+    if ui == "react":
+        changed += write_web(root, platform, release)
     return sorted(changed)
 
 

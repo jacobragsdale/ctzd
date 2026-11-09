@@ -111,10 +111,10 @@ basis-ui) and nothing else.
 | API | Every route of an app's API is a read-only dataset: parameters in, a table out, served as Arrow for parallax and as JSON. No route writes. | Sources are read-only, so an app has nothing to write; one pattern is one thing for the agent to learn. Writes happen only in jobs. |
 | Numbers | Every number is a float64 from the source to the browser, `NaN` where it is missing; ids are text. Python never rounds or formats a number: the page rounds once, at display, by Excel's rule (15 significant digits, half away from zero, then the shown decimals), and `ctzd.display` writes numbers into messages by the same rule. `ctzd check` refuses rounding in an app's Python and SQL. | One simple type that pandas, numpy, Arrow, and the browser all hold natively. One rule in one place means a number reads the same in the page, an export, and an email, and the same as in Excel, where the firm's users live. Section 6 has the details. |
 | Screenshots | After changing a page, the agent runs `ctzd shot`, which loads the page `ctzd dev` serves in a headless browser (on Windows, the Edge every laptop has), waits for parallax to draw, writes a PNG the agent looks at, and lists each problem: errors, failed requests, and a grid or chart that drew nothing or too small. It is not a gate in `ctzd check`, and deploys and the smoke test take no screenshots. | Decided on 2026-11-07 without screenshots, and reversed the same day by the maintainer: a code check cannot see a chart that draws an empty or squashed canvas, which the first React starter did. Edge means nothing to download on a laptop. |
-| Libraries | `ctzd-core` wraps basis-core and basis-api: citizen Python imports only `ctzd`. Citizen pages import `@basis/ui` and `@basis/parallax` directly. Each platform release pins one basis version and one basis-ui version. ctzd never runs the `basis` command or `vp run sync`. | The Python wrapper keeps basis free to change; wrapping 60 React components would add nothing. The pins mean nothing reaches an app until a platform release names it. Section 16 has the coupling. |
+| Libraries | `ctzd-core` wraps basis-core and basis-api: citizen Python imports only `ctzd`. Citizen pages import `@basis/ui` and `@basis/parallax` directly. Each platform release pins one basis version and one basis-ui version, in its `release.toml` (`[python.sources]` and `[npm.packages]`), and `ctzd check` keeps those pins in every app's `pyproject.toml` and `web/package.json`. Until basis and basis-ui are on the internal registry, the pins are basis's main branch and basis-ui's tarballs. ctzd never runs the `basis` command or `vp run sync`. | The Python wrapper keeps basis free to change; wrapping 60 React components would add nothing. The pins mean nothing reaches an app until a platform release names it. Section 16 has the coupling. |
 | Template | No Copier. Platform files are byte-identical in every app on the same platform release, and `ctzd sync` overwrites them. The app's Python package is always `app`. | Locked files never need a merge, so a template engine adds nothing. |
 | Platform releases | Build files, agent guidance, and starter code ship together as numbered platform releases, separate from the CLI. A platform release never changes once published; its manifest names the minimum CLI and the minimum `ctzd-core`. Section 9 says how they are served and when each part moves. | Templates and skills change often, and reaching apps must not depend on people upgrading the CLI. |
-| Build files | The locked files and the managed tables of `pyproject.toml` are pinned per app: `.ctzd/version` records the platform release they came from, and CI fails when they differ from it. They move to the channel's current platform release, newer or, after a revert, older, only when someone works on the app. Agents edit only the app's code, `app.toml`, `README.md`, and the dependency lists. | Stops an agent from "fixing" a lint error by editing the Dockerfile or the linter config. A platform release cannot break the next build of an app nobody is working on. |
+| Build files | The locked files, the managed tables of `pyproject.toml`, and the firm's npm pins in `web/package.json` are pinned per app: `.ctzd/version` records the platform release they came from, and CI fails when they differ from it. Every value in them comes from that release, none from the CLI's own settings, so a desktop and Jenkins always agree. They move to the channel's current platform release, newer or, after a revert, older, only when someone works on the app; a breaking release (section 9) moves an app only once the app passes on it. Agents edit only the app's code, `app.toml`, `README.md`, and the dependency lists. | Stops an agent from "fixing" a lint error by editing the Dockerfile or the linter config. A platform release cannot break the next build of an app nobody is working on. |
 | Agent guidance | `AGENTS.md` and the skills are always the current platform release of the app's channel. `ctzd` writes them into the app folder, gitignored, and they are not drift-checked. | Guidance changes what the agent knows, not what is built, so a skill fix reaches every app within minutes with no commit and no deploy. |
 | Platform release rollout | Two channels, pilot and general, each pointing at one platform release. Reverting a platform release moves the pointer back. | A bad skill reaches every agent at once; the pointer is the one-step undo. |
 | Untouched apps | No bot commits and no scheduled rebuilds. An app nobody deploys keeps its platform release and its image; a patched base image reaches an app on its next build. | Accepted for v1; scheduled rebuilds would deploy changes nobody asked for. |
@@ -136,7 +136,7 @@ basis-ui) and nothing else.
 | Data stack | pandas 3 is the default. Oracle through `python-oracledb` thin mode, MSSQL through `mssql-python`, both fetching through Arrow. REST through the `ctzd-core` client. | Most data comes from REST, Oracle, and MSSQL. Thin mode needs no Oracle client; no source needs Native Network Encryption. |
 | Code layout | `src/app/data/` (the only I/O), `src/app/logic/` (pure functions), `src/app/api/` and `src/app/jobs/` (entry points), and `web/` (the pages), enforced by import-linter and basis-ui's lint. | Agents physically cannot put a query in a page or a route. |
 | Python | Python 3.14, which basis requires, from the platform's mirror of uv's Python builds. Airflow's own project stays on 3.13. | One version across ctzd and basis. |
-| Python standards | ruff with every rule, ty with every rule as an error, both handled by the agent. Light data validation: loader schemas check required columns and dtypes only. 70% branch coverage on `logic/`. | Strict where the agent pays the cost, light where it would slow people down. Revisit the strict rules once the agent trials in [validation-plan.md](validation-plan.md) measure what they cost. |
+| Python standards | ruff with every rule family named in the locked `ruff.toml` (not `ALL`, so a newer ruff adds none by itself), ty with every rule as an error, both handled by the agent. Tests fail on a warning the app's own code raises or causes, and on pandas' `ChainedAssignmentError`; a dependency's deprecation is listed in the check's output and fails nothing. Light data validation: loader schemas check required columns and dtypes only. 70% branch coverage on `logic/`, when the app has logic. | Strict where the agent pays the cost, light where it would slow people down. Revisit the strict rules once the agent trials in [validation-plan.md](validation-plan.md) measure what they cost. |
 | Tests | `ctzd check` runs the same gates locally and in Jenkins. Jenkins adds a post-deploy smoke test in a headless browser that fails, and rolls the release back, on an error, a failed request, or a page that never loads; it takes no screenshot. Platform code has ordinary test suites. Agent trials against a local copy of the platform (`validation/`, [validation-plan.md](validation-plan.md)) check the CLI's output and the skills with real agents; they inform changes and are not a gate. | One definition of "green". Only an agent shows whether the skills and messages work for an agent. |
 | Agent instructions | App folders have `AGENTS.md` and `.agents/skills/`, plus a copy of the skills in `.claude/skills/` because Claude Code does not read `.agents/skills/`. `ctzd` writes all three and the app's `.gitignore` lists them. Cursor reads `AGENTS.md`, `.agents/skills/`, and `.claude/skills/`, but hides gitignored files, and CSV and PNG files, from its agent, so a locked `.cursorignore` lets `AGENTS.md`, `.agents/`, the fixtures, and `ctzd shot`'s pictures through, and keeps `.claude/` hidden. | Agent-neutral guidance that every agent can read. |
 | Skill distribution | The internal skills app carries one bootstrap skill, `ctzd`, which says only to run `ctzd setup --json` and follow `next`. Everything else is served with the platform release. No MCP server. | The bootstrap skill almost never changes; everything that does change has one update channel. Every agent reads MCP settings from a different file, while every agent runs a command. |
@@ -188,7 +188,8 @@ fi-bond-prices/
 
 The build files are the platform's: the locked files and the managed tables of
 `pyproject.toml` (`build-system`, `requires-python`, `dependency-groups.dev`, and
-`tool.uv`), and of `web/package.json` once it exists. They are committed and
+`tool.uv`), and, in a React app, the firm's npm packages in `web/package.json`'s
+dependencies and pnpm's overrides in `web/pnpm-workspace.yaml`. They are committed and
 pinned to the platform release recorded in `.ctzd/version`; `ctzd check` and
 Jenkins fail when any of them differ from that release. The guidance
 (`AGENTS.md` and the skills) is not committed: `ctzd` rewrites it from the
@@ -395,7 +396,10 @@ fails, so a test never reaches a real system.
 6. a parse of every `src/app/data/sql/*.sql` file as Oracle or SQL Server;
 7. the numbers gate: no rounding or number formatting in the app's Python
    outside the page code, or in its SQL (section 6);
-8. `pytest`, with branch coverage of `src/app/logic` at least 70%.
+8. `pytest`, with branch coverage of `src/app/logic` at least 70% when there is
+   any logic. A warning raised or caused by the app's own code or its tests
+   fails them; a deprecation from a dependency does not, and the check lists it
+   as a warning to act on before that dependency removes what it deprecates.
 
 With the React starter, the same command adds basis-ui's gates through `vp`:
 formatting, Oxlint at basis-ui's settings, and TypeScript; a check that the
@@ -553,10 +557,47 @@ guessed at: the check fails and says to reconnect.
 | Part | When an app moves to the channel's platform release |
 |---|---|
 | Guidance | Always the channel's current platform release. Every `ctzd` command in the app refreshes it; no commit, no deploy. |
-| Build files | Only when someone works on the app and the channel's platform release has different build files, so a guidance-only release leaves `.ctzd/version` alone. `ctzd deploy` commits the upgrade on its own ("Upgrade platform files to platform release 43") before the person's change. The same commit raises `ctzd-core` and the SBU library in `uv.lock` to the release's minimum, and, with the React starter, `@basis/ui` and `@basis/parallax` to the release's pins. |
+| Build files | Only when someone works on the app and the channel's platform release has different build files, so a guidance-only release leaves `.ctzd/version` alone. `ctzd deploy` commits the upgrade on its own ("Upgrade platform files to platform release 43") before the person's change, together with the automatic fixes the new release's checks made to code the person had not touched. The same commit raises `ctzd-core` and the SBU library in `uv.lock` to the release's minimum, and, in a React app, `@basis/ui` and `@basis/parallax` to the release's pins. A breaking release moves an app only as below. |
 | Starter code | Read at `ctzd new`. |
 
 An app nobody works on keeps its platform release and its image.
+
+**Breaking releases are rare, and none is applied blind.** A release is
+breaking when it changes what the checks refuse: a checker's pin, a rule in the
+locked `ruff.toml`, `ty.toml`, `pytest.toml`, `.importlinter`, or the pages'
+lint and compiler settings, or the basis-ui pins. Its manifest says so
+(`breaking = true`, with a `deadline`), and `ctzd check` treats a release that
+changes any of these as breaking even when its manifest does not. Locally, a
+full check tries such a release first and keeps it only when the app passes
+every check on it; otherwise it puts the app's build files back, runs the
+checks on the recorded release, and passes with a warning that names what
+failed and the deadline, so a deploy ships on the recorded release. It tries
+again a day later, not on every check, and `ctzd check --fast` never moves to
+one. From its deadline it applies like any other release. Other releases apply
+silently. The ruff and ty pins stay where they are unless there is a reason to
+move them, and before any release is promoted, the platform's CI runs
+`ctzd ci check --candidate N` on every app in the org
+(`validation/candidate_check.py`), which moves each app to the candidate with
+every automatic fix, as an upgrade on a desktop would, and lists the apps that
+still fail.
+
+**What app code may rely on.** Within a major version, these only grow, and a
+removal goes through a deprecation that warns, in `ctzd check`'s output and the
+command's `next`, and fails nothing until the next major version:
+
+- the `ctzd` Python API: `ctzd.query`, `ctzd.rest`, `ctzd.cached`,
+  `ctzd.require_columns`, `ctzd.read_table`, `ctzd.write_table`,
+  `ctzd.dataset`, `ctzd.Row` and the column kinds, `ctzd.display`,
+  `ctzd.notify`, `ctzd.testing`, and the error classes;
+- the `ctzd` command contract: the commands and options of section 5, `--json`
+  with `ok`, `summary`, and `next`, and the exit codes;
+- the layout of section 4, `app.toml`'s keys, and the fixtures' format;
+- the parts of `@basis/ui` and `@basis/parallax` that pages use: the shell, the
+  components in the catalogue `ctzd docs ui` serves, their props, and the theme's
+  tokens, as basis-ui's own design promises them to ctzd (section 16).
+
+Anything else, such as `ctzd`'s private modules or basis directly, is not part
+of it, and the layer rules already keep app code away from it.
 
 **SBU skills** ship in the same platform release. Champions change
 `skills/sbu/<sbu>/` through pull requests guarded by CODEOWNERS, and the

@@ -1,8 +1,9 @@
 # Platform settings baked into the ctzd CLI: where the platform's services are.
 # Every value is a contoso placeholder: the company copy of this repository
 # replaces them, or CTZD_PLATFORM_CONFIG points at another file with the same
-# shape. What goes into apps (build files, guidance, starter code, tool pins)
-# is not here: it ships in platform releases, see assets/release.toml.
+# shape. What goes into apps (build files, guidance, starter code, tool pins,
+# the package index and its sources, npm versions) is not here: it ships in
+# platform releases, see assets/release.toml.
 version = 2
 
 [github]
@@ -21,31 +22,11 @@ store_url = "abfs://ctzd@contosoctzdstore.dfs.core.windows.net"
 mingit_url = "https://ctzd.contoso.com/downloads/MinGit-64-bit.zip"
 node_url = "https://ctzd.contoso.com/downloads/node-v26.13.0-win-x64.zip"
 
-# The package index every app installs from; written into each app's pyproject.toml.
-[[python.index]]
-name = "internal"
-url = "https://pypi.contoso.com/simple"
-default = true
-
-# SHIM (MVP): every app takes basis from its main branch until basis is on the internal index.
-[python.sources.basis-api]
-git = "https://github.com/jacobragsdale/basis"
-branch = "main"
-subdirectory = "packages/api"
-
-[python.sources.basis-core]
-git = "https://github.com/jacobragsdale/basis"
-branch = "main"
-subdirectory = "packages/core"
-
-# SHIM (MVP): a React app's pages take basis-ui's packages from the tarballs basis-ui packs from its main branch on
-# this machine, until the internal npm registry serves them.
+# The internal npm registry, which `ctzd setup` makes the desktop's default and installs pnpm from. What an app
+# installs, and from where, is not here: it ships in platform releases (assets/release.toml), so a desktop and
+# Jenkins always write the same build files. Only the platform's own tests override it, with [release_overrides].
 [npm]
 registry = "https://npm.contoso.com/"
-
-[npm.packages]
-"@basis/ui" = "file:~/dev/basis-ui-dist/basis-ui.tgz"
-"@basis/parallax" = "file:~/dev/basis-ui-dist/basis-parallax.tgz"
 
 # Resources per app.toml size. Requests stay small so idle dashboards cost little.
 [sizes.s]

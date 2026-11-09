@@ -1,8 +1,15 @@
 # The platform release this folder makes up: build files (locked/ and the
-# [python] values below), agent guidance (guidance/ and skills/), and starter
-# code (starter/). To cut a release, raise `release`, commit, and tag that
-# commit `platform-release/<release>`; then point a channel at it in
-# channels.toml. A published release never changes.
+# [python] and [npm] values below), agent guidance (guidance/ and skills/), and
+# starter code (starter/). Everything ctzd writes into an app comes from here.
+# To cut a release, raise `release`, commit, and tag that commit
+# `platform-release/<release>`; then point a channel at it in channels.toml.
+# A published release never changes.
+#
+# A release that changes what the checks refuse (a checker's pin, or a rule in
+# locked/ruff.toml, ty.toml, pytest.toml or .importlinter) sets `breaking =
+# true` and a `deadline`: it reaches an app only once the app passes on it, and
+# until the deadline an app that does not stays on its release with a warning.
+# Any other release reaches an app the next time someone works on it.
 release = 2
 format = 1
 requires_cli = "0.3.0"
@@ -21,6 +28,31 @@ dev = [
     "ruff==0.17.3",
     "ty==0.0.95",
 ]
+
+# The package index every app installs from, written into [tool.uv] of its pyproject.toml.
+[[python.index]]
+name = "internal"
+url = "https://pypi.contoso.com/simple"
+default = true
+
+# SHIM (MVP): every app takes basis from its main branch until basis is on the internal index.
+[python.sources.basis-api]
+git = "https://github.com/jacobragsdale/basis"
+branch = "main"
+subdirectory = "packages/api"
+
+[python.sources.basis-core]
+git = "https://github.com/jacobragsdale/basis"
+branch = "main"
+subdirectory = "packages/core"
+
+# The firm's npm packages a React app's pages pin: written into web/package.json's dependencies and pnpm's
+# overrides, and moved by each release that changes them.
+# SHIM (MVP): basis-ui's packages are the tarballs basis-ui packs from its main branch on the development host, until
+# the internal npm registry serves them; such a path cannot reach Jenkins.
+[npm.packages]
+"@basis/ui" = "file:~/dev/basis-ui-dist/basis-ui.tgz"
+"@basis/parallax" = "file:~/dev/basis-ui-dist/basis-parallax.tgz"
 
 # What `ctzd new` adds to [project].dependencies for each kind of app.
 [ui.react]
