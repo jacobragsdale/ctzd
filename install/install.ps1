@@ -50,5 +50,9 @@ default = true
 uv tool install --upgrade ctzd
 if ($LASTEXITCODE -ne 0) { throw 'uv could not install ctzd from the internal package index.' }
 
-# 4. Check the rest (git, Node, pnpm, login, agent setup) and tell the agent what to do next.
-& (Join-Path $Bin 'ctzd.exe') setup --json
+# 4. Say where ctzd is: the agent's shell keeps the PATH it started with, so it finds `ctzd` by name only after a restart.
+$Ctzd = Join-Path $Bin 'ctzd.exe'
+Write-Output "ctzd is installed at $Ctzd. If ``ctzd`` is not found by name, run it by this full path until the agent restarts."
+
+# 5. Check the rest (git, Node, pnpm, login, agent setup) and tell the agent what to do next.
+& $Ctzd setup --json

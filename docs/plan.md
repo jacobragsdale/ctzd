@@ -140,7 +140,7 @@ basis-ui) and nothing else.
 | Tests | `ctzd check` runs the same gates locally and in Jenkins. Jenkins adds a post-deploy smoke test in a headless browser that fails, and rolls the release back, on an error, a failed request, or a page that never loads; it takes no screenshot. Platform code has ordinary test suites. Agent trials against a local copy of the platform (`validation/`, [validation-plan.md](validation-plan.md)) check the CLI's output and the skills with real agents; they inform changes and are not a gate. | One definition of "green". Only an agent shows whether the skills and messages work for an agent. |
 | Agent instructions | App folders have `AGENTS.md` and `.agents/skills/`, plus a copy of the skills in `.claude/skills/` because Claude Code does not read `.agents/skills/`. `ctzd` writes all three and the app's `.gitignore` lists them. | Agent-neutral guidance that every agent can read. |
 | Skill distribution | The internal skills app carries one bootstrap skill, `ctzd`, which says only to run `ctzd setup --json` and follow `next`. Everything else is served with the platform release. No MCP server. | The bootstrap skill almost never changes; everything that does change has one update channel. Every agent reads MCP settings from a different file, while every agent runs a command. |
-| Enforcement | `ctzd deploy` runs `ctzd check` first; Jenkins runs it again. An org-wide Claude Code managed setting denies `Read(**/.env)`. | The checks work for every agent, without per-repo agent config. The `.env` rule is a speed bump: it blocks file commands such as `cat .env`, not a script that opens the file, so the read-only accounts are the real limit. |
+| Enforcement | `ctzd deploy` runs `ctzd check` first; Jenkins runs it again. An org-wide Claude Code managed setting denies `Read(**/.env)` and `Read(//**/.env)`, and allows `Bash(ctzd *)` and `PowerShell(ctzd *)`. | The checks work for every agent, without per-repo agent config. The `.env` rule is a speed bump: it blocks file commands such as `cat .env`, not a script that opens the file, so the read-only accounts are the real limit. `**/.env` matches only below the folder the agent started in, and `//**/.env` matches every drive. The allow rules mean a person who cannot judge a command is never asked to approve a `ctzd` one, in either of Claude Code's Windows shells. |
 | Command output | Every command prints a short summary; `--json` returns the same facts for agents. Failures name the failing step and show the last log lines, and a check lists at most a screenful of problems, each with its fix. | Agents act on structured output; people read the summary. |
 | Dashboards at rest | Always on, small resource requests, one process per pod serving the API and the built UI. | Simple; add scale-to-zero only if node costs demand it. |
 | Logs | `ctzd logs` streams pod logs through the platform API; job logs live in Airflow. No log shipping in v1. | No Datadog in this cluster yet. |
@@ -420,7 +420,9 @@ The internal skills app distributes only the bootstrap skill `ctzd`
 `next` steps, and then read the `guide` it returns. That guide is
 `start/GUIDE.md` from the current platform release, and it teaches logging in,
 starting an app, and opening an existing one, so the bootstrap skill almost
-never changes.
+never changes. Its `allowed-tools` pre-approves `ctzd` commands, in Bash and
+in PowerShell, for the turn that loads it, so a person without the managed
+setting is not asked to approve each step of the first setup.
 
 **How the guidance is designed.** The agent trials (validation-plan section 7)
 showed that agents scored lowest on talking with the person, and that almost
@@ -489,7 +491,9 @@ generators, the check messages, and the skills above as those grow.
 
 `install.ps1`, run by the agent, puts uv in `~/.local/bin`, writes a user
 `uv.toml` that points at the internal registry and an internal mirror of uv's
-Python builds, runs `uv tool install ctzd`, and runs `ctzd setup`. Setup
+Python builds, runs `uv tool install ctzd`, prints the full path of
+`ctzd.exe`, and runs `ctzd setup`. The agent's shell keeps the PATH it started
+with, so until the agent restarts it runs `ctzd` by that path. Setup
 installs MinGit when git is missing and reports whether the person still needs
 to log in, which the agent then does with the two-step `ctzd login`. With the
 React app, setup also installs Node 26 into ctzd's own folder, from the zip
@@ -675,8 +679,10 @@ Phase 0 spikes:
   against local Oracle 23 Free and SQL Server 2022 containers; see section 14);
 - Airflow 3: the UI link format (`/dags/<dag_id>/runs/<run_id>` is assumed),
   the trigger request body, and API tokens in all-admins mode;
-- a Claude Code managed deny rule, `Read(**/.env)`, that matches `.env` in
-  every project;
+- the Claude Code managed setting: deny rules `Read(**/.env)` and
+  `Read(//**/.env)` that match `.env` in every project, and allow rules
+  `Bash(ctzd *)` and `PowerShell(ctzd *)` that stop prompts for `ctzd` commands
+  in both Windows shells;
 - whether Claude Code loads `AGENTS.md` and skills when the agent works in an
   app subfolder, and whether it loads skills from a gitignored
   `.claude/skills/` (Claude Code 2.1.319 on Linux loads both from a gitignored
