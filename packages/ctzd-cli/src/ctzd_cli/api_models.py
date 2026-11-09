@@ -174,8 +174,17 @@ class JobRunState(_Model):
     url: str
 
 
+class SourceInfo(_Model):
+    """A source as `ctzd sources` shows it: never its credentials."""
+
+    name: str
+    kind: str | None = None
+    description: str | None = None
+    refreshed: str | None = None
+
+
 class SourceList(_Model):
-    sources: tuple[str, ...]
+    sources: tuple[SourceInfo, ...]
 
 
 class LogText(_Model):

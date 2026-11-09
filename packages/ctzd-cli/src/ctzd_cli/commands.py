@@ -1,6 +1,7 @@
 """The ctzd commands. Each returns an Outcome; `main` prints it as text or JSON."""
 
 import contextlib
+import json
 import shutil
 import time
 import tomllib
@@ -398,13 +399,62 @@ def run_job(ctx: Context, *, job: str, local: bool, wait: bool, timeout: float) 
     )
 
 
-def sources(ctx: Context) -> Outcome:
+def _source_line(source: m.SourceInfo) -> str:
+    kind = f" ({source.kind})" if source.kind is not None else ""
+    description = f": {source.description}" if source.description is not None else ""
+    refreshed = f" Current: {source.refreshed}." if source.refreshed is not None else ""
+    return f"{source.name}{kind}{description}{refreshed}"
+
+
+def sources(ctx: Context, *, source: str | None = None, table: str | None = None) -> Outcome:
+    """The platform's sources with what each holds; with SOURCE, what its account can read; with TABLE, its columns and rows."""
+    if source is not None:
+        return explore_source(ctx, source=source, table=table)
     found = ctx.platform_factory().sources().sources
     return Outcome(
-        summary="Sources: " + ", ".join(found) if found else "No sources are configured yet.",
-        data={"sources": list(found)},
-        next_steps=["Add the ones the app reads to [sources].use in app.toml, then run `ctzd env`."],
+        summary="\n".join(["Sources:", *(f"- {_source_line(item)}" for item in found)]) if found else "No sources are configured yet.",
+        data={"sources": [item.model_dump() for item in found]},
+        next_steps=[
+            "Pick the source whose description matches what the person asked for, and tell them in business words which one you will use.",
+            "Add it to [sources].use in app.toml, run `ctzd env`, then `ctzd sources SOURCE --json` to see its tables and `ctzd sources SOURCE TABLE --json` for a table's columns and rows.",
+        ],
     )
+
+
+_TABLES_SHOWN = 40  # a screenful in the summary; `tables` in the JSON has them all
+
+
+def explore_source(ctx: Context, *, source: str, table: str | None) -> Outcome:
+    root, app = _app(ctx)
+    if source not in app.sources.use or not _env_file_has(root, f"CTZD_SOURCE_{source.upper()}"):
+        msg = f"This app cannot read {source} yet."
+        raise UsageError(msg, hint=f"Add {source!r} to [sources].use in app.toml, run `ctzd env --json`, then run this again.")
+    command = ["python", "-m", "ctzd.explore", source, *([] if table is None else [table])]
+    result = proc.run(_uv_run(root, *command), cwd=root, env=local_env(root, app), timeout=300)
+    last = result.output.strip().splitlines()[-1] if result.output.strip() else ""
+    try:
+        found: dict[str, object] = dict(json.loads(last)) if last.startswith("{") else {}
+    except ValueError:
+        found = {}
+    if not result.ok or "error" in found or not found:
+        problem = str(found.get("error") or proc.tail(result.output, 20))
+        return Outcome(summary=f"{source} could not be read: {problem}", data={"output": problem}, ok=False, next_steps=["See the ctzd-troubleshoot skill, or tell the person and the platform team."])
+    listed = found.get("tables")
+    if table is None and isinstance(listed, list):
+        tables = [item for item in listed if isinstance(item, dict)]
+        names = ", ".join(".".join(str(part) for part in (item.get("schema_name"), item.get("name")) if part) for item in tables[:_TABLES_SHOWN])
+        more = f" and {len(tables) - 40} more" if len(tables) > 40 else ""  # noqa: PLR2004 - a screenful
+        return Outcome(
+            summary=f"{source} has {len(tables)} table(s) and view(s): {names}{more}.", data=found, next_steps=[f"Run `ctzd sources {source} TABLE --json` for a table's columns and first rows."]
+        )
+    if "columns" in found:
+        columns = found["columns"] if isinstance(found["columns"], list) else []
+        return Outcome(
+            summary=f"{table} in {source}: {len(columns)} column(s), first rows below.",
+            data=found,
+            next_steps=["Select only the columns the page needs, ids as text; write them as made-up rows in fixtures/SOURCE/NAME.csv (never these real rows)."],
+        )
+    return Outcome(summary=str(found.get("message", f"{source} has no tables.")), data=found)
 
 
 def add_job(ctx: Context, *, name: str, schedule: str, size: appconfig.Size, timezone: str = "UTC") -> Outcome:

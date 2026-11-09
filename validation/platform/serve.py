@@ -121,10 +121,28 @@ def fake_data(root: Path) -> None:
 def source_values(sources: DataSources, port: int) -> dict[str, str]:
     base = f"http://127.0.0.1:{port}"
     values: dict[str, object] = {
-        "fi_pricing": {"kind": "oracle", "dsn": f"127.0.0.1:{data.ORACLE_PORT}/FREEPDB1", "user": "fi_ro", "password": sources.password},
-        "fi_trading": {"kind": "mssql", "server": f"127.0.0.1,{data.MSSQL_PORT}", "database": "fi_trading", "user": "sa", "password": sources.password, "trust_server_certificate": True},
+        "fi_pricing": {
+            "kind": "oracle",
+            "description": "Bond reference data and end-of-day prices, yields and risk (fi_bond_prices, the fi_bond_risk view)",
+            "refreshed": "each business day by 07:00 London",
+            "dsn": f"127.0.0.1:{data.ORACLE_PORT}/FREEPDB1",
+            "user": "fi_ro",
+            "password": sources.password,
+        },
+        "fi_trading": {
+            "kind": "mssql",
+            "description": "The FI desks' bond trades: date, ISIN, side, notional, price, desk, trader (dbo.trades)",
+            "refreshed": "as trades are booked",
+            "server": f"127.0.0.1,{data.MSSQL_PORT}",
+            "database": "fi_trading",
+            "user": "sa",
+            "password": sources.password,
+            "trust_server_certificate": True,
+        },
         "fi_issuance": {
             "kind": "rest",
+            "description": "New bond issues with their ratings, paged",
+            "refreshed": "hourly",
             "base_url": f"{base}/issuance",
             "auth": {"type": "client_credentials", "token_url": f"{base}/issuance/oauth/token", "client_id": data.OAUTH_CLIENT, "client_secret": sources.oauth_secret},
         },

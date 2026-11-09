@@ -88,7 +88,7 @@ class FakePlatform:
         return m.JobRunState(dag_id=f"{sbu}__{name.replace('-', '_')}__{job}", run_id=run_id, state=state, url="https://airflow.ctzd.contoso.com/dags/x/runs/manual__1")
 
     def sources(self) -> m.SourceList:
-        return m.SourceList(sources=("fi_pricing",))
+        return m.SourceList(sources=(m.SourceInfo(name="fi_pricing", kind="oracle", description="Bond prices", refreshed="each business day by 07:00 London"),))
 
     def logs(self, sbu: str, name: str, *, job: str | None, tail: int) -> m.LogText:
         raise NotImplementedError

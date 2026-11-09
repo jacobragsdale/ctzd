@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 import httpx
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 from ctzd_api.gateways import Airflow, GitHub, Jenkins, JenkinsBuild, Kube, Permission, Secrets
 from ctzd_api.releases import BrokenReleaseError, ReleaseStore
@@ -217,9 +218,26 @@ def job_run(services: Services, login: str, app: AppRef, job: str, run_id: str) 
 SOURCE_PREFIX = source_secret("")
 
 
+class _Public(BaseModel):
+    """The parts of a source's description anyone may see; everything else in it, the credentials above all, stays."""
+
+    model_config = ConfigDict(extra="ignore", frozen=True)
+    kind: str | None = None
+    description: str | None = None
+    refreshed: str | None = None
+
+
 def sources(services: Services) -> m.SourceList:
-    names = sorted(name.removeprefix(SOURCE_PREFIX).replace("-", "_") for name in services.secrets.names(SOURCE_PREFIX))
-    return m.SourceList(sources=tuple(names))
+    found: list[m.SourceInfo] = []
+    for secret in sorted(services.secrets.names(SOURCE_PREFIX)):
+        name = secret.removeprefix(SOURCE_PREFIX).replace("-", "_")
+        value = services.secrets.get(secret)
+        try:
+            public = _Public() if value is None else _Public.model_validate_json(value)
+        except ValidationError:
+            public = _Public()  # a broken description is the platform team's to fix; the name is still useful
+        found.append(m.SourceInfo(name=name, kind=public.kind, description=public.description, refreshed=public.refreshed))
+    return m.SourceList(sources=tuple(found))
 
 
 def logs(services: Services, login: str, app: AppRef, *, job: str | None, tail: int) -> m.LogText:

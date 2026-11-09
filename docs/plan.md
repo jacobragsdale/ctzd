@@ -243,7 +243,7 @@ client and to the theme's components and tokens.
 | `ctzd run JOB [--local] [--wait]` | Runs a job in Airflow and prints the run link, `--wait` follows it to success or failure; `--local` runs it on the laptop. |
 | `ctzd add job NAME --schedule CRON [--timezone ZONE]` | Adds a job module, its test, and its `app.toml` entry; the schedule runs in ZONE (default UTC). |
 | `ctzd check [--fast]` | Runs every gate, fixing formatting and simple lint locally; `--fast` skips the tests. |
-| `ctzd sources` | Lists the data sources the platform has, by name. |
+| `ctzd sources [SOURCE [TABLE]]` | Lists the data sources the platform has, each with its kind, what it holds, and when its data is current. With SOURCE (one the app lists in `[sources].use`, after `ctzd env`), the tables and views its account can read; with TABLE, that table's columns, their types, and its first five rows. |
 | `ctzd env` | Writes the app's read-only source credentials into `.env`. |
 | `ctzd deploy` | Checks, commits, pushes, follows Jenkins, prints the URL and DAG links. |
 | `ctzd status` | Current release, pause state, URL, DAG links, last build. |
@@ -285,7 +285,9 @@ sequenceDiagram
 ## 6. Data access
 
 **Sources.** Each data source is one Key Vault secret, `ctzd-source-<name>`,
-holding a JSON description of the source and its read-only account. The
+holding a JSON description of the source and its read-only account, with a
+`description` of what it holds and when it is `refreshed`, in business words,
+which `ctzd sources` shows every agent; never the credentials. The
 platform syncs each secret into its own Kubernetes secret, and an app's
 dashboard and job pods receive the sources listed in its `[sources].use` as
 environment variables named `CTZD_SOURCE_<NAME>`. `ctzd env` writes the same
@@ -471,8 +473,10 @@ and `ctzd-workflow`:
 
 1. Ask at most three things, all about the business: what question the page
    answers, who looks at it and how often, and which numbers matter.
-2. Find the source (the `sbu-<sbu>` skill, `ctzd sources`) and look at the real
-   columns, so the fake data has their shape.
+2. Find the source (`ctzd sources`, which says what each holds, and the
+   `sbu-<sbu>` skill) without asking the person where the data lives, say in
+   their words which data it is, and look at the real tables and columns
+   (`ctzd sources SOURCE TABLE`), so the fake data has their shape.
 3. Build the pages on fake data, run `ctzd dev --fake`, and give the person the
    local link, within minutes.
 4. Change the pages until they say "yes, that".

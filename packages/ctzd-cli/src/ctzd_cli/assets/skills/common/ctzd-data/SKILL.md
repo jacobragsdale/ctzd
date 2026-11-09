@@ -9,10 +9,16 @@ description: "Read data in a ctzd app: ctzd.query with SQL files and bind parame
 
 - All reads live in loaders in `src/app/data/`. Datasets and jobs call loaders; pages read datasets.
 - A source is a name such as `pricing_db` (names here are examples).
-  `ctzd sources --json` lists the ones the platform has. Use only those, and
-  the ones the SBU skill or the person names. List each in `app.toml`, then run
-  `ctzd env --json`; it fails with "does not exist" for an unknown name, and
-  only the platform team can add one. Tell the person; never invent a source.
+  `ctzd sources --json` lists the ones the platform has, each with its kind
+  (`oracle`, `mssql`, `rest`), what it holds, and when its data is current. Use
+  only those. List each in `app.toml`, then run `ctzd env --json`; only the
+  platform team can add a source. When none matches what the person asked for,
+  tell them; never invent a source.
+- Before writing a query, look: `ctzd sources SOURCE --json` lists the tables and
+  views the source's account can read, and `ctzd sources SOURCE TABLE --json` a
+  table's columns with their types and its first five rows. The kind decides the
+  binds: `:name` on `oracle`, `%(name)s` on `mssql`. The rows are real data: use
+  them to learn the shape, never copy them into fixtures or messages.
 - SQL lives in `src/app/data/sql/NAME.sql`, one statement per file. Never build
   SQL with f-strings, `+`, or `.format`: pass values as bind parameters.
 - Select only the columns the app uses, and filter and aggregate in SQL, not in

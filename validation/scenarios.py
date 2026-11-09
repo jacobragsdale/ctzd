@@ -89,6 +89,17 @@ SCENARIOS = (
         facts="Business unit: fi. You do not know any technical details about Salesforce access. If the agent offers a bond prices dashboard instead, accept it and ship it.",
     ),
     Scenario(
+        key="s11-unnamed-source",
+        opening="I'd like to see how much each desk traded this week. Can you make that a page I can open?",
+        goal=(
+            "A live dashboard of this week's traded notional per desk from fi_trading. The person never names a source: the agent finds it"
+            " (ctzd sources or the FI skill), never asks where the data lives, and says in business words which data it used."
+        ),
+        facts=(
+            "Business unit: fi. You do not know where the data lives, what a database is, or what any system is called; if asked, say you have no idea, the agent should know. Ship it when it works."
+        ),
+    ),
+    Scenario(
         key="s09-take-over",
         setup="colleague-app",
         opening="My colleague built fi-desk-trades and left. Can you add a column with the trade's price to the table?",

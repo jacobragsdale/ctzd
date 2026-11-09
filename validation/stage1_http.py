@@ -162,7 +162,12 @@ def everyday_commands(run: Run) -> None:
     status = run_ctzd(["status"], cwd=app, env=env)
     report.expect("status reports the live release and the job's DAG link", ok=status.ok and status.body.get("release") == LIVE and "refresh" in status.text("dags"), seen=status.raw)
     sources = run_ctzd(["sources"], cwd=app, env=env)
-    report.expect("sources lists names only", ok=sources.body.get("sources") == ["fi_pricing"], seen=sources.raw)
+    listed = sources.body.get("sources")
+    report.expect(
+        "sources lists names and kinds, never credentials",
+        ok=isinstance(listed, list) and [item.get("name") for item in listed if isinstance(item, dict)] == ["fi_pricing"] and "password" not in sources.raw,
+        seen=sources.raw,
+    )
     written = run_ctzd(["env"], cwd=app, env=env)
     dotenv = (app / ".env").read_text() if (app / ".env").is_file() else ""
     report.expect("env writes the source's credentials into .env and never prints them", ok=written.ok and "CTZD_SOURCE_FI_PRICING=" in dotenv and '"pw"' not in written.raw, seen=written.raw)

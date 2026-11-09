@@ -20,14 +20,21 @@ class _Model(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, validate_default=True, revalidate_instances="always", allow_inf_nan=False)
 
 
-class OracleSource(_Model):
+class _Described(_Model):
+    """What `ctzd sources` tells an agent about a source, next to its kind; the platform team writes both."""
+
+    description: str | None = Field(default=None, description="what the source holds, in business words")
+    refreshed: str | None = Field(default=None, description="when its data is current, such as 'each business day by 07:00 London'")
+
+
+class OracleSource(_Described):
     kind: Literal["oracle"]
     dsn: str = Field(min_length=1, description="Easy Connect string: host:port/service_name")
     user: str = Field(min_length=1)
     password: SecretStr
 
 
-class MssqlSource(_Model):
+class MssqlSource(_Described):
     kind: Literal["mssql"]
     server: str = Field(min_length=1, description="host or host,port")
     database: str = Field(min_length=1)
@@ -69,14 +76,14 @@ class ClientCredentialsAuth(_Model):
 RestAuth = Annotated[NoAuth | BearerAuth | HeaderAuth | BasicAuth | ClientCredentialsAuth, Field(discriminator="type")]
 
 
-class RestSource(_Model):
+class RestSource(_Described):
     kind: Literal["rest"]
     base_url: HttpUrl
     auth: RestAuth
     timeout_seconds: float = Field(default=30.0, gt=0)
 
 
-class TeamsSource(_Model):
+class TeamsSource(_Described):
     kind: Literal["teams"]
     webhook_url: SecretStr
 

@@ -8,9 +8,13 @@ ask them to run a command, open a terminal, use git, or read code.
 
 1. Ask at most three things, all about the business: what question the page
    answers, who looks at it and how often, and which numbers matter. Never ask
-   where the data lives; the app's `sbu-<sbu>` skill and `ctzd sources` tell you.
-2. Look at the real columns of the source (`ctzd exec`, see `ctzd-data`), and
-   write a few made-up rows with those columns in `fixtures/SOURCE/NAME.csv`.
+   where the data lives: `ctzd sources --json` says what each source holds and
+   when its data is current, and the app's `sbu-<sbu>` skill adds more. Pick the
+   one that matches and tell the person in their words which data you will use
+   ("the bond prices the pricing team publishes each morning").
+2. Look at the real tables and columns of the source (`ctzd sources SOURCE --json`,
+   then `ctzd sources SOURCE TABLE --json`; see `ctzd-data`), and write a few
+   made-up rows with those columns in `fixtures/SOURCE/NAME.csv`.
 3. Build the page on those rows: run `ctzd dev --fake`, then `ctzd shot` and look
    at the picture it writes; fix every problem it lists. Then give the person the
    link `ctzd dev` returned, to open on their own machine. Change the page until
@@ -35,6 +39,8 @@ Use the `ctzd` command for everything, always with `--json`:
   props, variants, and a working example. Read it before you use a component.
 - `ctzd exec --json -- python -c "..."` runs a command with the app's credentials, such as a quick
   look at what a loader returns from the live source.
+- `ctzd sources --json` lists the platform's sources with what each holds; `ctzd sources SOURCE --json`
+  lists a source's tables, and `ctzd sources SOURCE TABLE --json` a table's columns and first rows.
 - `ctzd env` fetches read-only credentials for the sources in `app.toml`.
 - `ctzd check` runs every gate and regenerates the page's client from the datasets. Run it before
   you say you are done.

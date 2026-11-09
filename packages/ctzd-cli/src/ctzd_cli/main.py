@@ -63,6 +63,7 @@ class Args(BaseModel):
     argv: tuple[str, ...] = ()
     timezone: str = "UTC"
     candidate: int | None = None
+    table: str | None = None
 
 
 def _setup_parsers(sub: argparse._SubParsersAction[argparse.ArgumentParser], common: argparse.ArgumentParser) -> None:
@@ -105,7 +106,9 @@ def _app_parsers(sub: argparse._SubParsersAction[argparse.ArgumentParser], commo
     run.add_argument("--local", action="store_true")
     run.add_argument("--wait", action="store_true", help="wait until the Airflow run finishes")
     run.add_argument("--timeout", type=float, default=_DEPLOY_TIMEOUT)
-    sub.add_parser("sources", parents=[common], help="list the data sources the platform knows")
+    sources = sub.add_parser("sources", parents=[common], help="the data sources the platform has, and what each holds; with SOURCE, its tables; with TABLE, its columns and rows")
+    sources.add_argument("source", nargs="?", help="a source the app lists in [sources].use, such as fi_pricing")
+    sources.add_argument("table", nargs="?", help="a table or view as `ctzd sources SOURCE` lists it")
     add = sub.add_parser("add", parents=[common], help="add a part to the app")
     add_sub = add.add_subparsers(dest="action", required=True)
     add_dataset = add_sub.add_parser("dataset", parents=[common], help="add a dataset the pages read, with its loader and test")
@@ -197,7 +200,7 @@ HANDLERS: dict[str, Handler] = {
     "api list": lambda _a, ctx: commands.api_list(ctx),
     "run": lambda a, ctx: commands.run_job(ctx, job=_required(a.job, "JOB"), local=a.local, wait=a.wait, timeout=a.timeout),
     "exec": lambda a, ctx: commands.exec_command(ctx, argv=a.argv),
-    "sources": lambda _a, ctx: commands.sources(ctx),
+    "sources": lambda a, ctx: commands.sources(ctx, source=a.source, table=a.table),
     "add job": lambda a, ctx: commands.add_job(ctx, name=_required(a.name, "NAME"), schedule=_required(a.schedule, "--schedule"), size=a.size, timezone=a.timezone),
     "check": lambda a, ctx: commands.check(ctx, fast=a.fast),
     "env": lambda _a, ctx: commands.env(ctx),

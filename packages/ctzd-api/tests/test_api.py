@@ -1,5 +1,6 @@
 import dataclasses
 import datetime as dt
+import json
 import re
 from pathlib import Path
 from typing import override
@@ -214,9 +215,20 @@ def test_a_job_runs_state_is_reported(client: TestClient, world: Services) -> No
     assert body["url"].endswith("/dags/fi__bond_prices__refresh/runs/manual__1")
 
 
-def test_sources_lists_names_without_values(client: TestClient) -> None:
+def test_sources_lists_what_each_holds_and_never_its_credentials(client: TestClient, world: Services) -> None:
+    secrets = world.secrets
+    assert isinstance(secrets, fakes.FakeSecrets)
+    secrets.values["ctzd-source-fi-trades"] = '{"kind": "mssql", "password": "hunter2", "description": "Trades by desk", "refreshed": "hourly"}'
+    secrets.values["ctzd-source-fi-broken"] = "{"
     body = client.get("/v1/sources", headers=BOB).json()
-    assert body == {"sources": ["fi_pricing"]}
+    assert body == {
+        "sources": [
+            {"name": "fi_broken", "kind": None, "description": None, "refreshed": None},
+            {"name": "fi_pricing", "kind": "oracle", "description": None, "refreshed": None},
+            {"name": "fi_trades", "kind": "mssql", "description": "Trades by desk", "refreshed": "hourly"},
+        ]
+    }
+    assert "hunter2" not in json.dumps(body)
 
 
 def test_each_app_gets_its_channels_release_and_the_newest_cli(client: TestClient) -> None:

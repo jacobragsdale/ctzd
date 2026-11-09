@@ -30,9 +30,11 @@ TODO (FI champion): for each FI source: its name in `[sources].use`, kind
 (`oracle`, `mssql`, or `rest`), what it holds, the main tables or endpoints,
 when it is refreshed, and a typical query.
 
-Until this list exists, use only source names the person gives you and that
-`ctzd env --json` accepts. Never guess a source name; if the person does not
-know it, they ask the FI champion.
+Until this list exists, `ctzd sources --json` says what each source holds and
+when it is current, and `ctzd sources SOURCE --json` what tables it has. Pick
+the one that matches, and say in business words which data you will use. Never
+guess a source name that `ctzd sources` does not list; when none matches, tell
+the person the FI champion can ask the platform team for it.
 
 ## Conventions
 
