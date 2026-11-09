@@ -105,7 +105,7 @@ basis-ui) and nothing else.
 
 | Area | Decision | Reason |
 |---|---|---|
-| Users | Business users with no coding experience, on Windows laptops without admin rights or git, using any AI agent. Claude Code is the primary agent, and citizen developers use the latest models. | That is the audience. Everything below assumes the agent does every technical step. |
+| Users | Business users with no coding experience, on Windows laptops without admin rights or git, using any AI agent. Cursor is the agent most of them use, Claude Code is the one the agent trials run, and citizen developers use the latest models. | That is the audience. Everything below assumes the agent does every technical step. |
 | Repos | One repo per app. An app is at most one dashboard plus any number of scheduled jobs that share its data and logic code. | Clear ownership, small agent context, and the job-plus-dashboard pair is the main speed tool. |
 | UI | One kind of dashboard: a React app on `@basis/ui` and `@basis/parallax`, whose data comes from a basis-api backend in the same repo. One image holds both, and one process serves the API under `/api` and the built UI at `/`, on one origin. Streamlit and Dash were removed on 2026-11-07. | The latest models write React well. basis-ui's themed, prebuilt components and parallax's grid, pivot and charts give every app the firm's look and its number and date rules without design work, and one UI means one set of skills. |
 | API | Every route of an app's API is a read-only dataset: parameters in, a table out, served as Arrow for parallax and as JSON. No route writes. | Sources are read-only, so an app has nothing to write; one pattern is one thing for the agent to learn. Writes happen only in jobs. |
@@ -138,9 +138,9 @@ basis-ui) and nothing else.
 | Python | Python 3.14, which basis requires, from the platform's mirror of uv's Python builds. Airflow's own project stays on 3.13. | One version across ctzd and basis. |
 | Python standards | ruff with every rule, ty with every rule as an error, both handled by the agent. Light data validation: loader schemas check required columns and dtypes only. 70% branch coverage on `logic/`. | Strict where the agent pays the cost, light where it would slow people down. Revisit the strict rules once the agent trials in [validation-plan.md](validation-plan.md) measure what they cost. |
 | Tests | `ctzd check` runs the same gates locally and in Jenkins. Jenkins adds a post-deploy smoke test in a headless browser that fails, and rolls the release back, on an error, a failed request, or a page that never loads; it takes no screenshot. Platform code has ordinary test suites. Agent trials against a local copy of the platform (`validation/`, [validation-plan.md](validation-plan.md)) check the CLI's output and the skills with real agents; they inform changes and are not a gate. | One definition of "green". Only an agent shows whether the skills and messages work for an agent. |
-| Agent instructions | App folders have `AGENTS.md` and `.agents/skills/`, plus a copy of the skills in `.claude/skills/` because Claude Code does not read `.agents/skills/`. `ctzd` writes all three and the app's `.gitignore` lists them. | Agent-neutral guidance that every agent can read. |
+| Agent instructions | App folders have `AGENTS.md` and `.agents/skills/`, plus a copy of the skills in `.claude/skills/` because Claude Code does not read `.agents/skills/`. `ctzd` writes all three and the app's `.gitignore` lists them. Cursor reads `AGENTS.md`, `.agents/skills/`, and `.claude/skills/`, but hides gitignored files, and CSV and PNG files, from its agent, so a locked `.cursorignore` lets `AGENTS.md`, `.agents/`, the fixtures, and `ctzd shot`'s pictures through, and keeps `.claude/` hidden. | Agent-neutral guidance that every agent can read. |
 | Skill distribution | The internal skills app carries one bootstrap skill, `ctzd`, which says only to run `ctzd setup --json` and follow `next`. Everything else is served with the platform release. No MCP server. | The bootstrap skill almost never changes; everything that does change has one update channel. Every agent reads MCP settings from a different file, while every agent runs a command. |
-| Enforcement | `ctzd deploy` runs `ctzd check` first; Jenkins runs it again. An org-wide Claude Code managed setting denies `Read(**/.env)` and `Read(//**/.env)`, and allows `Bash(ctzd *)` and `PowerShell(ctzd *)`. | The checks work for every agent, without per-repo agent config. The `.env` rule is a speed bump: it blocks file commands such as `cat .env`, not a script that opens the file, so the read-only accounts are the real limit. `**/.env` matches only below the folder the agent started in, and `//**/.env` matches every drive. The allow rules mean a person who cannot judge a command is never asked to approve a `ctzd` one, in either of Claude Code's Windows shells. |
+| Enforcement | `ctzd deploy` runs `ctzd check` first; Jenkins runs it again. An org-wide Claude Code managed setting denies `Read(**/.env)` and `Read(//**/.env)`, allows `Bash(ctzd *)` and `PowerShell(ctzd *)`, and asks for `ctzd delete` and `ctzd exec` in both shells. Cursor's team terminal allowlist carries the `ctzd` commands other than those two, and Cursor hides `.env*` from its agent by default. | The checks work for every agent, without per-repo agent config. The `.env` rule is a speed bump: it blocks file commands such as `cat .env`, not a script that opens the file, so the read-only accounts are the real limit. `**/.env` matches only below the folder the agent started in, and `//**/.env` matches every drive. The allow rules mean a person who cannot judge a command is never asked to approve a `ctzd` one, in either of Claude Code's Windows shells. The two exceptions still ask: `ctzd delete` removes the app, and `ctzd exec` runs any command with the app's credentials. |
 | Command output | Every command prints a short summary; `--json` returns the same facts for agents. Failures name the failing step and show the last log lines, and a check lists at most a screenful of problems, each with its fix. | Agents act on structured output; people read the summary. |
 | Dashboards at rest | Always on, small resource requests, one process per pod serving the API and the built UI. | Simple; add scale-to-zero only if node costs demand it. |
 | Logs | `ctzd logs` streams pod logs through the platform API; job logs live in Airflow. No log shipping in v1. | No Datadog in this cluster yet. |
@@ -182,7 +182,7 @@ fi-bond-prices/
 ├── Dockerfile  Jenkinsfile  # locked
 ├── ruff.toml  ty.toml  .importlinter  pytest.toml  .python-version  # locked
 ├── web/vite.config.ts  web/tsconfig.json  web/src/styles.css        # locked: the lines basis-ui's README gives
-├── .pre-commit-config.yaml  .gitignore  .gitattributes  .dockerignore  # locked
+├── .pre-commit-config.yaml  .gitignore  .cursorignore  .gitattributes  .dockerignore  # locked
 └── .ctzd/version            # platform release the build files came from
 ```
 
@@ -682,7 +682,11 @@ Phase 0 spikes:
 - the Claude Code managed setting: deny rules `Read(**/.env)` and
   `Read(//**/.env)` that match `.env` in every project, and allow rules
   `Bash(ctzd *)` and `PowerShell(ctzd *)` that stop prompts for `ctzd` commands
-  in both Windows shells;
+  in both Windows shells, with ask rules for `ctzd delete` and `ctzd exec`;
+- Cursor on a laptop: that the app's `.cursorignore` lets its agent read the
+  gitignored guidance, the fixture CSVs, and the shots; whether it lists each
+  skill twice, from `.agents/skills/` and `.claude/skills/`; and that the team's
+  terminal allowlist takes `ctzd` commands by subcommand;
 - whether Claude Code loads `AGENTS.md` and skills when the agent works in an
   app subfolder, and whether it loads skills from a gitignored
   `.claude/skills/` (Claude Code 2.1.319 on Linux loads both from a gitignored

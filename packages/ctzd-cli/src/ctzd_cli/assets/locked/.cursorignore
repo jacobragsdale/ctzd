@@ -1,0 +1,10 @@
+# Platform-owned: ctzd sync rewrites this file.
+# Cursor hides from its agent every file .gitignore lists, and by default CSV and PNG files too. These are the
+# agent's to read: the guidance ctzd writes, the made-up rows `ctzd dev --fake` serves, and `ctzd shot`'s pictures.
+# .claude/ stays hidden: it holds the same skills as .agents/, for Claude Code.
+!/AGENTS.md
+!/.agents/
+!/.agents/**
+!/fixtures/**/*.csv
+!/.ctzd/shots/
+!/.ctzd/shots/*.png

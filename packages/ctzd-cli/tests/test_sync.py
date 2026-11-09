@@ -82,6 +82,13 @@ def test_guidance_goes_to_agents_and_claude_and_is_gitignored(tmp_path: Path) ->
     assert {"/AGENTS.md", "/.agents/", ".claude/", ".ctzd/guidance.json"} <= set(ignored)
 
 
+def test_cursor_may_read_the_guidance_the_fixtures_and_the_shots(tmp_path: Path) -> None:
+    make_app(tmp_path)
+    allowed = (tmp_path / ".cursorignore").read_text().splitlines()
+    assert {"!/AGENTS.md", "!/.agents/", "!/fixtures/**/*.csv", "!/.ctzd/shots/*.png"} <= set(allowed)
+    assert not any(".claude" in line for line in allowed if line.startswith("!"))
+
+
 def test_writing_guidance_replaces_stale_and_removes_extra_skills(tmp_path: Path) -> None:
     make_app(tmp_path)
     extra = tmp_path / ".agents" / "skills" / "homemade" / "SKILL.md"

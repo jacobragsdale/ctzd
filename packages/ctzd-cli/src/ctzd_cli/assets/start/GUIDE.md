@@ -69,6 +69,8 @@ access" means the app's owner must add them; tell the person.
 - Read `path/AGENTS.md` and the skills in `path/.agents/skills/`, starting with
   `ctzd-workflow`, `ctzd-pages`, and the `sbu-SBU` skill, before you write
   code. If you were started in a parent folder, your agent did not load them:
-  read them by path.
-- For later sessions, suggest the person starts their agent in the app folder,
-  so it loads these instructions by itself.
+  read them by path. Cursor hides these gitignored files from its file tools
+  unless the app folder is the open folder; if a read is refused, print the
+  file in the terminal instead.
+- For later sessions, suggest the person starts their agent in the app folder
+  (in Cursor, **File > Open Folder**), so it loads these instructions by itself.
