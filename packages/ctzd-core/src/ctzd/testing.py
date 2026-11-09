@@ -98,7 +98,7 @@ def _typed(column: str, text: pd.Series, family: Family | None) -> pd.Series:
         return text.map(lambda value: None if pd.isna(value) else value.lower() == "true").astype("boolean")
     numeric = not present.empty and present.str.fullmatch(_NUMBER).all()
     # A number never starts with a zero, but an account (00123456) or a SEDOL (0263494) does: those stay text.
-    if family == "float" or (family is None and numeric and not present.str.match(_LEADING_ZERO).any()):
+    if family == "float" or (numeric and not present.str.match(_LEADING_ZERO).any()):
         return pd.to_numeric(text).astype("float64")
     return text
 

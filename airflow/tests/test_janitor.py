@@ -22,7 +22,7 @@ def test_only_apps_deleted_more_than_thirty_days_ago_lose_their_tables(tmp_path:
     record(tmp_path, "fi", "edge-app", NOW - timedelta(days=30))
     record(tmp_path, "fi", "new-app", NOW - timedelta(days=29))
     removed: list[str] = []
-    result = ctzd_janitor.remove_expired(tmp_path, NOW, removed.append)
+    result = ctzd_janitor.remove_expired(tmp_path, NOW, removed.append, specs=tmp_path / "specs")
     assert result == removed == ["fi/edge-app", "fi/old-app"]
 
 
@@ -33,8 +33,19 @@ def test_records_that_could_name_a_wider_folder_are_skipped(tmp_path: Path) -> N
     record(tmp_path, "fi", "no-timezone", "2026-01-01T00:00:00")
     (tmp_path / "fi" / "broken.json").write_text("{")
     removed: list[str] = []
-    ctzd_janitor.remove_expired(tmp_path, NOW, removed.append)
+    ctzd_janitor.remove_expired(tmp_path, NOW, removed.append, specs=tmp_path / "specs")
     assert removed == []
+
+
+def test_an_app_deployed_again_under_the_same_name_keeps_its_tables(tmp_path: Path) -> None:
+    deleted, specs = tmp_path / "deleted", tmp_path / "specs"
+    record(deleted, "fi", "bond-prices", NOW - timedelta(days=60))
+    record(deleted, "fi", "old-app", NOW - timedelta(days=60))
+    (specs / "fi").mkdir(parents=True)
+    (specs / "fi" / "bond-prices.json").write_text("{}")
+    removed: list[str] = []
+    ctzd_janitor.remove_expired(deleted, NOW, removed.append, specs=specs)
+    assert removed == ["fi/old-app"]
 
 
 def test_the_janitor_dag_loads(tmp_path: Path) -> None:

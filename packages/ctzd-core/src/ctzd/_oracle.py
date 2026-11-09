@@ -6,6 +6,7 @@ import oracledb
 import pandas as pd
 
 from ctzd._arrow import to_pandas
+from ctzd.settings import session_name
 from ctzd.sources import OracleSource
 
 # Rows per network round trip. oracledb's default of 100 suits OLTP; analytics reads are large.
@@ -24,6 +25,9 @@ def fetch(source: OracleSource, sql: str, params: Mapping[str, object], *, what:
     unconstrained `NUMBER` arrives as a float64 from the driver."""
     with oracledb.connect(user=source.user, password=source.password.get_secret_value(), dsn=source.dsn, tcp_connect_timeout=_CONNECT_TIMEOUT_SECONDS) as connection:
         connection.call_timeout = _CALL_TIMEOUT_MS
+        # Sent with the query: v$session shows whose it is.
+        connection.module = session_name()
+        connection.client_identifier = session_name()
         fetched = connection.fetch_df_all(statement=sql, parameters=dict(params) or None, arraysize=_ARRAYSIZE, fetch_decimals=True)
         frame = to_pandas(fetched, what=what)
     return frame.rename(columns=_column_name)

@@ -2,7 +2,9 @@
 
 The delete job records each deletion as `deleted/<sbu>/<app>.json` in the
 ctzd-dags repository, next to this file. Once a day this DAG removes
-`<sbu>/<app>/` from the store for every deletion older than the grace period.
+`<sbu>/<app>/` from the store for every deletion older than the grace period,
+unless the app is back: someone made an app of the same name again and deployed
+it, so its job spec is in `specs/<sbu>/<app>.json`, and the tables are its own.
 Removing a folder that is already gone does nothing, so reruns are safe.
 """
 
@@ -18,6 +20,7 @@ from azure.core.exceptions import ResourceNotFoundError
 from pydantic import AwareDatetime, BaseModel, ConfigDict, ValidationError, field_validator
 
 DELETED = Path(__file__).parent / "deleted"
+SPECS = Path(__file__).parent / "specs"
 GRACE = timedelta(days=30)
 # The Airflow connection to the store (an ADLS Gen2 account) and the file system that holds `<sbu>/<app>/`.
 STORE_CONNECTION = "ctzd_store"
@@ -70,10 +73,13 @@ def expired(deletions: Iterable[Deletion], now: datetime, grace: timedelta = GRA
     return [deletion for deletion in deletions if deletion.deleted_at.astimezone(UTC) + grace <= now]
 
 
-def remove_expired(folder: Path, now: datetime, remove: Callable[[str], None]) -> list[str]:
-    """Remove the store folder of every app deleted more than GRACE ago; return the folders removed."""
+def remove_expired(folder: Path, now: datetime, remove: Callable[[str], None], *, specs: Path) -> list[str]:
+    """Remove the store folder of every app deleted more than GRACE ago and not deployed again; return the folders removed."""
     removed: list[str] = []
     for deletion in expired(read_deletions(folder), now):
+        if (specs / deletion.sbu / f"{deletion.app}.json").is_file():
+            _LOG.info("%s was deleted on %s but is deployed again; its tables stay", deletion.folder, deletion.deleted_at.date())
+            continue
         remove(deletion.folder)
         removed.append(deletion.folder)
     return removed
@@ -91,6 +97,6 @@ with DAG(dag_id="ctzd_table_janitor", schedule="0 3 * * *", start_date=datetime(
 
     @task
     def remove_deleted_apps_tables() -> list[str]:
-        return remove_expired(DELETED, datetime.now(UTC), _remove_from_store)
+        return remove_expired(DELETED, datetime.now(UTC), _remove_from_store, specs=SPECS)
 
     remove_deleted_apps_tables()

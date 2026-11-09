@@ -1,6 +1,7 @@
 """The ctzd commands. Each returns an Outcome; `main` prints it as text or JSON."""
 
 import contextlib
+import shutil
 import time
 import tomllib
 from collections.abc import Callable
@@ -26,7 +27,9 @@ _POLL_SECONDS = 10.0
 _DAG_WAIT_SECONDS = 180.0  # Airflow picks up new job specs within a few minutes of a deploy.
 _DEFAULT_JOB = Job(name="refresh", schedule="0 6 * * *")
 # Commands that work inside an app; each refreshes the app's guidance before it runs.
-APP_COMMANDS = frozenset({"dev", "run", "exec", "add job", "check", "env", "deploy", "status", "logs", "releases", "rollback", "sync", "delete"})
+APP_COMMANDS = frozenset(
+    {"dev", "shot", "run", "exec", "add job", "add dataset", "add page", "api list", "docs ui", "check", "env", "deploy", "status", "logs", "releases", "rollback", "sync", "delete"}
+)
 
 
 @dataclass
@@ -160,20 +163,17 @@ def new(ctx: Context, *, name: str, sbu: str, ui: Ui, directory: Path | None, ow
     if root.exists() and any(root.iterdir()):
         msg = f"{root} already exists and is not empty."
         raise UsageError(msg, hint="Choose another name or folder.")
-    created = None if offline else ctx.platform_factory().create_app(m.CreateAppRequest(sbu=sbu, name=name, ui=ui, owners=app.app.owners))
     chosen = require_usable(ctx.releases.newest_local() if offline else ctx.releases.for_app(sbu, name))
-    root.mkdir(parents=True, exist_ok=True)
-    scaffold.scaffold(root, platform=platform, app=app, release=chosen)
-    sync.write_stamp(root, chosen.release, ctx.now())
-    locked = _uv(root, "sync")
-    if not locked.ok:
-        msg = "The new app's packages could not be installed."
-        raise CliError(msg, hint=proc.tail(locked.output, 20))
-    if ui == "react":
-        for step in (checks.web_install(root, "local"), checks.client(root, "local")):
-            if step.state == "failed":
-                msg = f"The new app's pages could not be set up ({step.name})."
-                raise CliError(msg, hint=step.detail)
+    # Everything local comes first, and a failure leaves the folder as it was, so running the same command again works;
+    # the repository is created only once the app installs.
+    made = not root.exists()
+    try:
+        root.mkdir(parents=True, exist_ok=True)
+        _install_new(ctx, root, platform=platform, app=app, release=chosen)
+        created = None if offline else ctx.platform_factory().create_app(m.CreateAppRequest(sbu=sbu, name=name, ui=ui, owners=app.app.owners))
+    except BaseException:
+        _empty(root, remove=made)
+        raise
     git = gitops.open_repo(root, token=None if offline else ctx.token(), identity=auth.identity() or ("ctzd", "ctzd@localhost"))
     git.init(None if created is None else created.clone_url)
     git.commit_all(f"Create {name} on platform release {chosen.release}")
@@ -185,6 +185,32 @@ def new(ctx: Context, *, name: str, sbu: str, ui: Ui, directory: Path | None, ow
         data={"path": str(root), "repo": None if created is None else created.repo, "url": url},
         next_steps=[f"Work inside {root}. Read {root / 'AGENTS.md'} and the skills it names before you write code.", "Run `ctzd dev` to see it locally, then `ctzd deploy` to ship changes."],
     )
+
+
+def _install_new(ctx: Context, root: Path, *, platform: config.PlatformConfig, app: AppConfig, release: m.PlatformRelease) -> None:
+    scaffold.scaffold(root, platform=platform, app=app, release=release)
+    sync.write_stamp(root, release.release, ctx.now())
+    locked = _uv(root, "sync")
+    if not locked.ok:
+        msg = "The new app's packages could not be installed."
+        raise CliError(msg, hint=proc.tail(locked.output, 20) + "\nFix the cause, then run the same `ctzd new` command again.")
+    if app.app.ui == "react":
+        for step in (checks.web_install(root, "local"), checks.client(root, "local")):
+            if step.state == "failed":
+                msg = f"The new app's pages could not be set up ({step.name})."
+                raise CliError(msg, hint=f"{step.detail}\nFix the cause, then run the same `ctzd new` command again.")
+
+
+def _empty(root: Path, *, remove: bool) -> None:
+    """Undo a `ctzd new` that failed: remove the folder it made, or empty the empty one it was given."""
+    if remove:
+        shutil.rmtree(root, ignore_errors=True)
+        return
+    for entry in root.iterdir() if root.is_dir() else ():
+        if entry.is_dir() and not entry.is_symlink():
+            shutil.rmtree(entry, ignore_errors=True)
+        else:
+            entry.unlink(missing_ok=True)
 
 
 def open_app(ctx: Context, *, name: str, sbu: str, directory: Path | None) -> Outcome:

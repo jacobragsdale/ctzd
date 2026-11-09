@@ -6,7 +6,7 @@ from typing import override
 import pytest
 
 from ctzd_cli import api_models as m
-from ctzd_cli import checks, commands, gitops, releases
+from ctzd_cli import checks, commands, gitops, proc, releases
 from ctzd_cli.errors import CliError, NotFoundError, UsageError
 
 from .conftest import FakePlatform, make_app
@@ -272,3 +272,22 @@ def test_a_deploy_says_when_airflow_has_not_loaded_a_job(repo: tuple[Path, Path]
     assert outcome.data["missing_dags"] == ["refresh"]
     assert "ctzd status" in outcome.next_steps[0]
     assert now[0] >= 180
+
+
+class _CountingPlatform(FakePlatform):
+    created: int = 0
+
+    @override
+    def create_app(self, request: m.CreateAppRequest) -> m.CreatedApp:
+        self.created += 1
+        return super().create_app(request)
+
+
+def test_a_new_app_that_fails_to_install_creates_no_repository_and_can_be_made_again(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(commands, "_uv", lambda root, *args: proc.Completed(args=("uv", *args), code=1, output=f"no index in {root.name}"))
+    platform = _CountingPlatform([m.Build(number=1, state="succeeded")])
+    ctx = commands.Context(cwd=tmp_path, platform_factory=lambda: platform, token=lambda: "token", run_checks=passing, sleep=lambda _s: None)
+    with pytest.raises(CliError, match="could not be installed"):
+        commands.new(ctx, name="bond-prices", sbu="fi", ui="none", directory=None, owner="ann@contoso.com", offline=False)
+    assert platform.created == 0
+    assert not (tmp_path / "bond-prices").exists()

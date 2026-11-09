@@ -6,7 +6,7 @@ allowed-tools: Bash(ctzd *) PowerShell(ctzd *)
 
 # ctzd
 
-ctzd builds and runs Python dashboards and scheduled jobs for people who do
+ctzd builds and runs dashboards (React pages on the firm's components) and scheduled jobs for people who do
 not code. You do every technical step with the `ctzd` command; the person
 never runs a command, opens a terminal, or uses git. Never search this
 computer for apps, data, or credentials: they come through `ctzd`, and the

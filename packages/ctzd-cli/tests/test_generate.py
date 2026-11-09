@@ -26,3 +26,10 @@ def test_a_new_page_is_linked_after_the_others(tmp_path: Path, pages: str) -> No
     routes = (web / "routes.ts").read_text(encoding="utf-8")
     assert "rootRoute.addChildren([homeRoute, sectorPricesRoute])" in routes
     assert 'import { SectorPricesPage } from "./pages/sector-prices.tsx";' in routes
+
+
+def test_an_import_goes_after_a_wrapped_one_not_inside_it() -> None:
+    text = "import ctzd\nfrom app.data.loaders import (\n    load_a,\n    load_b,\n)\n\n\nX = 1\n"
+    updated = generate.insert_import(text, "from app.data.loaders import load_c")
+    compile(updated, "datasets.py", "exec")
+    assert updated.splitlines()[5] == "from app.data.loaders import load_c"

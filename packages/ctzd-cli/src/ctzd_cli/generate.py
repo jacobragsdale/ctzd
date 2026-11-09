@@ -9,6 +9,7 @@ columns, so an agent never reads the generated client. Each one's files pass
 `ctzd check` as written; the agent then edits the SQL, the row type and the page.
 """
 
+import ast
 import json
 import re
 from dataclasses import dataclass
@@ -49,10 +50,17 @@ def title(name: str) -> str:
     return " ".join(re.split(r"[_-]", name)).capitalize()
 
 
-def _insert_import(text: str, line: str) -> str:
-    """`text` with `line` after its last top-level import; the formatter sorts it on the next check."""
+def insert_import(text: str, line: str) -> str:
+    """`text` with `line` after its last top-level import, past the closing parenthesis of a wrapped one; the formatter
+    sorts it on the next check. Text that does not parse gets the line after its last import line, and the check names
+    the error that was already there."""
     lines = text.splitlines()
-    last = max((index for index, found in enumerate(lines) if found.startswith(("import ", "from "))), default=-1)
+    try:
+        imports = [node for node in ast.parse(text).body if isinstance(node, ast.Import | ast.ImportFrom)]
+    except SyntaxError:
+        imports = []
+    by_line = max((index for index, found in enumerate(lines) if found.startswith(("import ", "from "))), default=-1)
+    last = (imports[-1].end_lineno or imports[-1].lineno) - 1 if imports else by_line
     return "\n".join([*lines[: last + 1], line, *lines[last + 1 :]]) + "\n"
 
 
@@ -161,7 +169,7 @@ def {name}() -> pd.DataFrame:
     """{title(name)}."""
     return load_{name}()
 '''
-    files.append(_write(root, DATASETS, _insert_import(datasets, f"from app.data.loaders import load_{name}").rstrip("\n") + "\n" + addition))
+    files.append(_write(root, DATASETS, insert_import(datasets, f"from app.data.loaders import load_{name}").rstrip("\n") + "\n" + addition))
     files.append(_write(root, TESTS / f"test_dataset_{name}.py", _dataset_test(name, source)))
     return files
 
@@ -279,7 +287,7 @@ def add_route(root: Path, name: str) -> bool:
         return False
     variable = f"{camel(name)}Route"
     component = f"{pascal(name)}Page"
-    routes = _insert_import(routes, f'import {{ {component} }} from "./pages/{name}.tsx";')
+    routes = insert_import(routes, f'import {{ {component} }} from "./pages/{name}.tsx";')
     route = f'const {variable} = createRoute({{\n  component: {component},\n  getParentRoute: () => rootRoute,\n  path: "/{name}",\n}});\n\n'
     routes = routes.replace("const routeTree", route + "const routeTree", 1)
     routes = re.sub(r"rootRoute\.addChildren\(\[([^\]]*)\]\)", lambda found: f"rootRoute.addChildren([{found.group(1).rstrip()}, {variable}])", routes, count=1)

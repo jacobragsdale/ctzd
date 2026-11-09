@@ -826,10 +826,12 @@ path into the lockfile relative to the app, so a build in another folder looks
 in the wrong place. The validation platform serves the tarballs over HTTP for
 that reason; Jenkins needs the internal registry, or such a URL, first.
 
-Not built: the rest of what section 13 lists for the React starter, the
-display formats (2.13, basis-ui 1.13), `ctzd add dataset`, `ctzd add page`, `ctzd api list`,
-`ctzd add package`, `ctzd docs ui`, `ctzd dev --fake`, the new skills, Node in
-`install.ps1` and `ctzd setup`, and Python 3.14.
+Built since, on the same machine: the display formats (`x-basis-format`),
+`ctzd add dataset`, `ctzd add page`, `ctzd api list`, `ctzd docs ui`,
+`ctzd dev --fake`, Node and pnpm in `install.ps1` and `ctzd setup`, and Python
+3.14. Not built: `ctzd add package`, the recipes and reference files section 8
+names beside `ctzd-pages` and `ctzd-workflow`, and the new trial scenarios of
+section 13. None of the agent trials has run on the React app.
 
 ## 15. Open items
 

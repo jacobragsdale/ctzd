@@ -49,3 +49,12 @@ def mail_settings() -> MailSettings:
     except ValidationError as err:
         msg = f"Email needs the platform's mail settings ({_missing(err, 'CTZD_SMTP_')}), which only the cluster has; locally, ctzd saves messages instead."
         raise CtzdError(msg) from None
+
+
+def session_name() -> str:
+    """How a database session names the app (`ctzd:fi-bond-prices`), so a DBA can tell whose query it is; `ctzd` outside an app."""
+    try:
+        settings = app_settings()
+    except CtzdError:
+        return "ctzd"
+    return f"ctzd:{settings.sbu}-{settings.app}"
