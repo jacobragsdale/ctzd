@@ -31,6 +31,13 @@ def build_wheels(target: Path) -> Path:
     return target
 
 
+def replace_sample_page(app: Path) -> None:
+    """Take the starter's sample-page marker out, as an agent does once it has built the person's page, so the app ships."""
+    page = app / "web" / "src" / "pages" / "home.tsx"
+    if page.is_file():
+        page.write_text("".join(line for line in page.read_text().splitlines(keepends=True) if "ctzd: sample page" not in line))
+
+
 def npm_packages(base: Path, url: str) -> dict[str, str]:
     """The firm's npm packages, copied into `base/npm` and served from `url`, by package: replacements for the bundled
     release's `file:` paths, which point into the operator's home. SHIM (MVP), until a registry serves them.

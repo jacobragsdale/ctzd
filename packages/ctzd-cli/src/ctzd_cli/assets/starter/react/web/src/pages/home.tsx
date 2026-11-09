@@ -1,3 +1,4 @@
+/* ctzd: sample page. Replace it with the person's own page and delete this line; until then ctzd deploy refuses to ship the app. */
 /* The start page: each category's value as a bar chart, and every row in the grid. */
 
 import { Chart, Grid, useDataset } from "@basis/parallax";

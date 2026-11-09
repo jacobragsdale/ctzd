@@ -1,5 +1,6 @@
 /* The layout every page sits in: the app's name and a link to each page, then the page, with parallax's engine
- * started for its grids and charts. */
+ * started for its grids and charts, and a footer that says who built the app and that its figures are best effort,
+ * since the people who open a dashboard are not only the person who built it. */
 
 import { ParallaxProvider } from "@basis/parallax";
 import { Link, Outlet } from "@tanstack/react-router";
@@ -24,6 +25,10 @@ function Layout(): ReactElement {
         <main className="flex w-full flex-1 flex-col gap-6 p-6">
           <Outlet />
         </main>
+        <footer className="border-t px-6 py-3 text-xs text-muted-foreground">
+          Built by {{owners}} with ctzd, by someone who does not code. The figures are best effort: check them against
+          their source before you rely on them.
+        </footer>
       </div>
     </ParallaxProvider>
   );

@@ -182,10 +182,20 @@ def new(ctx: Context, *, name: str, sbu: str, ui: Ui, directory: Path | None, ow
         git.push_main()
     url = platform.app_url(sbu, name)
     return Outcome(
-        summary=f"Created {name} in {root}." + ("" if created is None else f" It will be live at {url} in a few minutes."),
-        data={"path": str(root), "repo": None if created is None else created.repo, "url": url},
-        next_steps=[f"Work inside {root}. Read {root / 'AGENTS.md'} and the skills it names before you write code.", "Run `ctzd dev` to see it locally, then `ctzd deploy` to ship changes."],
+        summary=f"Created {name} in {root}." + ("" if created is None else f" It goes live at {url} with its first `ctzd deploy`."),
+        data={"path": str(root), "repo": None if created is None else created.repo, "url": url, "guide": _guide(root)},
+        next_steps=[
+            f"Read `guide`, the app's {root / 'AGENTS.md'}: your editor may hide that file. Then work inside {root} and read the skills it names before you write code.",
+            "Run `ctzd dev` to see it locally, then `ctzd deploy` to ship changes.",
+        ],
     )
+
+
+def _guide(root: Path) -> str | None:
+    """The app's AGENTS.md, returned by `ctzd new` and `ctzd open`: the first session starts outside the app folder,
+    where Cursor hides the gitignored file from its agent."""
+    path = root / "AGENTS.md"
+    return path.read_text(encoding="utf-8") if path.is_file() else None
 
 
 def _install_new(ctx: Context, root: Path, *, platform: config.PlatformConfig, app: AppConfig, release: m.PlatformRelease) -> None:
@@ -231,8 +241,8 @@ def open_app(ctx: Context, *, name: str, sbu: str, directory: Path | None) -> Ou
     installed = _uv(root, "sync")
     return Outcome(
         summary=f"Opened {name} in {root}.",
-        data={"path": str(root), "url": platform.app_url(sbu, name)},
-        next_steps=[f"Work inside {root}. Read {root / 'AGENTS.md'} before you change anything: it says what to do first when the live app is wrong.", *hints]
+        data={"path": str(root), "url": platform.app_url(sbu, name), "guide": _guide(root)},
+        next_steps=[f"Read `guide`, the app's {root / 'AGENTS.md'}, before you change anything: it says what to do first when the live app is wrong. Then work inside {root}.", *hints]
         + ([] if installed.ok else ["`uv sync` failed; run `ctzd check` to see why."]),
     )
 
@@ -714,6 +724,9 @@ def deploy(ctx: Context, *, message: str | None, detach: bool, timeout: float) -
     if not gate.ok:
         gate.summary = "Not deployed. " + gate.summary
         return gate
+    sample = next((step for step in steps if step.name == "sample pages" and step.warning is not None), None)
+    if sample is not None:
+        return Outcome(summary="Not deployed. " + sample.detail, data=gate.data, next_steps=["Build the page the person asked for in place of the sample, then run `ctzd deploy` again."], ok=False)
     platform = ctx.platform_factory()
     # The platform's own changes go in a commit of their own, before the person's change; with an upgrade, so do the
     # automatic fixes the new release's checks made to code the person had not touched.
@@ -868,7 +881,7 @@ def ci_smoke(ctx: Context, *, url: str) -> Outcome:
     _root, app = _app(ctx)
     from ctzd_cli import smoke  # noqa: PLC0415 - playwright comes with the optional ci extra, so import it only here.
 
-    result = smoke.smoke(url, ui=app.app.ui)
+    result = smoke.smoke(url, ui=app.app.ui, paths=smoke.page_paths(_root))
     return Outcome(
         summary="The dashboard rendered without errors." if result.ok else "The dashboard shows errors: " + "; ".join(result.problems),
         data={"pages": result.pages, "problems": result.problems},

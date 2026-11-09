@@ -89,7 +89,15 @@ Rules, which `ctzd check` enforces with the fix in each message:
   `Intl.NumberFormat`): use the number components or parallax's `formats`, and
   `numberText(value, { decimals })` from `@basis/ui` for a number inside a string.
 - Never call `fetch`: data comes only through `#api/client.ts`.
-- Under each page's title, say where its numbers come from and the date they are for.
+- Under each page's title, say where its numbers come from, in the person's words ("the
+  pricing team's end-of-day prices"), and the date they are for, taken from the data (the
+  newest `as_of_date` in the rows), never the day the page loaded. The people who open a
+  dashboard are not only the person who built it.
+- The footer in `web/src/pages/layout.tsx` names the app's owner and says the figures are best
+  effort. Keep it.
+- `web/src/pages/home.tsx` starts as the starter's sample page, marked by its first comment line.
+  Replace it with the person's own page and delete that line: until then `ctzd deploy` refuses
+  to ship the app, and Jenkins deploys nothing.
 
 ## Add a dataset and a page
 

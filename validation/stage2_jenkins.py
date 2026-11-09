@@ -22,7 +22,7 @@ import httpx
 from ctzd_api.clients import JenkinsClient
 from ctzd_api.gateways import JenkinsBuild
 from ctzd_api.service import DELETE_JOB, ROLLBACK_JOB
-from validation.harness import CTZD, REPO, Report, build_wheels, platform_config, tool
+from validation.harness import CTZD, REPO, Report, build_wheels, platform_config, replace_sample_page, tool
 
 IMAGE = "ctzd-validation-jenkins"
 CONTAINER = "ctzd-validation-jenkins"
@@ -126,6 +126,7 @@ def prepare(work: Path) -> None:
         if created.get("ok") is not True:
             msg = f"could not create {name}: {created}"
             raise RuntimeError(msg)
+        replace_sample_page(work / "apps" / name)
         publish(work, work / "apps" / name, f"fi-{name}")
 
 

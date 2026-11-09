@@ -1,12 +1,14 @@
-"""`ctzd ci smoke`: open the live dashboard in a headless browser and fail on an error the page throws, a 5xx, or a
-page that never loads.
+"""`ctzd ci smoke`: open every page of the live dashboard in a headless browser and fail on an error a page throws, a
+5xx, or a page that never loads. The pages are the paths `web/src/nav.ts` and `web/src/routes.ts` name.
 
 The 5xx are those the page's own requests get, such as a dataset that failed. Every problem is reported as text.
 
 Needs the `ctzd[ci]` extra and a Playwright Chromium on the Jenkins agent.
 """
 
+import re
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Page, Response, ViewportSize, sync_playwright
@@ -73,8 +75,21 @@ def _check(page: Page, url: str, ui: Ui, result: SmokeResult, timeout_ms: int) -
             result.problems.append(f"{url}: {errors.first.inner_text(timeout=5_000)[:500]}")
 
 
-def smoke(url: str, *, ui: Ui, timeout_ms: int = _TIMEOUT_MS) -> SmokeResult:
-    """Every problem the dashboard shows, as text."""
+_PATH = re.compile(r"""\bpath:\s*["'](/[^"'$]*)["']""")
+
+
+def page_paths(root: Path) -> list[str]:
+    """The app's pages, `/` first: every fixed path its routes and header name (a path with a parameter cannot be opened)."""
+    found = {"/"}
+    for name in ("nav.ts", "routes.ts"):
+        path = root / "web" / "src" / name
+        if path.is_file():
+            found |= set(_PATH.findall(path.read_text(encoding="utf-8")))
+    return sorted(found, key=lambda page: (page != "/", page))
+
+
+def smoke(url: str, *, ui: Ui, paths: list[str] | None = None, timeout_ms: int = _TIMEOUT_MS) -> SmokeResult:
+    """Every problem the dashboard's pages show, as text."""
     result = SmokeResult()
     with sync_playwright() as playwright:
         browser = playwright.chromium.launch()
@@ -83,7 +98,8 @@ def smoke(url: str, *, ui: Ui, timeout_ms: int = _TIMEOUT_MS) -> SmokeResult:
             _watch_server_errors(page, result)
             if ui == "react":
                 _watch_page_errors(page, result)
-            _check(page, url, ui, result, timeout_ms)
+            for path in paths or ["/"]:
+                _check(page, url.rstrip("/") + path, ui, result, timeout_ms)
         finally:
             browser.close()
     return result

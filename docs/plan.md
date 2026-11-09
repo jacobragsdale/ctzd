@@ -134,7 +134,7 @@ basis-ui) and nothing else.
 | Job outputs | Parquet on ADLS Gen2 at `<sbu>/<app>/<table>/`, written atomically by cluster jobs only, with the last versions kept. No writes back to source systems. | A job precomputes slow queries; the dashboard reads parquet in milliseconds. |
 | Notifications | `ctzd.notify.email` (SMTP relay, DataFrames attached as xlsx or csv) and `ctzd.notify.teams` (Workflows webhook). A table sent with its row type (`ctzd.notify.Table`) goes into an HTML body beside the plain one, formatted as the page formats it, with the date the data is for and a link to the dashboard, and into a workbook that keeps the raw numbers and shows them through Excel number formats from the column kinds, with a frozen header, column widths, and a filter. No charts or templates. Owners get an email when a job fails. | "Send me X every Monday" is the most common job. |
 | Data stack | pandas 3 is the default. Oracle through `python-oracledb` thin mode, MSSQL through `mssql-python`, both fetching through Arrow. REST through the `ctzd-core` client. | Most data comes from REST, Oracle, and MSSQL. Thin mode needs no Oracle client; no source needs Native Network Encryption. |
-| Code layout | `src/app/data/` (the only I/O), `src/app/logic/` (pure functions), `src/app/api/` and `src/app/jobs/` (entry points), and `web/` (the pages), enforced by import-linter and basis-ui's lint. | Agents physically cannot put a query in a page or a route. |
+| Code layout | `src/app/data/` (the only I/O), `src/app/logic/` (pure functions), `src/app/api/` and `src/app/jobs/` (entry points), and `web/` (the pages), enforced by import-linter and basis-ui's lint; since datasets and jobs import `ctzd` for its decorators and messages, the layers step also refuses a `ctzd.query`, `ctzd.rest`, or `ctzd.read_table` call in them. | `ctzd check` refuses a query in a page or a route. |
 | Python | Python 3.14, which basis requires, from the platform's mirror of uv's Python builds. Airflow's own project stays on 3.13. | One version across ctzd and basis. |
 | Python standards | ruff with every rule family named in the locked `ruff.toml` (not `ALL`, so a newer ruff adds none by itself), ty with every rule as an error, both handled by the agent. Tests fail on a warning the app's own code raises or causes, and on pandas' `ChainedAssignmentError`; a dependency's deprecation is listed in the check's output and fails nothing. Light data validation: loader schemas check required columns and dtypes only. 70% branch coverage on `logic/`, when the app has logic. | Strict where the agent pays the cost, light where it would slow people down. Revisit the strict rules once the agent trials in [validation-plan.md](validation-plan.md) measure what they cost. |
 | Tests | `ctzd check` runs the same gates locally and in Jenkins. Jenkins adds a post-deploy smoke test in a headless browser that fails, and rolls the release back, on an error, a failed request, or a page that never loads; it takes no screenshot. Platform code has ordinary test suites. Agent trials against a local copy of the platform (`validation/`, [validation-plan.md](validation-plan.md)) check the CLI's output and the skills with real agents; they inform changes and are not a gate. | One definition of "green". Only an agent shows whether the skills and messages work for an agent. |
@@ -230,8 +230,8 @@ client and to the theme's components and tokens.
 |---|---|
 | `ctzd setup` | Checks uv, git (installing MinGit on Windows when missing), the GitHub login, and the agent setup; once all pass, returns `guide`, the start guide from the current platform release. |
 | `ctzd login --start`, `ctzd login --wait` | GitHub device-flow login in two steps, because agents see output only when a command ends: `--start` returns the code to show the person, `--wait` blocks until they approve it. The token goes into the OS credential store. |
-| `ctzd new NAME --sbu SBU --ui react\|none` | Creates the GitHub repo through the platform API and writes the current platform release's starter app into a new folder: for `react`, a working app with the shell, a grid page, a chart page and a filter bar on fake data. `--offline` writes the files only. |
-| `ctzd open NAME --sbu SBU` | Clones an existing app into a new folder. |
+| `ctzd new NAME --sbu SBU --ui react\|none` | Writes the current platform release's starter app into a new folder and installs it, then creates the GitHub repo through the platform API and pushes it; a failure before the push leaves nothing behind, so the same command works again. For `react`, a working app with the shell and a sample page, which never ships (section 8). Returns the app's `AGENTS.md` as `guide`, because the first session starts outside the app folder, where Cursor hides the gitignored file. `--offline` writes the files only. |
+| `ctzd open NAME --sbu SBU` | Clones an existing app into a new folder, and returns its `AGENTS.md` as `guide`. |
 | `ctzd dev [--port N] [--fake]`, `ctzd dev --stop` | Starts the app locally in the background, against real data or, with `--fake`, the rows in `fixtures/SOURCE/NAME.csv` in place of every source, and returns its URL; run again, it restarts it. For a React app it runs the API and the page server together and regenerates the client when the API changes. `--stop` stops it, so an agent never has to find and kill processes. It stops only a process that answers on its port with the random id `ctzd dev` gave it, so a stale record never kills another program. |
 | `ctzd shot [PATH]` | A picture of a page `ctzd dev` serves (default `/`), under `.ctzd/shots/`, and each problem on it, one line each. Not a gate. |
 | `ctzd exec -- COMMAND` | Runs a command in the app's environment with its source credentials, as `ctzd dev` does, such as a look at what a loader returns from the live source. Agents never read or load `.env` themselves. |
@@ -470,9 +470,15 @@ the guidance is the smallest part of the system:
 - **Load little.** The component catalogue is generated from the pinned
   `@basis/ui`, and `ctzd docs ui` gives one component's detail. The guidance
   names what not to read: `node_modules/`, the generated client, the lockfiles.
-- **Every page shows its source and the time its data was current,** and the
-  starter's sample pages are marked, so `ctzd deploy` refuses while one is left
-  unchanged.
+- **Every page shows its source and the date its data is for,** taken from the
+  rows, under its title, and the layout's footer names the app's owner and says
+  the figures are best effort, built by someone who does not code: the people
+  who open a dashboard are not only the person who built it. The starter's
+  sample page is marked by its first line: `ctzd check` warns while it is
+  there, `ctzd deploy` refuses, and Jenkins' check fails, so the first push
+  that `ctzd new` makes deploys nothing. (parallax's own footer still shows when
+  the browser loaded the data, "just now"; basis-ui is asked to show the data's
+  date instead.)
 
 **The order of work for a person who does not code**, taught in `AGENTS.md`
 and `ctzd-workflow`:

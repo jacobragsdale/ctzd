@@ -35,7 +35,7 @@ def write_files(root: Path, files: dict[str, str]) -> None:
 
 def scaffold(root: Path, *, platform: PlatformConfig, app: AppConfig, release: m.PlatformRelease) -> None:
     sbu = platform.sbu(app.app.sbu)
-    tokens = {"name": platform.repo_name(app.app.sbu, app.app.name), "title": title_for(app.app.name), "sbu_name": sbu.name}
+    tokens = {"name": platform.repo_name(app.app.sbu, app.app.name), "title": title_for(app.app.name), "sbu_name": sbu.name, "owners": ", ".join(app.app.owners)}
     if app.app.ui == "react":
         tokens |= {f"npm:{package}": spec for package, spec in sync.npm_pins(platform, release).items()}
     write_files(root, assets.starter_files(release, app.app.ui, tokens))

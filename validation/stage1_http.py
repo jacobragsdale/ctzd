@@ -27,7 +27,7 @@ from ctzd_api.gateways import AppState, JenkinsBuild
 from ctzd_api.releases import ReleaseStore
 from ctzd_api.service import DELETE_JOB, ROLLBACK_JOB, Services
 from ctzd_cli import config, release, releases
-from validation.harness import Report, build_wheels, platform_config, run_ctzd, tool
+from validation.harness import Report, build_wheels, platform_config, replace_sample_page, run_ctzd, tool
 
 APP = "bond-prices"
 REPO_NAME = "fi-bond-prices"
@@ -147,6 +147,7 @@ def make_app(report: Report, work: Path, env: dict[str, str]) -> Path:
     app = work / "apps" / APP
     report.expect("new --offline writes the app on the seed release", ok=created.ok and (app / ".ctzd" / "version").read_text() == f"{BASE}\n", seen=created.raw)
     (app / "app.toml").write_text(app_toml())
+    replace_sample_page(app)
     synced = run_ctzd(["sync"], cwd=app, env=env)
     report.expect("sync regenerates .env.example from app.toml", ok=synced.ok and "CTZD_SOURCE_FI_PRICING=" in (app / ".env.example").read_text(), seen=synced.raw)
     git(work, "init", "--quiet", "--bare", "--initial-branch=main", "remote.git")

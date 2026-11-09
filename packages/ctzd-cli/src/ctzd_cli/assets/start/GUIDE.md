@@ -49,8 +49,10 @@ and rename it only with their agreement.
    name with the person in one line.
 5. Run `ctzd new NAME --sbu SBU --ui UI --json`. It creates the repository and
    the app folder under the current folder (`--dir PARENT` puts it elsewhere).
-   It returns `path`, `repo`, and `url`; the starter app goes live at `url`
-   within a few minutes. Never add `--offline`: it is for platform tests, and
+   It returns `path`, `repo`, `url`, and `guide`, the app's `AGENTS.md`: read
+   `guide` now, since your editor may hide that file. The app goes live at
+   `url` with its first `ctzd deploy`, once its sample page is replaced.
+   Never add `--offline`: it is for platform tests, and
    an app made with it can never be deployed.
 6. Errors: "already exists and is not empty" means choose another name or
    `--dir`; "does not know the owner's email" means log in first or pass
@@ -60,13 +62,14 @@ and rename it only with their agreement.
 
 If they give a link such as `https://fi-bond-prices.ctzd.contoso.com`, the SBU
 is `fi` and the name is `bond-prices`. Run `ctzd open NAME --sbu SBU --json`
-(`--dir PARENT` to choose where). It returns `path` and `url`. "You do not have
+(`--dir PARENT` to choose where). It returns `path`, `url`, and `guide`, the
+app's `AGENTS.md`, to read now. "You do not have
 access" means the app's owner must add them; tell the person.
 
 ## Then work inside the app
 
 - Work from `path`: every app command finds the app from the current folder.
-- Read `path/AGENTS.md` and the skills in `path/.agents/skills/`, starting with
+- `guide` is `path/AGENTS.md`. Read it, then the skills in `path/.agents/skills/`, starting with
   `ctzd-workflow`, `ctzd-pages`, and the `sbu-SBU` skill, before you write
   code. If you were started in a parent folder, your agent did not load them:
   read them by path. Cursor hides these gitignored files from its file tools

@@ -1,5 +1,6 @@
 """`ctzd check`: every gate, the same locally and in Jenkins."""
 
+import ast
 import datetime as dt
 import re
 import tomllib
@@ -221,9 +222,33 @@ def types(root: Path) -> Step:
     return Step("types", "passed") if result.ok else Step("types", "failed", proc.tail(result.output))
 
 
+# What only `src/app/data/` may call: a dataset or a job reaches a source or a table through a loader.
+_READS = frozenset({"query", "rest", "read_table"})
+
+
+def entry_point_reads(root: Path) -> list[str]:
+    """Each place a dataset or a job reads a source or a table itself, which import-linter cannot see: both import `ctzd`."""
+    found: list[str] = []
+    for folder in ("api", "jobs"):
+        for path in sorted((root / "src" / "app" / folder).glob("**/*.py")):
+            try:
+                tree = ast.parse(path.read_text(encoding="utf-8"))
+            except SyntaxError:
+                continue  # the lint step reports it
+            shown = path.relative_to(root).as_posix()
+            for call in (item for item in ast.walk(tree) if isinstance(item, ast.Call)):
+                func = call.func
+                if isinstance(func, ast.Attribute) and func.attr in _READS and isinstance(func.value, ast.Name) and func.value.id == "ctzd":
+                    found.append(f"{shown}:{call.lineno}: ctzd.{func.attr}() reads data outside src/app/data/; call a loader there instead (ctzd-data).")
+    return found
+
+
 def layers(root: Path) -> Step:
     result = _tool(root, "lint-imports", "--no-cache")
-    return Step("layers", "passed") if result.ok else Step("layers", "failed", proc.tail(result.output, 40))
+    reads = entry_point_reads(root)
+    if result.ok and not reads:
+        return Step("layers", "passed")
+    return Step("layers", "failed", "\n".join([*([] if result.ok else [proc.tail(result.output, 40)]), *reads]))
 
 
 def sql_problem(text: str) -> str | None:
@@ -332,6 +357,21 @@ def deprecations(output: str) -> list[str]:
         if line not in found:
             found.append(line)
     return found
+
+
+SAMPLE_MARKER = "ctzd: sample page"
+"""The first line of the starter's sample page: an app still showing it is not ready to ship."""
+
+
+def sample_pages(root: Path, mode: Mode) -> Step:
+    """The starter's sample page, left in place, never ships: Jenkins fails on it, and `ctzd deploy` refuses it."""
+    found = sorted(path.relative_to(root).as_posix() for path in (root / WEB / "src").rglob("*.tsx") if SAMPLE_MARKER in path.read_text(encoding="utf-8"))
+    if not found:
+        return Step("sample pages", "passed")
+    detail = f"{', '.join(found)} is still the starter's sample page. Replace it with the person's own page and delete its first comment line; until then the app is not deployed."
+    if mode == "ci":
+        return Step("sample pages", "failed", detail)
+    return Step("sample pages", "passed", detail, warning=detail)
 
 
 def tests(root: Path) -> Step:
@@ -485,6 +525,6 @@ def _run(target: Target, mode: Mode, *, fast: bool, first: Step) -> list[Step]:
         steps.append(client(root, mode))
     steps += [formatting(root, mode), lint(root, mode), types(root), layers(root), sql_files(root), numbers(root)]
     if react:
-        steps += [web_check(root, mode), web_build(root)]
+        steps += [web_check(root, mode), web_build(root), sample_pages(root, mode)]
     steps.append(Step("tests", "skipped", "--fast") if fast else tests(root))
     return steps
