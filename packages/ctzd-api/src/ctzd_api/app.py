@@ -5,6 +5,7 @@ import time
 from collections.abc import Callable
 from typing import Annotated
 
+import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 
@@ -56,13 +57,28 @@ Login = Annotated[str, Depends(current_login)]
 def _api_error(_request: Request, error: Exception) -> JSONResponse:
     if not isinstance(error, ApiError):
         raise error
-    return JSONResponse(status_code=error.status, content={"detail": error.detail})
+    content = {"detail": error.detail} | ({} if error.hint is None else {"hint": error.hint})
+    return JSONResponse(status_code=error.status, content=content)
+
+
+def _upstream_error(_request: Request, error: Exception) -> JSONResponse:
+    """A service behind the platform (GitHub, Jenkins, Airflow, the cluster, Key Vault) failed: say which, and what to do."""
+    if not isinstance(error, httpx.HTTPError):
+        raise error
+    try:
+        where = f"{error.request.method} {error.request.url.host}{error.request.url.path}"
+    except RuntimeError:
+        where = "a service the platform uses"
+    answer = f"answered {error.response.status_code}" if isinstance(error, httpx.HTTPStatusError) else "could not be reached"
+    content = {"detail": f"The platform could not finish the request: {where} {answer}.", "hint": "Try again in a few minutes. If it keeps failing, tell the platform team this message."}
+    return JSONResponse(status_code=502, content=content)
 
 
 def create_app(services: Services) -> FastAPI:
     api = FastAPI(title="ctzd platform API", version="1")
     api.state.logins = LoginCache(services.github.login_for)
     api.add_exception_handler(ApiError, _api_error)
+    api.add_exception_handler(httpx.HTTPError, _upstream_error)
 
     @api.get("/healthz")
     def healthz() -> dict[str, str]:

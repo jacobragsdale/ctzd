@@ -40,6 +40,12 @@ def test_schedules_must_be_five_field_cron(schedule: str) -> None:
         Job(name="refresh", schedule=schedule)
 
 
+@pytest.mark.parametrize(("schedule", "problem"), [("99 99 * * *", "not a cron Airflow accepts"), ("0 7 * * 8", "not a cron Airflow accepts"), ("0 7 31 2 *", "never runs")])
+def test_schedules_airflow_would_refuse_or_never_run_are_refused(schedule: str, problem: str) -> None:
+    with pytest.raises(ValueError, match=problem):
+        Job(name="refresh", schedule=schedule)
+
+
 def test_duplicate_job_names_are_rejected() -> None:
     with pytest.raises(CliError, match="unique"):
         appconfig.parse(VALID + '\n[[jobs]]\nname = "refresh"\nschedule = "0 7 * * *"\n')

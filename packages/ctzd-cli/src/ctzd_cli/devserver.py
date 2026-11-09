@@ -3,11 +3,17 @@
 The agent runs `ctzd dev` from a shell that returns, so the server runs in its own
 session and its pid and port live in `.ctzd/dev.json`; stopping by that record means
 the agent never has to find or kill processes itself.
+
+A record goes stale (a new desktop session, ports handed out in another order), and
+then another program may answer on its port. So the record holds a random token that
+the server reports at `/_ctzd/dev`, and a process is stopped only when its port
+answers with that token.
 """
 
 import contextlib
 import json
 import os
+import secrets
 import signal
 import socket
 import subprocess
@@ -18,6 +24,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import IO
 
+import httpx
+
 from ctzd_cli import proc
 
 STATE = Path(".ctzd") / "dev.json"
@@ -27,12 +35,15 @@ _PORTS_TRIED = 20
 _START_SECONDS = 180.0  # The first `uv run` in a fresh app installs its packages.
 _STOP_SECONDS = 10.0
 _POLL_SECONDS = 0.5
+ID_VARIABLE = "CTZD_DEV_ID"  # ctzd.api reports it at IDENTITY_PATH
+IDENTITY_PATH = "/_ctzd/dev"
 
 
 @dataclass(frozen=True)
 class Server:
     pid: int
     port: int
+    token: str
 
     @property
     def url(self) -> str:
@@ -70,17 +81,27 @@ def free_port(first: int = FIRST_PORT) -> int | None:
     return next((port for port in range(first, first + _PORTS_TRIED) if port_free(port)), None)
 
 
+def reports(port: int, token: str) -> bool:
+    """Whether the program on `port` is the server that `ctzd dev` gave `token`."""
+    try:
+        response = httpx.get(f"http://127.0.0.1:{port}{IDENTITY_PATH}", timeout=2.0)
+    except httpx.HTTPError:
+        return False
+    return response.status_code == httpx.codes.OK and secrets.compare_digest(response.text.strip(), token)
+
+
 def recorded(root: Path) -> Server | None:
-    """The server `ctzd dev` started here, if it still answers on its port."""
+    """The server `ctzd dev` started here, if it still answers on its port with its token."""
     path = root / STATE
     try:
         raw: object = json.loads(path.read_text(encoding="utf-8"))
     except OSError, ValueError:
         return None
     match raw:
-        case {"pid": int(pid), "port": int(port)} if answering(port):
-            return Server(pid=pid, port=port)
+        case {"pid": int(pid), "port": int(port), "token": str(token)} if reports(port, token):
+            return Server(pid=pid, port=port, token=token)
         case _:
+            # Gone, or another program now answers on the port: forget it and kill nothing.
             path.unlink(missing_ok=True)
             return None
 
@@ -88,13 +109,14 @@ def recorded(root: Path) -> Server | None:
 def start(root: Path, command: Sequence[str], *, port: int, env: Mapping[str, str], clock: Callable[[], float] = time.monotonic) -> Started | Failed:
     """Start `command`, which serves on `port`, and wait until it answers there or exits."""
     (root / LOG).parent.mkdir(parents=True, exist_ok=True)
+    token = secrets.token_hex(16)
     with (root / LOG).open("w", encoding="utf-8") as log:
-        process = _spawn(command, cwd=root, env=env, log=log)
-    server = Server(pid=process.pid, port=port)
-    (root / STATE).write_text(json.dumps({"pid": server.pid, "port": server.port}), encoding="utf-8")
+        process = _spawn(command, cwd=root, env={**env, ID_VARIABLE: token}, log=log)
+    server = Server(pid=process.pid, port=port, token=token)
+    (root / STATE).write_text(json.dumps({"pid": server.pid, "port": server.port, "token": token}), encoding="utf-8")
     deadline = clock() + _START_SECONDS
     while clock() < deadline:
-        if answering(port):
+        if answering(port) and reports(port, token):
             return Started(server, process)
         code = process.poll()
         if code is not None:

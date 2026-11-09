@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from basis import api
-from starlette.types import ASGIApp
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from ctzd import testing
 from ctzd.datasets import registered
@@ -27,6 +27,9 @@ FAKE_FIXTURES = "CTZD_FAKE_FIXTURES"
 PAGES = "web/dist"
 """The built pages, relative to the app's folder, as basis-api serves a UI."""
 SERVICE_NAME = "app"
+DEV_ID = "CTZD_DEV_ID"
+"""A random id set by `ctzd dev`; the server reports it at DEV_IDENTITY_PATH so the CLI stops only the server it started."""
+DEV_IDENTITY_PATH = "/_ctzd/dev"
 
 
 def service(module: str = DATASETS_MODULE, *, pages: str | None = None) -> api.Service:
@@ -64,4 +67,20 @@ def asgi(module: str = DATASETS_MODULE, *, pages: str = PAGES) -> ASGIApp:
     fixtures = os.environ.get(FAKE_FIXTURES)
     if fixtures is not None and fixtures != "":
         testing.serve_fixtures(Path(fixtures))
-    return api.build(service(module, pages=pages)).asgi
+    app = api.build(service(module, pages=pages)).asgi
+    token = os.environ.get(DEV_ID, "")
+    return app if token == "" else _reporting(app, token)
+
+
+def _reporting(app: ASGIApp, token: str) -> ASGIApp:
+    """`app`, answering `ctzd dev`'s token at DEV_IDENTITY_PATH."""
+    body = token.encode()
+
+    async def reporting(scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] == "http" and scope["path"] == DEV_IDENTITY_PATH:
+            await send({"type": "http.response.start", "status": 200, "headers": [(b"content-type", b"text/plain"), (b"cache-control", b"no-store")]})
+            await send({"type": "http.response.body", "body": body})
+            return
+        await app(scope, receive, send)
+
+    return reporting

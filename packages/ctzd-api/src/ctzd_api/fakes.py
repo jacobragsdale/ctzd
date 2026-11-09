@@ -68,6 +68,10 @@ class FakeAirflow:
     runs: list[str] = field(default_factory=list)
     logs: dict[str, str] = field(default_factory=dict)
     states: dict[str, str] = field(default_factory=dict)
+    missing: set[str] = field(default_factory=set)  # DAG ids Airflow has not loaded
+
+    def dag_loaded(self, dag_id: str) -> bool:
+        return dag_id not in self.missing
 
     def trigger(self, dag_id: str) -> str:
         self.runs.append(dag_id)

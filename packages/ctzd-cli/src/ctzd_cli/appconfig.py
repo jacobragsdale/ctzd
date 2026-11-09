@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Literal
 
 import tomlkit
+from croniter import CroniterBadCronError, CroniterBadDateError, CroniterNotAlphaError, croniter
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 from tomlkit.items import AoT, Table
 
@@ -114,10 +115,24 @@ class AppConfig(BaseModel):
 
 
 def check_cron(value: str) -> None:
+    """A five-field cron that Airflow accepts and that runs: checked with croniter, the library Airflow's timetables use.
+
+    Airflow drops a DAG whose schedule croniter refuses (`99 99 * * *`, `0 7 * * 8`), and one that never comes round
+    (`0 7 31 2 *`) never runs; either way nobody is told.
+    """
     fields = value.split()
+    example = "a five-field cron expression such as '0 7 * * 1-5' (minute hour day-of-month month day-of-week)"
     if len(fields) != _CRON_FIELDS or not all(_CRON_FIELD.fullmatch(field) for field in fields):
-        msg = f"schedule {value!r} must be a five-field cron expression such as '0 7 * * 1-5'"
+        msg = f"schedule {value!r} must be {example}"
         raise ValueError(msg)
+    try:
+        croniter(value).get_next(float)
+    except (CroniterBadCronError, CroniterNotAlphaError) as err:
+        msg = f"schedule {value!r} is not a cron Airflow accepts ({err}); use {example}, with minutes 0-59, hours 0-23, and days of the week 0-7 or MON-SUN"
+        raise ValueError(msg) from None
+    except CroniterBadDateError:
+        msg = f"schedule {value!r} never runs: no date matches it"
+        raise ValueError(msg) from None
 
 
 def find_root(start: Path) -> Path:

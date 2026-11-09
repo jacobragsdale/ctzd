@@ -4,6 +4,8 @@ import re
 from dataclasses import dataclass
 from typing import Literal
 
+import httpx
+
 from ctzd_api.gateways import Airflow, GitHub, Jenkins, JenkinsBuild, Kube, Permission, Secrets
 from ctzd_api.releases import BrokenReleaseError, ReleaseStore
 from ctzd_cli import api_models as m
@@ -22,11 +24,14 @@ _NEEDED: dict[Needed, int] = {"read": 1, "write": 2, "admin": 3}
 
 
 class ApiError(Exception):
+    """A refusal the CLI shows as it is: `detail` is the sentence, `hint` the next step."""
+
     status = 400
 
-    def __init__(self, detail: str) -> None:
+    def __init__(self, detail: str, *, hint: str | None = None) -> None:
         super().__init__(detail)
         self.detail = detail
+        self.hint = hint
 
 
 class ForbiddenError(ApiError):
@@ -132,6 +137,10 @@ def status(services: Services, login: str, app: AppRef) -> m.AppStatus:
     jobs = () if config is None else config.jobs
     builds = services.jenkins.builds(repo)
     last = max(builds, key=lambda build: build.number, default=None)
+    try:
+        missing = tuple(job.name for job in jobs if not services.airflow.dag_loaded(dag_id(app.sbu, app.name, job.name)))
+    except httpx.HTTPError:
+        missing = ()  # Airflow not answering must not hide the rest of the status.
     return m.AppStatus(
         sbu=app.sbu,
         name=app.name,
@@ -140,6 +149,7 @@ def status(services: Services, login: str, app: AppRef) -> m.AppStatus:
         paused=state.paused,
         dags={job.name: services.platform.dag_url(app.sbu, app.name, job.name) for job in jobs},
         last_build=to_build(last, log_tail=None),
+        missing_dags=missing,
     )
 
 
@@ -185,6 +195,10 @@ def run_job(services: Services, login: str, app: AppRef, job: str) -> m.JobRunCr
         msg = f"{repo} has no deployed job {job!r}; deploy it first."
         raise NotFoundError(msg)
     dag = dag_id(app.sbu, app.name, job)
+    if not services.airflow.dag_loaded(dag):
+        msg = f"Airflow has not loaded the job {job!r} yet."
+        hint = "A new job appears in Airflow a few minutes after its deploy; run `ctzd status`, and run the job again once it no longer lists it as missing."
+        raise NotFoundError(msg, hint=hint)
     run_id = services.airflow.trigger(dag)
     return m.JobRunCreated(dag_id=dag, run_id=run_id, url=f"{services.platform.dag_url(app.sbu, app.name, job)}/runs/{run_id}")
 

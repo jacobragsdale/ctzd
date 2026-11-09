@@ -231,7 +231,7 @@ client and to the theme's components and tokens.
 | `ctzd login --start`, `ctzd login --wait` | GitHub device-flow login in two steps, because agents see output only when a command ends: `--start` returns the code to show the person, `--wait` blocks until they approve it. The token goes into the OS credential store. |
 | `ctzd new NAME --sbu SBU --ui react\|none` | Creates the GitHub repo through the platform API and writes the current platform release's starter app into a new folder: for `react`, a working app with the shell, a grid page, a chart page and a filter bar on fake data. `--offline` writes the files only. |
 | `ctzd open NAME --sbu SBU` | Clones an existing app into a new folder. |
-| `ctzd dev [--port N] [--fake]`, `ctzd dev --stop` | Starts the app locally in the background, against real data or, with `--fake`, the rows in `fixtures/SOURCE/NAME.csv` in place of every source, and returns its URL; run again, it restarts it. For a React app it runs the API and the page server together and regenerates the client when the API changes. `--stop` stops it, so an agent never has to find and kill processes. |
+| `ctzd dev [--port N] [--fake]`, `ctzd dev --stop` | Starts the app locally in the background, against real data or, with `--fake`, the rows in `fixtures/SOURCE/NAME.csv` in place of every source, and returns its URL; run again, it restarts it. For a React app it runs the API and the page server together and regenerates the client when the API changes. `--stop` stops it, so an agent never has to find and kill processes. It stops only a process that answers on its port with the random id `ctzd dev` gave it, so a stale record never kills another program. |
 | `ctzd shot [PATH]` | A picture of a page `ctzd dev` serves (default `/`), under `.ctzd/shots/`, and each problem on it, one line each. Not a gate. |
 | `ctzd exec -- COMMAND` | Runs a command in the app's environment with its source credentials, as `ctzd dev` does, such as a look at what a loader returns from the live source. Agents never read or load `.env` themselves. |
 | `ctzd add dataset NAME [--source SRC]` | Writes a dataset's row type, loader, SQL file (with `--source`, which it lists in `app.toml`), and test, and regenerates the client. |
@@ -579,8 +579,15 @@ A failed run emails the app's owners through the SMTP provider's
 `SmtpNotifier`, which needs Airflow's `smtp_default` connection. A spec that
 fails to parse is logged and skipped so the other apps' jobs keep running.
 Because the specs live in the same git repository as the factory DAG, a
-GitDagBundle version pins both together. `ctzd deploy` prints each DAG's link
-and `ctzd run` triggers a run and prints its link. The Airflow UI runs the
+GitDagBundle version pins both together. A schedule is checked when it is
+written, with croniter, the library Airflow's timetables use, so a schedule
+Airflow would refuse (`0 7 * * 8`) or one that never comes round (`0 7 31 2 *`)
+never reaches a spec. `ctzd deploy` waits a few minutes for Airflow to load
+each job's DAG and prints each DAG's link, naming any job Airflow has not
+loaded, as `ctzd status` does; `ctzd run` refuses such a job in a sentence
+instead of failing on Airflow's 404, and triggers a run and prints its link
+otherwise. When a service behind the platform API fails, the API answers 502
+with a sentence naming it and a next step. The Airflow UI runs the
 simple auth manager in all-admins mode until company sign-in is switched on at
 its route (section 11). The factory is tested by loading it in Airflow 3.3
 (`airflow/tests`). A daily platform DAG in `ctzd-dags`, `ctzd_table_janitor`,

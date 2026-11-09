@@ -255,3 +255,20 @@ def test_opening_an_app_that_does_not_exist_says_so_plainly(tmp_path: Path) -> N
     with pytest.raises(UsageError, match="There is no app fi-bond-prices on the platform"):
         commands.open_app(context(tmp_path, NoApps([m.Build(number=1, state="succeeded")])), name="bond-prices", sbu="fi", directory=None)
     assert not (tmp_path / "bond-prices").exists()
+
+
+def test_a_deploy_says_when_airflow_has_not_loaded_a_job(repo: tuple[Path, Path]) -> None:
+    app, _remote = repo
+    (app / "README.md").write_text("changed\n")
+    platform = FakePlatform([m.Build(number=8, state="succeeded", release=4)], missing_dags=("refresh",))
+    now = [0.0]
+
+    def sleep(seconds: float) -> None:
+        now[0] += seconds
+
+    ctx = commands.Context(cwd=app, platform_factory=lambda: platform, token=lambda: "token", run_checks=passing, sleep=sleep, clock=lambda: now[0])
+    outcome = commands.deploy(ctx, message=None, detach=False, timeout=60)
+    assert outcome.summary.endswith("Airflow has not loaded the job(s) refresh yet.")
+    assert outcome.data["missing_dags"] == ["refresh"]
+    assert "ctzd status" in outcome.next_steps[0]
+    assert now[0] >= 180

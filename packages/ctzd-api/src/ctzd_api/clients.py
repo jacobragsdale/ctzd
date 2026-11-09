@@ -243,6 +243,13 @@ class AirflowClient:
         token = _AirflowToken.model_validate_json(_check(self._http.post("/auth/token", json=self._credentials)).content)
         return {"Authorization": f"Bearer {token.access_token}"}
 
+    def dag_loaded(self, dag_id: str) -> bool:
+        response = self._http.get(f"/api/v2/dags/{dag_id}", headers=self._headers())
+        if response.status_code == httpx.codes.NOT_FOUND:
+            return False
+        _check(response)
+        return True
+
     def trigger(self, dag_id: str) -> str:
         response = self._http.post(f"/api/v2/dags/{dag_id}/dagRuns", json={"logical_date": None}, headers=self._headers())
         return _DagRun.model_validate_json(_check(response).content).dag_run_id

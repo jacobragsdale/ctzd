@@ -112,6 +112,8 @@ class AppStatus(_Model):
     paused: bool
     dags: dict[str, str]
     last_build: Build | None
+    # Jobs whose DAG Airflow has not loaded: new for a few minutes after a deploy, or refused by Airflow.
+    missing_dags: tuple[str, ...] = ()
 
 
 class RollbackRequest(_Model):

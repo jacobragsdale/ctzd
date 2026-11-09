@@ -1,6 +1,9 @@
 import json
+import os
 import socket
+import subprocess
 import sys
+import time
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -21,8 +24,21 @@ def taken_port() -> Iterator[int]:
         yield port
 
 
+_SERVER = """
+import http.server, os, sys
+class Handler(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        body = os.environ.get("CTZD_DEV_ID", "").encode() if self.path == "/_ctzd/dev" else b"page"
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(body)
+http.server.HTTPServer(("127.0.0.1", int(sys.argv[1])), Handler).serve_forever()
+"""
+
+
 def _http_server(port: int) -> list[str]:
-    return [sys.executable, "-m", "http.server", str(port), "--bind", "127.0.0.1"]
+    """A server that reports its ctzd dev token, as ctzd.api does."""
+    return [sys.executable, "-c", _SERVER, str(port)]
 
 
 def _free() -> int:
@@ -60,9 +76,26 @@ def test_a_taken_port_is_skipped(taken_port: int) -> None:
 
 def test_a_record_of_a_server_that_is_gone_is_dropped_without_killing_anything(tmp_path: Path) -> None:
     (tmp_path / devserver.STATE).parent.mkdir()
-    (tmp_path / devserver.STATE).write_text(json.dumps({"pid": 1, "port": _free()}))
+    (tmp_path / devserver.STATE).write_text(json.dumps({"pid": 1, "port": _free(), "token": "t"}))
     assert devserver.stop(tmp_path) is None
     assert not (tmp_path / devserver.STATE).exists()
+
+
+def test_a_stale_record_never_stops_another_program_on_its_port(tmp_path: Path) -> None:
+    port = _free()
+    bystander = subprocess.Popen(_http_server(port), env={**os.environ, "CTZD_DEV_ID": "someone else's"})
+    try:
+        deadline = time.monotonic() + 10
+        while not devserver.answering(port) and time.monotonic() < deadline:
+            time.sleep(0.1)
+        (tmp_path / devserver.STATE).parent.mkdir()
+        (tmp_path / devserver.STATE).write_text(json.dumps({"pid": bystander.pid, "port": port, "token": "ours"}))
+        assert devserver.stop(tmp_path) is None
+        assert bystander.poll() is None
+        assert not (tmp_path / devserver.STATE).exists()
+    finally:
+        bystander.kill()
+        bystander.wait()
 
 
 def test_dev_stop_with_nothing_running_says_so(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

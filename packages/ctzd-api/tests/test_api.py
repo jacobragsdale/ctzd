@@ -273,3 +273,31 @@ def test_only_text_files_under_the_release_folder_are_taken_from_the_tarball() -
 def test_without_an_app_the_general_channel_answers(client: TestClient) -> None:
     assert client.get("/v1/releases/current", headers=BOB).json()["channel"] == "general"
     assert client.get("/v1/releases/current", params={"sbu": "fi"}, headers=BOB).status_code == 400
+
+
+def test_a_job_airflow_has_not_loaded_is_named_in_the_status_and_not_triggered(client: TestClient, world: Services) -> None:
+    airflow = world.airflow
+    assert isinstance(airflow, fakes.FakeAirflow)
+    airflow.missing.add("fi__bond_prices__refresh")
+    assert client.get("/v1/apps/fi/bond-prices", headers=ANN).json()["missing_dags"] == ["refresh"]
+    refused = client.post("/v1/apps/fi/bond-prices/jobs/refresh/runs", headers=ANN)
+    assert refused.status_code == 404
+    assert refused.json()["detail"] == "Airflow has not loaded the job 'refresh' yet."
+    assert "ctzd status" in refused.json()["hint"]
+    assert airflow.runs == []
+
+
+class _FailingAirflow(fakes.FakeAirflow):
+    @override
+    def trigger(self, dag_id: str) -> str:
+        request = httpx.Request("POST", f"https://airflow.ctzd.contoso.com/api/v2/dags/{dag_id}/dagRuns")
+        msg = "Airflow failed"
+        raise httpx.HTTPStatusError(msg, request=request, response=httpx.Response(500, request=request))
+
+
+def test_a_failing_service_behind_the_platform_is_named_in_a_sentence(world: Services) -> None:
+    broken = dataclasses.replace(world, airflow=_FailingAirflow())
+    reply = TestClient(create_app(broken)).post("/v1/apps/fi/bond-prices/jobs/refresh/runs", headers=ANN)
+    assert reply.status_code == 502
+    assert reply.json()["detail"] == "The platform could not finish the request: POST airflow.ctzd.contoso.com/api/v2/dags/fi__bond_prices__refresh/dagRuns answered 500."
+    assert "platform team" in reply.json()["hint"]

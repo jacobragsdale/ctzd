@@ -23,6 +23,7 @@ ENV_FILE = ".env"
 FIXTURES = "fixtures"
 FAKE_FIXTURES = "CTZD_FAKE_FIXTURES"  # ctzd.api serves the fake rows in this folder
 _POLL_SECONDS = 10.0
+_DAG_WAIT_SECONDS = 180.0  # Airflow picks up new job specs within a few minutes of a deploy.
 _DEFAULT_JOB = Job(name="refresh", schedule="0 6 * * *")
 # Commands that work inside an app; each refreshes the app's guidance before it runs.
 APP_COMMANDS = frozenset({"dev", "run", "exec", "add job", "check", "env", "deploy", "status", "logs", "releases", "rollback", "sync", "delete"})
@@ -508,7 +509,15 @@ def wait_for_build(ctx: Context, platform: api_client.Platform, app: AppConfig, 
     return build
 
 
-def _build_outcome(platform: api_client.Platform, app: AppConfig, commit: str, build: m.Build) -> Outcome:
+def _missing_dags_step(missing: tuple[str, ...]) -> str:
+    names = ", ".join(missing)
+    return (
+        f"Airflow has not loaded the job(s) {names} yet. Run `ctzd status` in a few minutes: if they are still missing, Airflow refused them, "
+        "so check each schedule in app.toml with the person and see the ctzd-troubleshoot skill. Until then the job does not run and sends no failure email."
+    )
+
+
+def _build_outcome(ctx: Context, platform: api_client.Platform, app: AppConfig, commit: str, build: m.Build) -> Outcome:
     data: dict[str, object] = {"commit": commit, "build": build.model_dump()}
     if build.state == "failed":
         return Outcome(
@@ -528,8 +537,18 @@ def _build_outcome(platform: api_client.Platform, app: AppConfig, commit: str, b
             ok=False,
         )
     status = platform.status(app.app.sbu, app.app.name)
-    data |= {"release": build.release, "url": status.url if app.app.ui != "none" else None, "dags": status.dags}
-    where = status.url if app.app.ui != "none" else ", ".join(status.dags.values()) or "Airflow"
+    deadline = ctx.clock() + _DAG_WAIT_SECONDS
+    while status.missing_dags and ctx.clock() < deadline:
+        ctx.sleep(_POLL_SECONDS)
+        status = platform.status(app.app.sbu, app.app.name)
+    data |= {"release": build.release, "url": status.url if app.app.ui != "none" else None, "dags": status.dags, "missing_dags": list(status.missing_dags)}
+    where = status.url if app.app.ui != "none" else ", ".join(link for job, link in status.dags.items() if job not in status.missing_dags) or "Airflow"
+    if status.missing_dags:
+        return Outcome(
+            summary=f"Release v{build.release} is live: {where}; Airflow has not loaded the job(s) {', '.join(status.missing_dags)} yet.",
+            data=data,
+            next_steps=[_missing_dags_step(status.missing_dags)],
+        )
     return Outcome(summary=f"Release v{build.release} is live: {where}", data=data)
 
 
@@ -616,7 +635,7 @@ def deploy(ctx: Context, *, message: str | None, detach: bool, timeout: float) -
     if detach:
         return Outcome(summary="Pushed; Jenkins is building it.", data={"commit": commit, "committed": committed}, next_steps=["Run `ctzd status --wait`."])
     build = wait_for_build(ctx, platform, app, commit, timeout=timeout)
-    return _build_outcome(platform, app, commit, build)
+    return _build_outcome(ctx, platform, app, commit, build)
 
 
 def status(ctx: Context, *, wait: bool, timeout: float) -> Outcome:
@@ -627,11 +646,12 @@ def status(ctx: Context, *, wait: bool, timeout: float) -> Outcome:
         if commit is None:
             msg = "This app has no commits yet."
             raise UsageError(msg)
-        return _build_outcome(platform, app, commit, wait_for_build(ctx, platform, app, commit, timeout=timeout))
+        return _build_outcome(ctx, platform, app, commit, wait_for_build(ctx, platform, app, commit, timeout=timeout))
     current = platform.status(app.app.sbu, app.app.name)
     paused = " Auto-deploy is paused after a rollback; the next `ctzd deploy` resumes it." if current.paused else ""
+    missing = f" Airflow has not loaded the job(s) {', '.join(current.missing_dags)}." if current.missing_dags else ""
     release_text = f"v{current.release}" if current.release is not None else "nothing yet"
-    return Outcome(summary=f"{app.app.name} runs {release_text}.{paused}", data=current.model_dump())
+    return Outcome(summary=f"{app.app.name} runs {release_text}.{paused}{missing}", data=current.model_dump(), next_steps=[_missing_dags_step(current.missing_dags)] if current.missing_dags else [])
 
 
 def logs(ctx: Context, *, job: str | None, tail: int) -> Outcome:

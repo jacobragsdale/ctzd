@@ -56,6 +56,7 @@ class FakePlatform:
     channel: m.CurrentRelease | None = None
     published: dict[int, m.PlatformRelease] = field(default_factory=dict)
     events: list[str] = field(default_factory=list)
+    missing_dags: tuple[str, ...] = ()
 
     def me(self) -> m.Me:
         return m.Me(login="ann")
@@ -64,7 +65,7 @@ class FakePlatform:
         return m.CreatedApp(repo=f"ctzd-apps/{request.sbu}-{request.name}", clone_url="unused", url="unused")
 
     def status(self, sbu: str, name: str) -> m.AppStatus:
-        return m.AppStatus(sbu=sbu, name=name, url=f"https://{sbu}-{name}.ctzd.contoso.com", release=4, paused=self.paused, dags={}, last_build=None)
+        return m.AppStatus(sbu=sbu, name=name, url=f"https://{sbu}-{name}.ctzd.contoso.com", release=4, paused=self.paused, dags={}, last_build=None, missing_dags=self.missing_dags)
 
     def resume(self, sbu: str, name: str) -> None:
         del sbu, name

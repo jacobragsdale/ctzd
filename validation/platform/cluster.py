@@ -382,6 +382,9 @@ class LocalAirflow:
     def trigger(self, dag_id: str) -> str:
         return self.cluster.trigger_job(dag_id)
 
+    def dag_loaded(self, dag_id: str) -> bool:
+        return dag_id in self.cluster.jobs
+
     def run_state(self, dag_id: str, run_id: str) -> str:
         del dag_id
         run = self.cluster.runs.get(run_id)

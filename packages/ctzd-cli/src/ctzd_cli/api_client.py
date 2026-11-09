@@ -109,12 +109,20 @@ def _parse[T: BaseModel](model: type[T], response: httpx.Response, method: str, 
 
 def _error(response: httpx.Response) -> CliError:
     detail: object = response.text
+    hint: str | None = None
     with contextlib.suppress(ValidationError):
-        detail = _DETAIL.validate_json(response.content).get("detail", detail)
+        body = _DETAIL.validate_json(response.content)
+        detail = body.get("detail", detail)
+        given = body.get("hint")
+        hint = given if isinstance(given, str) else None
     if response.status_code == httpx.codes.UNAUTHORIZED:
         return PlatformUnavailableError("The platform did not accept your GitHub login.", hint="Run `ctzd login --start` to log in again.")
     if response.status_code == httpx.codes.FORBIDDEN:
         return CliError(f"You do not have access: {detail}", hint="Ask the app's owner or your SBU champion to add you to the repo.")
     if response.status_code == httpx.codes.NOT_FOUND:
-        return NotFoundError(str(detail))
+        return NotFoundError(str(detail), hint=hint)
+    if response.status_code == httpx.codes.BAD_GATEWAY:
+        return CliError(str(detail), hint=hint)
+    if hint is not None:
+        return CliError(str(detail), hint=hint)
     return CliError(f"The platform refused the request ({response.status_code}): {detail}")
