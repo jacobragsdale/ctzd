@@ -225,7 +225,7 @@ def test_each_app_gets_its_channels_release_and_the_newest_cli(client: TestClien
     assert general == {"release": 1, "channel": "general", "cli": "0.9.0"}
     assert pilot == {"release": 2, "channel": "pilot", "cli": "0.9.0"}
     assert client.get("/v1/releases/current", params={"sbu": "zz", "app": "x"}, headers=BOB).status_code == 404
-    assert client.get("/v1/releases/current", params={"sbu": "fi", "app": "x"}).status_code == 401
+    assert client.get("/v1/releases/current", params={"sbu": "fi", "app": "bond-prices"}).json() == general  # no login needed
 
 
 def test_a_release_is_served_from_its_tag_and_unknown_ones_are_not_found(client: TestClient) -> None:

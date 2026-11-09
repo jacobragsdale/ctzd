@@ -1,6 +1,8 @@
 """HTTP implementations of the gateways. None of these has run against the real services yet; see docs/plan.md."""
 
+from collections.abc import Generator
 from pathlib import Path
+from typing import override
 
 import httpx
 from azure.core.credentials import TokenCredential
@@ -11,6 +13,7 @@ from ctzd_api.gateways import AppState, JenkinsBuild, Permission
 _TIMEOUT = 30.0
 _RAW = "application/vnd.github.raw+json"
 _JSON_OBJECT: TypeAdapter[dict[str, object]] = TypeAdapter(dict[str, object])
+_NEWEST_TAGS = 50
 _PERMISSIONS: frozenset[Permission] = frozenset({"admin", "maintain", "write", "triage", "read", "none"})
 
 
@@ -26,10 +29,10 @@ def _check(response: httpx.Response) -> httpx.Response:
 class GitHubClient:
     """GitHub Enterprise through a bot token with admin rights on the ctzd-apps organization."""
 
-    def __init__(self, api_url: str, org: str, bot_token: str) -> None:
+    def __init__(self, api_url: str, org: str, bot_token: str, *, transport: httpx.BaseTransport | None = None) -> None:
         self._org = org
         self._api = api_url.rstrip("/")
-        self._http = httpx.Client(base_url=self._api, timeout=_TIMEOUT, headers={"Authorization": f"Bearer {bot_token}", "Accept": "application/vnd.github+json"})
+        self._http = httpx.Client(base_url=self._api, timeout=_TIMEOUT, transport=transport, headers={"Authorization": f"Bearer {bot_token}", "Accept": "application/vnd.github+json"})
 
     def login_for(self, user_token: str) -> str | None:
         response = httpx.get(f"{self._api}/user", headers={"Authorization": f"Bearer {user_token}"}, timeout=_TIMEOUT)
@@ -75,10 +78,17 @@ class GitHubClient:
         return _check(response).text
 
     def release_tags(self, repo: str) -> list[tuple[str, str]]:
-        response = self._http.get(f"/repos/{self._org}/{repo}/git/matching-refs/tags/ctzd/v")
-        refs = TypeAdapter(list[_Ref]).validate_json(_check(response).content)
+        """The newest release tags with their messages. GitHub sorts refs by name and pages them, so read every page and sort by number."""
+        refs: list[_Ref] = []
+        url: str | None = f"/repos/{self._org}/{repo}/git/matching-refs/tags/ctzd/v"
+        params: dict[str, int] | None = {"per_page": 100}
+        while url is not None:
+            response = _check(self._http.get(url, params=params))
+            refs += TypeAdapter(list[_Ref]).validate_json(response.content)
+            url, params = response.links.get("next", {}).get("url"), None
+        numbered = sorted((int(number), ref) for ref in refs if (number := ref.ref.removeprefix("refs/tags/ctzd/v")).isdigit())
         tags: list[tuple[str, str]] = []
-        for ref in refs[-50:]:
+        for _number, ref in numbered[-_NEWEST_TAGS:]:
             if ref.object.type != "tag":
                 continue
             tag = _Tag.model_validate_json(_check(self._http.get(f"/repos/{self._org}/{repo}/git/tags/{ref.object.sha}")).content)
@@ -124,6 +134,7 @@ class _Revision(_Reply):
 
 class _Action(_Reply):
     lastBuiltRevision: _Revision | None = None  # noqa: N815 - Jenkins' JSON field name.
+    remoteUrls: tuple[str, ...] = ()  # noqa: N815 - Jenkins' JSON field name.
 
 
 class _Build(_Reply):
@@ -148,20 +159,32 @@ class _Run(_Reply):
     stages: tuple[_Stage, ...] = ()
 
 
+def _app_revision(actions: tuple[_Action, ...], repo: str) -> str | None:
+    """The app's commit. A build checks out the shared library too, and each checkout records its own revision."""
+    built = [action for action in actions if action.lastBuiltRevision is not None]
+    for action in built:
+        if any(url.rstrip("/").removesuffix(".git").endswith(f"/{repo}") for url in action.remoteUrls):
+            return action.lastBuiltRevision.SHA1 if action.lastBuiltRevision is not None else None
+    # Without remote URLs to tell them apart, trust only a build that checked out one thing.
+    if len(built) == 1 and built[0].lastBuiltRevision is not None:
+        return built[0].lastBuiltRevision.SHA1
+    return None
+
+
 class JenkinsClient:
-    def __init__(self, url: str, *, user: str, api_token: str, folder: str) -> None:
+    def __init__(self, url: str, *, user: str, api_token: str, folder: str, transport: httpx.BaseTransport | None = None) -> None:
         self._url = url.rstrip("/")
         self._folder = folder
-        self._http = httpx.Client(timeout=_TIMEOUT, auth=(user, api_token))
+        self._http = httpx.Client(timeout=_TIMEOUT, auth=(user, api_token), transport=transport)
 
     def builds(self, repo: str) -> list[JenkinsBuild]:
-        tree = "builds[number,building,result,url,description,actions[lastBuiltRevision[SHA1]]]{0,30}"
+        tree = "builds[number,building,result,url,description,actions[lastBuiltRevision[SHA1],remoteUrls]]{0,30}"
         response = self._http.get(f"{self._url}/job/{self._folder}/job/{repo}/job/main/api/json", params={"tree": tree})
         if response.status_code == httpx.codes.NOT_FOUND:
             return []
         found = []
         for build in _Builds.model_validate_json(_check(response).content).builds:
-            commit = next((action.lastBuiltRevision.SHA1 for action in build.actions if action.lastBuiltRevision is not None), None)
+            commit = _app_revision(build.actions, repo)
             failed = None if build.building or build.result in {None, "SUCCESS"} else self._failed_stage(build.url)
             found.append(JenkinsBuild(number=build.number, commit=commit, building=build.building, result=build.result, url=build.url, description=build.description, failed_stage=failed))
         return found
@@ -170,7 +193,9 @@ class JenkinsClient:
         response = self._http.get(f"{build_url}wfapi/describe")
         if not response.is_success:
             return None
-        return next((stage.name for stage in _Run.model_validate_json(response.content).stages if stage.status == "FAILED"), None)
+        # A failed stage fails the stages around it too, and those start first: the last one listed is where it broke.
+        failed = [stage.name for stage in _Run.model_validate_json(response.content).stages if stage.status == "FAILED"]
+        return failed[-1] if failed else None
 
     def console_tail(self, build: JenkinsBuild, lines: int) -> str:
         return "\n".join(_check(self._http.get(f"{build.url}consoleText")).text.splitlines()[-lines:])
@@ -261,13 +286,24 @@ class _Pods(_Reply):
     items: tuple[_Pod, ...] = ()
 
 
+class ServiceAccountAuth(httpx.Auth):
+    """The pod's service-account token, read on every request: the kubelet rotates the file, so a token read once expires."""
+
+    def __init__(self, path: Path) -> None:
+        self._path = path
+
+    @override
+    def auth_flow(self, request: httpx.Request) -> Generator[httpx.Request, httpx.Response]:
+        request.headers["Authorization"] = f"Bearer {self._path.read_text(encoding='utf-8').strip()}"
+        yield request
+
+
 class KubeClient:
     """The Kubernetes API from inside the cluster, with the pod's service account."""
 
     def __init__(self, namespace: str, *, api_url: str = "https://kubernetes.default.svc") -> None:
         self._ns = namespace
-        token = (_SERVICE_ACCOUNT / "token").read_text(encoding="utf-8").strip()
-        self._http = httpx.Client(base_url=api_url, timeout=_TIMEOUT, verify=str(_SERVICE_ACCOUNT / "ca.crt"), headers={"Authorization": f"Bearer {token}"})
+        self._http = httpx.Client(base_url=api_url, timeout=_TIMEOUT, verify=str(_SERVICE_ACCOUNT / "ca.crt"), auth=ServiceAccountAuth(_SERVICE_ACCOUNT / "token"))
 
     def _state_path(self, fullname: str) -> str:
         return f"/api/v1/namespaces/{self._ns}/configmaps/ctzd-state-{fullname}"

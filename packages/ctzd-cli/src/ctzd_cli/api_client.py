@@ -1,4 +1,4 @@
-"""Client for the platform API. Every call carries the person's GitHub token."""
+"""Client for the platform API. Every call carries the person's GitHub token; release calls work without one."""
 
 import contextlib
 from typing import Protocol
@@ -33,8 +33,9 @@ class Platform(Protocol):
 
 
 class PlatformClient:
-    def __init__(self, base_url: str, token: str, *, transport: httpx.BaseTransport | None = None) -> None:
-        self._http = httpx.Client(base_url=base_url.rstrip("/") + "/v1", timeout=_TIMEOUT, transport=transport, headers={"Authorization": f"Bearer {token}", "Accept": "application/json"})
+    def __init__(self, base_url: str, token: str | None, *, transport: httpx.BaseTransport | None = None) -> None:
+        headers = {"Accept": "application/json"} | ({} if token is None else {"Authorization": f"Bearer {token}"})
+        self._http = httpx.Client(base_url=base_url.rstrip("/") + "/v1", timeout=_TIMEOUT, transport=transport, headers=headers)
 
     def _call(self, method: str, path: str, *, body: BaseModel | None = None, params: dict[str, str | int] | None = None, timeout: float = _TIMEOUT) -> httpx.Response:
         try:

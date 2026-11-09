@@ -245,7 +245,7 @@ def main(argv: Sequence[str] | None = None, *, ctx: Context | None = None) -> in
     except ValidationError as err:
         sys.stderr.write(f"ctzd: {err}\n")
         return EXIT_USAGE
-    context = ctx or Context(cwd=Path.cwd(), platform_factory=commands.default_platform, releases=releases.ReleaseSource(commands.default_platform))
+    context = ctx or Context(cwd=Path.cwd(), platform_factory=commands.default_platform, releases=releases.ReleaseSource(commands.release_platform))
     command = " ".join(part for part in (args.command, args.action) if part is not None)
     try:
         hints = commands.prepare(context, command)

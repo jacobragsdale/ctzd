@@ -78,16 +78,16 @@ def create_app(services: Services) -> FastAPI:
 
 
 def _platform_routes(api: FastAPI, services: Services) -> None:
-    """Calls that are not about one app."""
+    """Calls that are not about one app. Releases need no login: their contents are in every app repository, and Jenkins checks apps without a token."""
 
     @api.get("/v1/releases/current")
-    def current_release(_login: Login, sbu: str | None = None, app: str | None = None) -> m.CurrentRelease:
+    def current_release(sbu: str | None = None, app: str | None = None) -> m.CurrentRelease:
         if (sbu is None) != (app is None):
             raise HTTPException(status_code=400, detail="Pass both sbu and app, or neither for the general channel.")
         return service.current_release(services, None if sbu is None or app is None else AppRef(sbu, app))
 
     @api.get("/v1/releases/{number}")
-    def platform_release(_login: Login, number: int) -> m.PlatformRelease:
+    def platform_release(number: int) -> m.PlatformRelease:
         return service.platform_release(services, number)
 
     @api.get("/v1/sources")

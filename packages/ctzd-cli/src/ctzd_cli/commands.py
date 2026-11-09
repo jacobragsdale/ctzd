@@ -58,6 +58,11 @@ def default_platform() -> api_client.Platform:
     return api_client.PlatformClient(config.load().platform.api_url, auth.require_token())
 
 
+def release_platform() -> api_client.Platform:
+    """The platform for fetching releases, which needs no login: Jenkins checks apps without a token."""
+    return api_client.PlatformClient(config.load().platform.api_url, auth.token())
+
+
 # ---------------------------------------------------------------- guidance
 
 

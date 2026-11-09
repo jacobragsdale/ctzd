@@ -597,8 +597,12 @@ page compute a number the same way.
   builds every repo with a `Jenkinsfile`. The `Jenkinsfile` is
   `@Library('ctzd') _` plus `ctzdApp()`.
 - **Pipeline.** `ctzdApp()` installs the CLI version the platform pins next to
-  the chart version into a per-build venv, runs `ctzd ci check` (which checks
-  the build files against the app's recorded platform release), builds and pushes
+  the chart version (`jenkins/resources/ctzd/versions.json`, which the rollback
+  job reads too and a test compares with the CLI and chart in this repository)
+  into a per-build venv, runs `ctzd ci check` (which checks
+  the build files against the app's recorded platform release) on an agent
+  that holds no credentials and no cluster access, because the checks run the
+  app's own tests and packages and need no login, builds and pushes
   `contosoctzd.azurecr.io/apps/<sbu>-<app>:<sha>` (with the React starter, the
   Dockerfile builds the pages in a Node stage and copies them into the Python
   image), skips deploy if the app is paused, runs
@@ -609,9 +613,14 @@ page compute a number the same way.
   went live, and finishes with `ctzd ci release`, which tags the commit
   `ctzd/vN`, and records the live release in the `ctzd-state-<sbu>-<app>`
   ConfigMap that the platform API reads. Branches other than `main` run the
-  checks only.
+  checks only. The GitHub token is bound only in the two stages that push.
+  Going live takes the app's lock and reads the pause flag under it.
 - **Rollback job.** A parameterised `ctzd-rollback` job, triggered by the
-  platform API, redeploys a release's image and config and sets the pause flag.
+  platform API, redeploys a release's image and config and sets the pause flag,
+  under the same lock, so a build that was already running never overwrites
+  it. It passes the release tag's fields to the shell as environment variables
+  and accepts only digits for the release, since anyone who can push to an app
+  can write a tag.
 - **Branch protection.** `main` accepts direct pushes; force-pushes and
   deletion are blocked.
 - **Cluster.** One `ctzd-apps` namespace. Sizes `s`, `m`, `l` map to

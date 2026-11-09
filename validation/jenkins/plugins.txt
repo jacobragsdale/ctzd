@@ -3,6 +3,7 @@ configuration-as-code
 credentials-binding
 git
 job-dsl
+lockable-resources
 pipeline-groovy-lib
 pipeline-stage-view
 pipeline-utility-steps

@@ -33,7 +33,7 @@ BUILD_TIMEOUT = 1500.0
 CASC = """jenkins:
   systemMessage: "ctzd stage 2 dry run"
   numExecutors: 3
-  labelString: "ctzd"
+  labelString: "ctzd ctzd-check"
   mode: NORMAL
   globalNodeProperties:
     - envVars:
