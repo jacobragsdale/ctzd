@@ -12,8 +12,8 @@
 # Any other release reaches an app the next time someone works on it.
 release = 2
 format = 1
-requires_cli = "0.3.0"
-min_ctzd_core = "0.2.0"
+requires_cli = "0.4.0"
+min_ctzd_core = "0.3.0"
 
 # The managed tables of every app's pyproject.toml.
 [python]

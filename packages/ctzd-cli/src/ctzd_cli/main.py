@@ -67,7 +67,7 @@ class Args(BaseModel):
 
 
 def _setup_parsers(sub: argparse._SubParsersAction[argparse.ArgumentParser], common: argparse.ArgumentParser) -> None:
-    sub.add_parser("setup", parents=[common], help="check the laptop and install what is missing")
+    sub.add_parser("setup", parents=[common], help="check the desktop and install what is missing")
     login = sub.add_parser("login", parents=[common], help="log in to GitHub with a one-time code")
     mode = login.add_mutually_exclusive_group(required=True)
     mode.add_argument("--start", action="store_true", help="get a code for the person to approve")

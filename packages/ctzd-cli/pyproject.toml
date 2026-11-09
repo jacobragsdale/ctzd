@@ -1,6 +1,6 @@
 [project]
 name = "ctzd"
-version = "0.3.0"
+version = "0.4.0"
 description = "The ctzd command line: create, check, and deploy citizen-developer apps"
 readme = "README.md"
 requires-python = ">=3.14"

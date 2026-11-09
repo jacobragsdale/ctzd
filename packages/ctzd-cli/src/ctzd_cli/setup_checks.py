@@ -1,4 +1,4 @@
-"""`ctzd setup`: make sure the laptop has what ctzd needs, installing a private git when it is missing."""
+"""`ctzd setup`: make sure the desktop has what ctzd needs, installing a private git when it is missing."""
 
 import io
 import os
@@ -96,7 +96,7 @@ def check_node(*, client: httpx.Client, cwd: Path) -> Check:
 
 def check_pnpm(cwd: Path) -> Check:
     """pnpm, at the version basis-ui pins, installed from the internal npm registry, which also becomes the default."""
-    # Only a laptop's npm is pointed at the internal registry; a developer's machine keeps its own.
+    # Only a desktop's npm is pointed at the internal registry; a developer's machine keeps its own.
     registry = config.load().npm.registry if os.name == "nt" else None
     npm = node.which("npm")
     if npm is not None and registry is not None:

@@ -158,7 +158,7 @@ These stay Phase 0 spikes (plan section 13):
 - the Helm rollout on a real cluster, and the factory DAG's job pods;
 - TLS to the databases over the company network;
 - how a Claude Code managed setting takes precedence over other settings;
-- Windows laptops, MinGit, and `install.ps1`;
+- Windows desktops, MinGit, and `install.ps1`;
 - Cursor, the agent most citizen developers use: the trials run Claude Code only.
 
 ## 6. Decisions

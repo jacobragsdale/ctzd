@@ -1,6 +1,6 @@
 """`ctzd shot [PATH]`: a picture of a page that `ctzd dev` serves, and the problems on it.
 
-It opens the page in a headless browser (on Windows, the Edge every laptop has,
+It opens the page in a headless browser (on Windows, the Edge every desktop has,
 so nothing is downloaded), waits until parallax has drawn its grids and charts,
 writes a PNG under `.ctzd/shots/` for the agent to look at, and reports each
 problem as one line: an error the page logs or throws, a request that fails, a

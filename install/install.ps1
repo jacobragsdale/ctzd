@@ -1,6 +1,6 @@
 # Installs ctzd for the current user, with no admin rights. An AI agent runs this; the person never has to:
 #   powershell -c "irm https://ctzd.contoso.com/install.ps1 | iex"
-# Every download comes from the platform host, so laptops need no access to github.com or pypi.org.
+# Every download comes from the platform host, so desktops need no access to github.com or pypi.org.
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
@@ -27,10 +27,10 @@ if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
     Remove-Item $zip
 }
 Add-UserPath $Bin
-# `ctzd setup` unpacks a private git here when the laptop has none; agents may need it for a merge conflict.
+# `ctzd setup` unpacks a private git here when the desktop has none; agents may need it for a merge conflict.
 Add-UserPath (Join-Path $env:LOCALAPPDATA 'ctzd\mingit\cmd')
 # `ctzd setup` also puts Node here (from the platform host's zip, or the Node wheel through uv) and pnpm, from the
-# internal npm registry, for a React app's pages. Unverified on Windows: see docs/spikes/laptop-toolchain.md.
+# internal npm registry, for a React app's pages. Unverified on Windows: see docs/spikes/desktop-toolchain.md.
 Add-UserPath (Join-Path $env:LOCALAPPDATA 'ctzd\node')
 Add-UserPath (Join-Path $env:LOCALAPPDATA 'ctzd\npm')
 

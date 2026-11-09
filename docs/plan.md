@@ -51,7 +51,7 @@ Power users may run git themselves. Pushing to `main` deploys exactly as
 
 ```mermaid
 flowchart LR
-  subgraph laptop[Laptop]
+  subgraph desktop[Windows desktop]
     agent[AI agent] --> cli[ctzd CLI]
     cli --> git[git / MinGit]
   end
@@ -82,15 +82,15 @@ flowchart LR
 
 | Component | Runs on | Owner | In this repo |
 |---|---|---|---|
-| `ctzd` CLI | laptops and Jenkins agents | platform team | `packages/ctzd-cli` |
+| `ctzd` CLI | desktops and Jenkins agents | platform team | `packages/ctzd-cli` |
 | `ctzd-core` runtime library (`import ctzd`) | inside every app | platform team | `packages/ctzd-core` |
 | `ctzd-<sbu>` libraries | inside that SBU's apps | SBU champion | `kits/<sbu>` |
 | basis-api and basis-core, which `ctzd-core` builds on | inside every app | basis maintainers | no: the basis repo (section 16) |
 | `@basis/ui` and `@basis/parallax`, which every page imports | inside every app | basis-ui maintainers | no: the basis-ui repo (section 16) |
 | Platform API | AKS | platform team | `packages/ctzd-api` |
 | Platform releases: build files, agent guidance, starter code | served by the platform API from release tags | platform team, SBU champion for SBU skills | `packages/ctzd-cli/src/ctzd_cli/assets` |
-| Bootstrap skill for the skills app | laptops | platform team | `bootstrap/` |
-| Install script | laptops | platform team | `install/install.ps1` |
+| Bootstrap skill for the skills app | desktops | platform team | `bootstrap/` |
+| Install script | desktops | platform team | `install/install.ps1` |
 | Base image | ACR | platform team | `images/base` |
 | Airflow factory DAG | Airflow | platform team | `airflow/` |
 | Jenkins shared library | Jenkins | infrastructure owner (proposal) | `jenkins/` |
@@ -105,12 +105,12 @@ basis-ui) and nothing else.
 
 | Area | Decision | Reason |
 |---|---|---|
-| Users | Business users with no coding experience, on Windows laptops without admin rights or git, using any AI agent. Cursor is the agent most of them use, Claude Code is the one the agent trials run, and citizen developers use the latest models. | That is the audience. Everything below assumes the agent does every technical step. |
+| Users | Business users with no coding experience, on Windows desktops (Citrix virtual desktops, not laptops) without admin rights or git, using any AI agent. Cursor is the default agent and Haiku the weakest model the platform must work with; the agent trials so far ran Claude Code, so they need a Cursor runner. The toolchain must run on those desktops: decided on 2026-11-09, with no fallback, and "works on Windows" is the bar until the desktop kit (section 13) shows otherwise. | That is the audience. Everything below assumes the agent does every technical step. |
 | Repos | One repo per app. An app is at most one dashboard plus any number of scheduled jobs that share its data and logic code. | Clear ownership, small agent context, and the job-plus-dashboard pair is the main speed tool. |
 | UI | One kind of dashboard: a React app on `@basis/ui` and `@basis/parallax`, whose data comes from a basis-api backend in the same repo. One image holds both, and one process serves the API under `/api` and the built UI at `/`, on one origin. Streamlit and Dash were removed on 2026-11-07. | The latest models write React well. basis-ui's themed, prebuilt components and parallax's grid, pivot and charts give every app the firm's look and its number and date rules without design work, and one UI means one set of skills. |
 | API | Every route of an app's API is a read-only dataset: parameters in, a table out, served as Arrow for parallax and as JSON. No route writes. | Sources are read-only, so an app has nothing to write; one pattern is one thing for the agent to learn. Writes happen only in jobs. |
 | Numbers | Every number is a float64 from the source to the browser, `NaN` where it is missing; ids are text. Python never rounds or formats a number: the page rounds once, at display, by Excel's rule (15 significant digits, half away from zero, then the shown decimals), and `ctzd.display` writes numbers into messages by the same rule. `ctzd check` refuses rounding in an app's Python and SQL. | One simple type that pandas, numpy, Arrow, and the browser all hold natively. One rule in one place means a number reads the same in the page, an export, and an email, and the same as in Excel, where the firm's users live. Section 6 has the details. |
-| Screenshots | After changing a page, the agent runs `ctzd shot`, which loads the page `ctzd dev` serves in a headless browser (on Windows, the Edge every laptop has), waits for parallax to draw, writes a PNG the agent looks at, and lists each problem: errors, failed requests, and a grid or chart that drew nothing or too small. It is not a gate in `ctzd check`, and deploys and the smoke test take no screenshots. | Decided on 2026-11-07 without screenshots, and reversed the same day by the maintainer: a code check cannot see a chart that draws an empty or squashed canvas, which the first React starter did. Edge means nothing to download on a laptop. |
+| Screenshots | After changing a page, the agent runs `ctzd shot`, which loads the page `ctzd dev` serves in a headless browser (on Windows, the Edge every desktop has), waits for parallax to draw, writes a PNG the agent looks at, and lists each problem: errors, failed requests, and a grid or chart that drew nothing or too small. It is not a gate in `ctzd check`, and deploys and the smoke test take no screenshots. | Decided on 2026-11-07 without screenshots, and reversed the same day by the maintainer: a code check cannot see a chart that draws an empty or squashed canvas, which the first React starter did. Edge means nothing to download on a desktop. |
 | Libraries | `ctzd-core` wraps basis-core and basis-api: citizen Python imports only `ctzd`. Citizen pages import `@basis/ui` and `@basis/parallax` directly. Each platform release pins one basis version and one basis-ui version, in its `release.toml` (`[python.sources]` and `[npm.packages]`), and `ctzd check` keeps those pins in every app's `pyproject.toml` and `web/package.json`. Until basis and basis-ui are on the internal registry, the pins are basis's main branch and basis-ui's tarballs. ctzd never runs the `basis` command or `vp run sync`. | The Python wrapper keeps basis free to change; wrapping 60 React components would add nothing. The pins mean nothing reaches an app until a platform release names it. Section 16 has the coupling. |
 | Template | No Copier. Platform files are byte-identical in every app on the same platform release, and `ctzd sync` overwrites them. The app's Python package is always `app`. | Locked files never need a merge, so a template engine adds nothing. |
 | Platform releases | Build files, agent guidance, and starter code ship together as numbered platform releases, separate from the CLI. A platform release never changes once published; its manifest names the minimum CLI and the minimum `ctzd-core`. Section 9 says how they are served and when each part moves. | Templates and skills change often, and reaching apps must not depend on people upgrading the CLI. |
@@ -121,15 +121,15 @@ basis-ui) and nothing else.
 | CLI upgrades | The CLI never replaces itself. When the current platform release needs a newer CLI, commands stop and tell the agent to run `uv tool upgrade ctzd`. Jenkins uses one CLI version that the platform pins next to the chart version. | Replacing a running `ctzd.exe` on Windows is unproven, and the agent upgrading in a separate process avoids it. The platform's CLI always matches the chart and factory DAG it deploys with. |
 | SBU stacks | One `ctzd-<sbu>` library per SBU, depending on `ctzd-core`, declaring the SBU's package stack, shared loaders, and column kinds. All published to the internal registry. | SBU differences live in packages, not in templates. |
 | Dependencies | Agents may add any Python or npm package from the internal registry (an Artifactory instance that serves PyPI, npm, and the tool downloads), through `ctzd add package`. No cooldown, no allowlist. | The internal registry is the control point, and one command for both languages keeps agents off npm, pnpm, and uv directly. |
-| Deploy | `ctzd deploy` runs the checks, commits, pushes to `main`, follows the Jenkins build, and prints the URL. Nothing is built on the laptop. | Laptops have no Docker or registry access; CI is the only path to production. |
+| Deploy | `ctzd deploy` runs the checks, commits, pushes to `main`, follows the Jenkins build, and prints the URL. Nothing is built on the desktop. | Desktops have no Docker or registry access; CI is the only path to production. |
 | Lanes | One lane: `main` is production. Only builds that pass every gate deploy. | Simplest model for people who will never review a pull request. |
 | Rollback | Every successful deploy is a numbered release (`ctzd/vN` git tag holding the image and config). `ctzd rollback` restores an earlier release in seconds and pauses auto-deploy until the next `ctzd deploy`, which clears the pause after its checks pass and before it pushes. A successful build that produced no release is reported as not deployed. | Instant recovery without a rebuild; the pause stops the next push from bringing the bug back. Clearing it before the push means the build that push starts always deploys. |
 | Failed rollouts | Helm `--atomic` with readiness probes; a release that never becomes ready is undone automatically. | Users never see a broken rollout. |
-| Identity | One service identity for the whole platform. One read-only account per data source. An app's dashboard and job pods receive only the sources listed in its `[sources].use`, and an app may list any SBU's sources. | Simplicity, with a small blast radius: agent-written code on an open URL holds only its own sources' credentials. The SBU data boundary stays a convention, now visible in each `app.toml`. |
-| Dashboard access | No sign-in on dashboards or the Airflow UI in v1. The Helm chart's `auth` block, off by default, adds sign-in with Entra ID at the Gateway. App code never handles identity; the React shell runs with an anonymous user. | Internal network only; keep auth light. Company sign-in can be switched on at the Gateway later without changing any app. |
+| Identity | One service identity for the whole platform. One read-only account per data source. An app's dashboard and job pods receive only the sources listed in its `[sources].use`, and an app may list any SBU's sources. `ctzd env` gives any member of the apps org the read-only credentials of whatever sources they ask for, and the rows an agent reads pass through its model; both accepted on 2026-11-09. | Simplicity. In the cluster, a running app holds only its own sources' credentials. The data boundary is membership of the apps org, not `app.toml`: any member can obtain any source's read-only credentials. The pipeline's own keys are kept from app code (section 11). |
+| Dashboard access | No sign-in on dashboards or the Airflow UI in v1; sign-in comes later, at the Gateway (decided 2026-11-09), and the smoke test will need a way in then. The Helm chart's `auth` block, off by default, adds sign-in with Entra ID at the Gateway. App code never handles identity; the React shell runs with an anonymous user. | Internal network only; keep auth light. Company sign-in can be switched on at the Gateway later without changing any app. |
 | Platform login | GitHub device flow (`ctzd login`, one **Authorize** click). The token authenticates git and the platform API. Push access to a repo authorises every action on that app. | One login people already have. |
 | Local credentials | `ctzd env` writes the read-only credentials of the app's sources into a gitignored `.env`. | Lets the agent run the app against real data locally. |
-| Git on laptops | `ctzd setup` installs MinGit when git is missing. `ctzd` drives git; power users may use git directly. | Business users never see git; power users keep full control. |
+| Git on desktops | `ctzd setup` installs MinGit when git is missing. `ctzd` drives git; power users may use git directly. | Business users never see git; power users keep full control. |
 | Jobs | A dedicated Airflow 3 in the citizen cluster. One factory DAG generates a DAG per job from specs Jenkins writes to `ctzd-dags`. No DAG code in app repos. The Airflow UI has no login. | People already use Airflow and want its DAG UI link; DAG code is too easy to get wrong. |
 | Job outputs | Parquet on ADLS Gen2 at `<sbu>/<app>/<table>/`, written atomically by cluster jobs only, with the last versions kept. No writes back to source systems. | A job precomputes slow queries; the dashboard reads parquet in milliseconds. |
 | Notifications | `ctzd.notify.email` (SMTP relay, DataFrames attached as xlsx or csv) and `ctzd.notify.teams` (Workflows webhook). A table sent with its row type (`ctzd.notify.Table`) goes into an HTML body beside the plain one, formatted as the page formats it, with the date the data is for and a link to the dashboard, and into a workbook that keeps the raw numbers and shows them through Excel number formats from the column kinds, with a frozen header, column widths, and a filter. No charts or templates. Owners get an email when a job fails. | "Send me X every Monday" is the most common job. |
@@ -240,7 +240,7 @@ client and to the theme's components and tokens.
 | `ctzd api list` | Each dataset with its route, client function, parameters, and columns with their formats, so an agent never reads the generated client. |
 | `ctzd add package NAME [--npm]` (planned) | Adds a Python or npm package from the internal registry. |
 | `ctzd docs ui [COMPONENT]` | The component catalogue of the installed `@basis/ui` (`catalogue.json`, basis-ui step 1.15), by family, or one component's props, variants, and example. |
-| `ctzd run JOB [--local] [--wait]` | Runs a job in Airflow and prints the run link, `--wait` follows it to success or failure; `--local` runs it on the laptop. |
+| `ctzd run JOB [--local] [--wait]` | Runs a job in Airflow and prints the run link, `--wait` follows it to success or failure; `--local` runs it on the desktop. |
 | `ctzd add job NAME --schedule CRON [--timezone ZONE]` | Adds a job module, its test, and its `app.toml` entry; the schedule runs in ZONE (default UTC). |
 | `ctzd check [--fast]` | Runs every gate, fixing formatting and simple lint locally; `--fast` skips the tests. |
 | `ctzd sources [SOURCE [TABLE]]` | Lists the data sources the platform has, each with its kind, what it holds, and when its data is current. With SOURCE (one the app lists in `[sources].use`, after `ctzd env`), the tables and views its account can read; with TABLE, that table's columns, their types, and its first five rows. |
@@ -291,7 +291,7 @@ which `ctzd sources` shows every agent; never the credentials. The
 platform syncs each secret into its own Kubernetes secret, and an app's
 dashboard and job pods receive the sources listed in its `[sources].use` as
 environment variables named `CTZD_SOURCE_<NAME>`. `ctzd env` writes the same
-variables into `.env` on the laptop. Supported kinds are
+variables into `.env` on the desktop. Supported kinds are
 `oracle`, `mssql`, `rest` (no auth, bearer token, header key, basic, or OAuth
 client credentials), and `teams` (a Workflows webhook). Adding a source is a
 platform-team task.
@@ -414,7 +414,7 @@ formatting, Oxlint at basis-ui's settings, and TypeScript; a check that the
 generated client matches the API; the pages' tests, which run without a
 browser; and each dataset run once against the fake sources, its frame checked
 against its row type, with no infinities and no more rows than parallax holds.
-Laptops need no Chromium for the checks; `ctzd shot` uses Edge on Windows.
+Desktops need no Chromium for the checks; `ctzd shot` uses Edge on Windows.
 
 Jenkins runs the same `ctzd ci check`, and after the rollout a smoke test opens
 every page in a headless browser and fails, rolling the release back, on an
@@ -526,10 +526,10 @@ to log in, which the agent then does with the two-step `ctzd login`. With the
 React app, setup also installs Node 26 into ctzd's own folder, from the zip
 the platform host serves (`node_url`) or else the Node wheel through uv, and
 pnpm 12.18.0 into ctzd's npm prefix from the internal npm registry, which it
-makes the laptop's default; every page step finds both through ctzd's own
+makes the desktop's default; every page step finds both through ctzd's own
 PATH. Vite+ comes with each app's packages. None of this has run on Windows
-yet; section 13's laptop spike checks each route. The uv, MinGit, Python, and Node downloads come from the platform
-host or the registry, so laptops need no access to github.com, pypi.org, or
+yet; section 13's desktop spike checks each route. The uv, MinGit, Python, and Node downloads come from the platform
+host or the registry, so desktops need no access to github.com, pypi.org, or
 npmjs.com.
 
 **Platform releases.** A platform release bundles the build files (the locked
@@ -554,7 +554,7 @@ Promoting or reverting a platform release is a reviewed commit that moves a
 pointer; the API rereads the file every minute.
 
 ```toml
-cli = "0.3.0"
+cli = "0.4.0"
 [channels]
 pilot = 2
 general = 1
@@ -748,8 +748,8 @@ page compute a number the same way.
 
 Phase 0 spikes:
 
-- **The laptop toolchain**, which now decides whether the platform has a UI at
-  all: on a real locked-down Windows laptop, Node from the internal registry (as
+- **The desktop toolchain**, which now decides whether the platform has a UI at
+  all: on a real locked-down Windows desktop, Node from the internal registry (as
   a wheel uv installs, or from a generic mirror), pnpm and Vite+ from its npm
   remote without admin rights, pnpm's links on Windows without developer mode,
   install time with the antivirus scanning `node_modules`, and one `ctzd dev`
@@ -763,7 +763,7 @@ Phase 0 spikes:
   `Read(//**/.env)` that match `.env` in every project, and allow rules
   `Bash(ctzd *)` and `PowerShell(ctzd *)` that stop prompts for `ctzd` commands
   in both Windows shells, with ask rules for `ctzd delete` and `ctzd exec`;
-- Cursor on a laptop: that the app's `.cursorignore` lets its agent read the
+- Cursor on a desktop: that the app's `.cursorignore` lets its agent read the
   gitignored guidance, the fixture CSVs, and the shots; whether it lists each
   skill twice, from `.agents/skills/` and `.claude/skills/`; and that the team's
   terminal allowlist takes `ctzd` commands by subcommand;
@@ -774,7 +774,7 @@ Phase 0 spikes:
   trials read the app's skills by path, as the start guide says; still to check
   on Windows);
 - GitHub Enterprise device flow for the `ctzd` OAuth app;
-- MinGit and uv on a locked-down laptop, and uv's Python downloads from an
+- MinGit and uv on a locked-down desktop, and uv's Python downloads from an
   internal mirror;
 - the citizen cluster's Gateway: Envoy Gateway installed, the wildcard
   certificate on its listener, and sign-in with Entra ID through a
@@ -799,7 +799,7 @@ Building the React starter:
    paths, and move apps to Python 3.14 (both done on 2026-11-07). The
    validation harness's trial fixtures became React apps the same day, and its
    local platform can run on fake data (`serve fake-data`: no databases, each
-   app's `fixtures/` answers for every database source, on the laptop and
+   app's `fixtures/` answers for every database source, on the desktop and
    live). Its scorer reports the three new measures; the new scenarios are
    still to write.
 
@@ -890,6 +890,23 @@ Built since, on the same machine: the display formats (`x-basis-format`),
 names beside `ctzd-pages` and `ctzd-workflow`, and the new trial scenarios of
 section 13. None of the agent trials has run on the React app.
 
+Built on 2026-11-09 (CLI 0.4.0, `ctzd-core` 0.3.0, platform API 0.3.0), from
+an independent review of the repository, and tested with the fakes on Linux:
+every build input in the platform release (index, sources, npm pins, with
+`web/package.json` managed); breaking releases that apply only when an app
+passes on them, and the candidate check across the org; warnings from
+dependencies no longer failing tests; ruff's families by name; one CLI and chart
+pin for every Jenkins job, the checks on an agent without credentials, a lock
+between a build going live and a rollback, and the rollback job taking nothing
+from a tag into a shell; `ctzd dev` stopping only its own server; schedules
+checked with croniter and jobs Airflow has not loaded named; REST fixtures and
+fixture columns typed by the loader; sources with descriptions and
+`ctzd sources SOURCE [TABLE]`; emails with an HTML table and formatted
+workbooks; the sample page that never ships, a smoke test of every page, and no
+reads in datasets or jobs; `ctzd new` that can be run again after a failure; and
+the clients' tag order, build revision, and token rotation. Not run: any of it
+on Windows, in Cursor, against a real service, or in the agent trials.
+
 ## 15. Open items
 
 - The FI package stack, first sources, and pilot apps.
@@ -901,8 +918,15 @@ section 13. None of the agent trials has run on the React app.
   apps join the pilot channel by being listed in `channels.toml`; a platform
   release is cut by tagging and promoted by a commit to `channels.toml`; and
   without the platform the CLI uses its cache and the seed release it bundles.
-- The laptop toolchain spike (section 13), which the whole UI depends on.
+- The desktop toolchain spike (section 13), which the whole UI depends on.
 - How Jenkins' smoke test reaches a page once sign-in is on at the Gateway.
+- For the GitHub administrators: whether the login is an OAuth app or a GitHub
+  App, and whether the device flow is enabled on GitHub Enterprise. The CLI is
+  written for an OAuth app (`repo` scope, no token refresh); the placeholder
+  client id in `platform.toml` has a GitHub App's shape. This blocks only the
+  login spike.
+- Rounding as a business rule (ticks, lots): looked at again after the pilot,
+  counting the workarounds agents write in the trials.
 - Two choices the basis session put to the maintainer on 2026-11-07: how a
   named business-rounding function (such as an order's lot size, on the
   engineering side) is marked so basis's rounding gate allows it, and whether

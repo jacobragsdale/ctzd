@@ -8,7 +8,7 @@
 trial's agent and person need, then serves until it is stopped.
 
 On fake data, the databases are not started: each live app serves the rows in
-its own `fixtures/` folder, as `ctzd dev --fake` does on the laptop, and the FI
+its own `fixtures/` folder, as `ctzd dev --fake` does on the desktop, and the FI
 skill tells the agent so. The REST source, Teams, and email still answer.
 """
 
@@ -67,10 +67,10 @@ Each item has `isin`, `issuer`, `rating`, `coupon_pct`, `maturity_date`,
 """
 
 FAKE_DATA_NOTE = """**The FI databases are being moved this week: `fi_pricing` and `fi_trading`
-cannot be reached from any laptop or app, and every connection to them is
+cannot be reached from any desktop or app, and every connection to them is
 refused.** Do not try them, wait for them, or retry them. Until the move is
 done, both sources answer from each app's own `fixtures/` folder, on this
-laptop (`ctzd dev --fake`) and in the live app alike: write made-up rows with
+desktop (`ctzd dev --fake`) and in the live app alike: write made-up rows with
 the columns below in `fixtures/SOURCE/NAME.csv`, build on those, and deploy on
 them when the person agrees. The person knows about the move and expects
 made-up rows for now; the live app switches to real data by itself once the
@@ -113,7 +113,7 @@ def start_data(root: Path) -> None:
 
 
 def fake_data(root: Path) -> None:
-    """No databases: every source answers from the app's own fixtures, on the laptop and live."""
+    """No databases: every source answers from the app's own fixtures, on the desktop and live."""
     root.mkdir(parents=True, exist_ok=True)
     (root / "data.json").write_text(json.dumps({"password": "", "oauth_secret": secrets.token_hex(12), "fake": True}))
 
@@ -190,7 +190,7 @@ def run_platform(root: Path, base: Path) -> None:
     cluster = LocalCluster(github=github, root=root, ci_env=ci_env, runtime_env=runtime_env, fail_build=fail_build)
     seed = releases.seed_files()
     gateway = fakes.FakeReleases(
-        channels=f'cli = "0.3.0"\n[channels]\npilot = {TRIAL_RELEASE}\ngeneral = {TRIAL_RELEASE}\n',
+        channels=f'cli = "0.4.0"\n[channels]\npilot = {TRIAL_RELEASE}\ngeneral = {TRIAL_RELEASE}\n',
         archives={SEED_RELEASE: fakes.archive(seed), TRIAL_RELEASE: fakes.archive(trial_release(fake_data=sources.fake))},
     )
     services = Services(

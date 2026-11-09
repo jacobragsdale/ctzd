@@ -65,9 +65,9 @@ TECHNICAL_WORDS = (
 )
 _WORDS = re.compile(r"(?<![\w.-])(" + "|".join(re.escape(word) for word in TECHNICAL_WORDS) + r")(?![\w-])", re.IGNORECASE)
 _LINK = re.compile(r"https?://[^\s)>\]`'\"]+")
-# A link to the app on this laptop. A live link is one to an app the trial's platform serves (`fi-NAME.ctzd.test`): the
+# A link to the app on this desktop. A live link is one to an app the trial's platform serves (`fi-NAME.ctzd.test`): the
 # guides' production address (`*.ctzd.contoso.com`) or a GitHub or Jenkins link is not one the person can open.
-_LAPTOP_LINK = re.compile(r"https?://(?:localhost|127\.0\.0\.1)(?::\d+)?(?:[/?#]|$)")
+_DESKTOP_LINK = re.compile(r"https?://(?:localhost|127\.0\.0\.1)(?::\d+)?(?:[/?#]|$)")
 # Text a person would not write: a file path, a file name with a code extension, or a ctzd command.
 _PATHS = re.compile(r"(?<![\w/])(?:[\w.-]+/)+[\w.-]+|\b[\w-]+\.(?:py|tsx?|sql|csv|toml|json|env)\b|\bctzd [a-z]+")
 _SUPPRESSION = re.compile(r"#\s*(noqa|ty:\s*ignore|type:\s*ignore)")
@@ -202,7 +202,7 @@ def score_messages(score: Score, turns: list[dict[str, object]], hosts: set[str]
         reached = elapsed + float(str(turn.get("agent_seconds") or turn.get("seconds") or 0))
         links = [link.rstrip(".,;:!?") for link in _LINK.findall(text)]
         live = any(urlsplit(link).hostname in hosts for link in links)
-        if (live or any(_LAPTOP_LINK.match(link) for link in links)) and score.first_link_minutes is None:
+        if (live or any(_DESKTOP_LINK.match(link) for link in links)) and score.first_link_minutes is None:
             score.first_link_minutes = round(reached / 60, 1)
         if live and score.first_live_link_minutes is None:
             score.first_live_link_minutes = round(reached / 60, 1)

@@ -1,6 +1,6 @@
 [project]
 name = "ctzd-api"
-version = "0.2.0"
+version = "0.3.0"
 description = "The ctzd platform API: repo creation, build status, rollback, job runs, logs, and credentials"
 readme = "README.md"
 requires-python = ">=3.14"

@@ -39,7 +39,7 @@ TRIAL_BUDGET_USD = 12.0
 SECOND_RELEASE = 2
 DONE = "[[DONE]]"
 GIVE_UP = "[[GIVE UP]]"
-# A person at a laptop approves what their agent asks to run, so trials allow commands broadly. The deny
+# A person at a desktop approves what their agent asks to run, so trials allow commands broadly. The deny
 # rules keep agents away from the operator's own files and from destructive commands.
 ALLOWED = ("Bash", "Read(./**)", "Edit(./**)", "Write(./**)", "Glob", "Grep", "Skill", "TodoWrite")
 DENIED = (
@@ -61,7 +61,7 @@ switches to real data by itself after the move. You are fine with that: you want
 today, and you do not ask for real data or for retries."""
 PERSON_PROMPT = """You are role-playing a business user who is talking to an AI assistant. The assistant builds dashboards and scheduled
 reports for you on your company's internal platform, ctzd. {persona}
-You are Ann Lee (ann.lee@contoso.com, GitHub login ann.lee). This is your own work laptop, and ctzd on it is already logged in as you.
+You are Ann Lee (ann.lee@contoso.com, GitHub login ann.lee). This is your own work desktop, and ctzd on it is already logged in as you.
 
 What you want: {goal}
 What only you know (share it when asked, or when it matters): {facts}
@@ -140,7 +140,7 @@ def start_platform(root: Path, *, fail_first_build: bool = False) -> Platform:
 
 
 def person_env(base: Path, platform: Platform, home: Path) -> dict[str, str]:
-    """The laptop: the trial ctzd on PATH, logged in, its own ctzd home, git pointed at the local repos.
+    """The desktop: the trial ctzd on PATH, logged in, its own ctzd home, git pointed at the local repos.
 
     HOME is a fresh folder, so tools such as gh see none of the operator's accounts. Claude Code still finds
     the operator's login through CLAUDE_CONFIG_DIR, and uv keeps its shared cache and Python builds.
@@ -156,7 +156,7 @@ def person_env(base: Path, platform: Platform, home: Path) -> dict[str, str]:
         "CLAUDE_CONFIG_DIR": os.environ.get("CLAUDE_CONFIG_DIR", str(real / ".claude")),
         "UV_CACHE_DIR": str(real / ".cache" / "uv"),
         "UV_PYTHON_INSTALL_DIR": str(real / ".local" / "share" / "uv" / "python"),
-        # The browsers `ctzd setup` installs on a laptop, so `ctzd shot` works without each trial downloading them.
+        # The browsers `ctzd setup` installs on a desktop, so `ctzd shot` works without each trial downloading them.
         "PLAYWRIGHT_BROWSERS_PATH": str(real / ".cache" / "ms-playwright"),
     }
     return keep | platform.env | isolation | {"CTZD_HOME": str(home), "PATH": f"{base / TOOL_BIN}:{os.environ['PATH']}"}

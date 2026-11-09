@@ -1,6 +1,6 @@
 """Node and pnpm, which a React app's pages build with: where ctzd keeps its own, and how it installs them.
 
-A laptop has no admin rights, so `ctzd setup` puts Node in ctzd's own folder
+A desktop has no admin rights, so `ctzd setup` puts Node in ctzd's own folder
 (`node/`), from the zip the platform host serves or, failing that, from the
 Node wheel through uv, and pnpm in `npm/`, npm's global prefix there, from the
 internal npm registry. Every command that runs pnpm finds them through `env()`,

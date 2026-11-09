@@ -8,6 +8,10 @@ import type { ReactElement } from "react";
 
 import { pages } from "#nav.ts";
 
+/** Who built the app and how far to trust its figures, for everyone who opens it; from app.toml's owners. */
+const footnote =
+  "Built by {{owners}} with ctzd, by someone who does not code. The figures are best effort: check them against their source before you rely on them.";
+
 function Layout(): ReactElement {
   return (
     <ParallaxProvider prewarm>
@@ -25,10 +29,7 @@ function Layout(): ReactElement {
         <main className="flex w-full flex-1 flex-col gap-6 p-6">
           <Outlet />
         </main>
-        <footer className="border-t px-6 py-3 text-xs text-muted-foreground">
-          Built by {{owners}} with ctzd, by someone who does not code. The figures are best effort: check them against
-          their source before you rely on them.
-        </footer>
+        <footer className="border-t px-6 py-3 text-xs text-muted-foreground">{footnote}</footer>
       </div>
     </ParallaxProvider>
   );

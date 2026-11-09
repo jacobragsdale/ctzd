@@ -1,6 +1,6 @@
 [project]
 name = "ctzd-core"
-version = "0.2.0"
+version = "0.3.0"
 description = "Runtime library for ctzd apps: data sources, caching, the table store, and notifications"
 readme = "README.md"
 requires-python = ">=3.14"

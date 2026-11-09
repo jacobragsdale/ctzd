@@ -452,7 +452,7 @@ wheels = [
 
 [[package]]
 name = "ctzd"
-version = "0.3.0"
+version = "0.4.0"
 source = { editable = "packages/ctzd-cli" }
 dependencies = [
     { name = "croniter" },
@@ -488,7 +488,7 @@ provides-extras = ["ci"]
 
 [[package]]
 name = "ctzd-api"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "packages/ctzd-api" }
 dependencies = [
     { name = "azure-identity" },
@@ -513,7 +513,7 @@ requires-dist = [
 
 [[package]]
 name = "ctzd-core"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "packages/ctzd-core" }
 dependencies = [
     { name = "basis-api" },

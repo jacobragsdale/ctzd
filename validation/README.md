@@ -40,7 +40,7 @@ uv run python -m validation.stage2_helm PATH/TO/helm ~/.cache/ctzd-validation/he
    ```
 
    Or, on a host short of memory, run on fake data: no containers, and every database source
-   answers from each app's own `fixtures/` folder, on the laptop and live. The FI skill tells
+   answers from each app's own `fixtures/` folder, on the desktop and live. The FI skill tells
    the agent so, and `score` has no right answers to compare with.
 
    ```sh

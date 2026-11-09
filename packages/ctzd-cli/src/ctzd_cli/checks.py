@@ -114,7 +114,7 @@ def _described(err: CliError) -> str:
 def _ci_platform_files(target: Target) -> Step:
     recorded = sync.recorded_release(target.root)
     if recorded is None:
-        return Step("platform files", "failed", f"{sync.VERSION_FILE} records no platform release. Run `ctzd check` on a laptop and push the result.")
+        return Step("platform files", "failed", f"{sync.VERSION_FILE} records no platform release. Run `ctzd check` on a desktop and push the result.")
     try:
         release = require_usable(target.releases.get(recorded))
     except CliError as err:
@@ -124,7 +124,7 @@ def _ci_platform_files(target: Target) -> Step:
     if core is not None:
         problems.append(core)
     if problems:
-        return Step("platform files", "failed", f"Platform-owned files differ from platform release {recorded}: {'; '.join(problems)}. Run `ctzd check` on a laptop.")
+        return Step("platform files", "failed", f"Platform-owned files differ from platform release {recorded}: {'; '.join(problems)}. Run `ctzd check` on a desktop.")
     return Step("platform files", "passed")
 
 
@@ -317,7 +317,7 @@ def client(root: Path, mode: Mode) -> Step:
     changed = written.output.strip().endswith("True")
     if mode == "ci":
         if changed:
-            return Step("client", "failed", "web/openapi.json does not match the datasets. Run `ctzd check` on a laptop and push the result.")
+            return Step("client", "failed", "web/openapi.json does not match the datasets. Run `ctzd check` on a desktop and push the result.")
         result = _pnpm(root, "exec", "vp", "run", "client-check")
         return Step("client", "passed") if result.ok else Step("client", "failed", proc.tail(result.output, 30))
     result = _pnpm(root, "exec", "vp", "run", "client-pull")
