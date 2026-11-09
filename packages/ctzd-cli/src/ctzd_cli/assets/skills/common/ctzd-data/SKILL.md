@@ -112,11 +112,22 @@ def sector_prices(as_of: dt.date | None = None) -> pd.DataFrame:
 ## Fake rows: fixtures/
 
 `fixtures/SOURCE/NAME.csv` holds made-up rows for `src/app/data/sql/NAME.sql` on `SOURCE`, with
-the same column names as the real query; ISO dates (`2026-11-06`) arrive as dates, numbers as
-floats, and a column named `id` or ending in `_id` as text, as the query selects ids.
-`ctzd dev --fake` serves them in place of every source, and a source or SQL file without a CSV
-fails, so a fake page never reaches real data. `ctzd add dataset --source` writes one to start
-from. Use them in tests too:
+the same column names as the real query. Each column arrives as the loader's
+`ctzd.require_columns` declares it, so declare every id `"str"` there and an account `00123456` or a
+SEDOL stays text. Without a declaration, ISO dates (`2026-11-06`) arrive as dates, numbers as
+floats, and a column named `id` or ending in `_id`, or a number written with a leading zero, as
+text.
+
+A REST source's fake answers live in `fixtures/SOURCE/rest.json`, one entry per request the loaders
+make, holding the JSON the real API returns:
+
+```json
+{"GET /ratings": {"items": [{"isin": "US0001", "rating": "AA"}], "next": null}}
+```
+
+`ctzd dev --fake` serves them in place of every source, and a source, SQL file, or REST route
+without fake rows fails, so a fake page never reaches real data. `ctzd add dataset --source` writes
+a CSV to start from. Use them in tests too:
 `ctzd.testing.fake_sources(**ctzd.testing.fixture_sources(Path("fixtures")))`. Never put real
 client data in them: they are committed.
 
@@ -166,12 +177,13 @@ def _sector_summary() -> pd.DataFrame:
     return ctzd.require_columns(frame, {"sector": "str", "bonds": "float", "avg_price": "float"}, what="sector_summary")
 
 
-def load_sector_summary() -> pd.DataFrame | None:
-    """The job's latest summary; None until the job has run once, so the page can say so."""
+def load_sector_summary() -> pd.DataFrame:
+    """The job's latest summary; no rows until the job has run once, so the page can say so."""
     try:
         return _sector_summary()
     except ctzd.StoreError:
-        return None  # not cached: the page shows the data as soon as the job has run
+        # Not cached: the page shows the data as soon as the job has run.
+        return pd.DataFrame({"sector": pd.Series(dtype="str"), "bonds": pd.Series(dtype="float64"), "avg_price": pd.Series(dtype="float64")})
 ```
 
 Counts arrive as `float64` too (`COUNT(*)`), and so does every number in a fake
@@ -203,10 +215,11 @@ seconds. A dashboard must not wait on that. Move it:
    `ctzd.write_table(summary, "sector_summary")`. Writes are atomic: readers see
    the old version until the new one is complete.
 2. The dashboard's loader reads it with `ctzd.read_table` (as `load_sector_summary` above).
-3. The page must render before the job's first run: when the loader returns
-   `None`, show a plain message such as "The first refresh runs at 06:00 UTC;
-   the figures appear after it." A page that raises fails the post-deploy
-   check, and the release does not go live.
+3. The page must render before the job's first run: the loader returns the
+   table's columns with no rows (as `load_sector_summary` above), and the page,
+   when its dataset has no rows, shows a plain message such as "The first
+   refresh runs at 06:00 UTC; the figures appear after it." A dataset that
+   raises fails the post-deploy check, and the release does not go live.
 4. Deploy, then run the job once (`ctzd run JOB --wait --json`) so the page has
    data straight away. Jobs only run the code of a release that went live.
 

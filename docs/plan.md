@@ -369,6 +369,13 @@ table; `ctzd.read_table("sector_summary")` reads the latest version, and
 checks that the required columns exist with the expected dtype family (`str`,
 `float` for every number, `datetime`, `bool`, or `any`). Nothing heavier.
 
+**Fake rows.** `fixtures/SOURCE/NAME.csv` answers `sql/NAME.sql` on a database
+source and `fixtures/SOURCE/rest.json` (keyed `"GET /path"`) a REST source, for
+`ctzd dev --fake` and tests. A CSV column takes the family the loader's
+`ctzd.require_columns` declares for it, read from the loader's code; without
+one, a number written with a leading zero stays text, so an account
+`00123456` or a SEDOL never arrives as a number.
+
 **Tests.** `ctzd.testing.fake_sources(fi_pricing={"sql/prices.sql": frame})`,
 `fake_store(tmp_path)`, and `outbox()` replace sources, the store, and
 notifications in tests; inside `fake_sources` any source that is not faked
