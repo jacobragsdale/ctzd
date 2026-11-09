@@ -132,7 +132,7 @@ basis-ui) and nothing else.
 | Git on laptops | `ctzd setup` installs MinGit when git is missing. `ctzd` drives git; power users may use git directly. | Business users never see git; power users keep full control. |
 | Jobs | A dedicated Airflow 3 in the citizen cluster. One factory DAG generates a DAG per job from specs Jenkins writes to `ctzd-dags`. No DAG code in app repos. The Airflow UI has no login. | People already use Airflow and want its DAG UI link; DAG code is too easy to get wrong. |
 | Job outputs | Parquet on ADLS Gen2 at `<sbu>/<app>/<table>/`, written atomically by cluster jobs only, with the last versions kept. No writes back to source systems. | A job precomputes slow queries; the dashboard reads parquet in milliseconds. |
-| Notifications | `ctzd.notify.email` (SMTP relay, DataFrames attached as xlsx or csv) and `ctzd.notify.teams` (Workflows webhook). Owners get an email when a job fails. | "Send me X every Monday" is the most common job. |
+| Notifications | `ctzd.notify.email` (SMTP relay, DataFrames attached as xlsx or csv) and `ctzd.notify.teams` (Workflows webhook). A table sent with its row type (`ctzd.notify.Table`) goes into an HTML body beside the plain one, formatted as the page formats it, with the date the data is for and a link to the dashboard, and into a workbook that keeps the raw numbers and shows them through Excel number formats from the column kinds, with a frozen header, column widths, and a filter. No charts or templates. Owners get an email when a job fails. | "Send me X every Monday" is the most common job. |
 | Data stack | pandas 3 is the default. Oracle through `python-oracledb` thin mode, MSSQL through `mssql-python`, both fetching through Arrow. REST through the `ctzd-core` client. | Most data comes from REST, Oracle, and MSSQL. Thin mode needs no Oracle client; no source needs Native Network Encryption. |
 | Code layout | `src/app/data/` (the only I/O), `src/app/logic/` (pure functions), `src/app/api/` and `src/app/jobs/` (entry points), and `web/` (the pages), enforced by import-linter and basis-ui's lint. | Agents physically cannot put a query in a page or a route. |
 | Python | Python 3.14, which basis requires, from the platform's mirror of uv's Python builds. Airflow's own project stays on 3.13. | One version across ctzd and basis. |
@@ -327,7 +327,8 @@ stays below the 15th digit, where display hides it.
   percentages and as basis-ui's formatter reads them. Prices are per 100 of par.
   Loaders convert a source's units by dividing by 100 or 10,000.
 - Python never rounds a number or formats one as text. `ctzd check` refuses
-  `round()`, `.round()`, numpy's rounding, the `decimal` module, number formats
+  `round()`, `.round()` (but not a timestamp's, such as `.dt.round("h")`),
+  numpy's rounding, the `decimal` module, number formats
   in f-strings, `format()`, `str.format()` and `%`, and `float_format=` in an
   app's Python outside the page code; and `ROUND`, casts to a decimal type with
   a precision or to money, `TO_CHAR` with a number format, `FORMAT` of a number,
@@ -366,7 +367,12 @@ table and then flips its `_latest` pointer, so readers never see a half-written
 table; `ctzd.read_table("sector_summary")` reads the latest version, and
 `app=` reads another app's table. Locally, writes go to `.ctzd/out/`.
 
-**Notifications.** `ctzd.notify.email(...)` and `ctzd.notify.teams(...)`.
+**Notifications.** `ctzd.notify.email(...)` and `ctzd.notify.teams(...)`. An
+email takes `table=ctzd.notify.Table(frame, RowType)`, `as_of`, and `link` for
+its HTML body, and a `Table` as an `.xlsx` attachment is written with Excel
+number formats from the column kinds. Excel cannot show a fraction in basis
+points, so a `Bps` column shows as a percentage to two more decimals (0.00125
+as 0.1250%), its number still the fraction.
 
 **Validation.** `ctzd.require_columns(frame, {"isin": "str", "price": "float"})`
 checks that the required columns exist with the expected dtype family (`str`,

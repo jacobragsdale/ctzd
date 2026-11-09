@@ -14,6 +14,8 @@ class EmailMessage:
     subject: str
     body: str
     attachments: tuple[Attachment, ...]
+    # The same message for mail readers that show HTML: the table formatted as the page formats it.
+    html: str | None = None
 
 
 @dataclass(frozen=True)

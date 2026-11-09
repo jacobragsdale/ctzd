@@ -7,7 +7,8 @@ Rounding anywhere earlier changes the data, and two places that round differentl
 show two numbers for one value. So the gate refuses, in `src/app/`:
 
 - in Python: `round()`, the `.round()`, `.around()` and `.rint()` of pandas and
-  numpy, the `decimal` module, number formats in f-strings, `format()`,
+  numpy (a timestamp's `.round("h")` or `.dt.round(...)` is not a number, and
+  passes), the `decimal` module, number formats in f-strings, `format()`,
   `str.format()` and `%`, and `float_format=`;
 - in SQL: `ROUND`, casts and conversions to a decimal type with a precision or to
   money, `TO_CHAR` with a number format, `FORMAT` of a number, and `STR`.
@@ -64,11 +65,20 @@ def _template_rounds(template: str) -> bool:
         return False
 
 
+def _rounds_time(node: ast.Call) -> bool:
+    """Whether a `.round()` rounds timestamps to a frequency, as `.dt.round("h")` or `stamp.round(freq="15min")` do:
+    a time is not a number, and rounding one changes no figure."""
+    func = node.func
+    on_dt = isinstance(func, ast.Attribute) and isinstance(func.value, ast.Attribute) and func.value.attr == "dt"
+    frequency = bool(node.args) and _constant_text(node.args[0]) is not None
+    return on_dt or frequency or any(keyword.arg == "freq" for keyword in node.keywords)
+
+
 def _call_problem(node: ast.Call) -> str | None:
     func = node.func
     if isinstance(func, ast.Name) and func.id == "round":
         return "round() rounds a number"
-    if isinstance(func, ast.Attribute) and func.attr in _ROUNDING_METHODS:
+    if isinstance(func, ast.Attribute) and func.attr in _ROUNDING_METHODS and not (func.attr == "round" and _rounds_time(node)):
         return f".{func.attr}() rounds numbers"
     if isinstance(func, ast.Name) and func.id == "format" and len(node.args) > 1:
         spec = _constant_text(node.args[1])

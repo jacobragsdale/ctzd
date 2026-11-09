@@ -56,6 +56,15 @@ from app.logic.prices import sector_summary
 
 _LOG = logging.getLogger(__name__)
 RECIPIENTS = ("desk-team@contoso.com",)
+DASHBOARD = "https://fi-bond-prices.ctzd.contoso.com"
+
+
+class SectorSummary(ctzd.Row):
+    """One sector of the summary, as the email and its workbook show it."""
+
+    sector: str
+    bonds: ctzd.Count
+    avg_price: ctzd.Price
 
 
 def run(as_of: dt.date) -> int:
@@ -65,7 +74,8 @@ def run(as_of: dt.date) -> int:
         return 1
     summary = sector_summary(prices)
     version = ctzd.write_table(summary, "sector_summary")
-    ctzd.notify.email(RECIPIENTS, f"Sector summary {as_of:%d %b %Y}", "The sector summary is attached.", attachments={"sector_summary.xlsx": summary})
+    table = ctzd.notify.Table(summary, SectorSummary, title="Sector summary")
+    ctzd.notify.email(RECIPIENTS, f"Sector summary {as_of:%d %b %Y}", "Today's sector summary.", table=table, attachments={"sector_summary.xlsx": table}, as_of=as_of, link=DASHBOARD)
     ctzd.notify.teams("desk_channel", f"The sector summary for {as_of:%d %b %Y} is ready.", title="Sector summary")
     _LOG.info("Published %d sectors as version %s.", len(summary), version)
     return 0
@@ -86,8 +96,15 @@ morning job that reports the latest prices says the previous business day.
 
 ## Messages and tables
 
-- `ctzd.notify.email(to, subject, body, attachments={"name.xlsx": frame})`:
+- `ctzd.notify.email(to, subject, body, *, attachments=None, table=None, as_of=None, link=None)`:
   `to` is one address or a sequence. Attachment names end in `.xlsx` or `.csv`.
+- Wrap a frame in `ctzd.notify.Table(frame, RowType, title=None)`, with a row
+  type like a dataset's, declared in the job's module (a job cannot import
+  `app.api`), to send it as the page shows it: `table=` puts it in the email's body, each number
+  written as the page writes it, and as an `.xlsx` attachment it keeps every
+  number raw and shows it through Excel's number formats from the column kinds,
+  with a frozen header, column widths, and a filter. A plain frame is attached
+  as it is. `as_of` adds the date the data is for, and `link` the dashboard's address.
 - `ctzd.notify.teams(source, text, title=None)`: `source` is a `teams` source,
   a channel webhook the platform team adds. Ask the person which channel; never
   guess the name.

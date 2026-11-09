@@ -51,6 +51,9 @@ def test_python_that_rounds_or_formats_a_number_is_refused(tmp_path: Path, line:
         "x = math.floor(value / 1000)",
         "x = frame['price'].mean()",
         "x = ctzd.display.number(price, decimals=2)",
+        "x = frame['traded_at'].dt.round('h')",
+        "x = stamp.round('15min')",
+        "x = index.round(freq='D')",
     ],
 )
 def test_python_that_leaves_numbers_alone_passes(tmp_path: Path, line: str) -> None:
