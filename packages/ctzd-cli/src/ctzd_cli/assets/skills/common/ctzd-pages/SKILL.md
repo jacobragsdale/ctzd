@@ -156,7 +156,9 @@ wrong.
 
 ## When a check fails
 
-- `web check`: each problem names the file, the rule, and what to use instead.
+- `web check`: each problem names the file, the rule, and what to use instead. A restyled
+  component names its variants and `vp run docs NAME`, and `ctzd docs ui NAME --json` gives the
+  same; an off-theme colour names the theme's tokens to use.
 - `web build` mentioning the React Compiler: a component breaks the rules of React, such as a
   hook inside a condition or a value changed while rendering. Move hooks to the top of the
   component and compute new values instead of changing old ones.
