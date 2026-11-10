@@ -116,7 +116,10 @@ Rules, which `ctzd check` enforces with the fix in each message:
 
 ## Add a dataset and a page
 
-Two commands write a working slice, which passes `ctzd check` as written; then you edit it:
+Two commands write a working slice, which passes `ctzd check` as written; then you edit it. Use
+these, never basis-ui's `vp run new` or `vp run fixtures`: those write pages and response fixtures
+for basis-ui's fixture mode (`vp dev`), which a ctzd app does not use; its fake data is the rows
+in `fixtures/` that `ctzd dev --fake` serves.
 
 1. `ctzd add dataset NAME --source SOURCE --json` writes `src/app/data/sql/NAME.sql`, a loader,
    the dataset and its row type in `src/app/api/datasets.py`, and a test, lists the source in
