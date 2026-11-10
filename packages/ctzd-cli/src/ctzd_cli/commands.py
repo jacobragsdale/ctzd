@@ -341,10 +341,14 @@ def shot(ctx: Context, *, page: str) -> Outcome:
     )
 
 
-def docs_ui(ctx: Context, *, name: str | None) -> Outcome:
-    """The firm's components, from the catalogue the app's own @basis/ui ships: every family, or one in full."""
+def docs_ui(ctx: Context, *, name: str | None, search: str | None = None) -> Outcome:
+    """The firm's components, from the catalogue the app's own @basis/ui ships: every family, one in full, or a search."""
     root, _app_config = _app(ctx)
     found = catalogue.load(root)
+    if search is not None:
+        matches = catalogue.search(found, search)
+        summary = f"{len(matches)} component(s) match {search!r}: " + ", ".join(match["name"] for match in matches) + "." if matches else f"No component matches {search!r}."
+        return Outcome(summary=summary, data={"components": matches}, next_steps=["Run `ctzd docs ui NAME --json` for a component's props, variants, and example before you use it."])
     if name is None:
         families = catalogue.overview(found)
         count = sum(len(family["components"]) if isinstance(family["components"], list) else 0 for family in families.values())

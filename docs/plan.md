@@ -239,7 +239,7 @@ client and to the theme's components and tokens.
 | `ctzd add page NAME --dataset NAME` | Writes a page showing the dataset as a bar chart and a grid, with each column's format from its row type, routes it, and links it from the header. |
 | `ctzd api list` | Each dataset with its route, client function, parameters, and columns with their formats, so an agent never reads the generated client. |
 | `ctzd add package NAME [--npm]` (planned) | Adds a Python or npm package from the internal registry. |
-| `ctzd docs ui [COMPONENT]` | The component catalogue of the installed `@basis/ui` (`catalogue.json`, basis-ui step 1.15), by family, or one component's props, variants, and example. |
+| `ctzd docs ui [COMPONENT] [--search WORDS]` | The component catalogue of the installed `@basis/ui` (`catalogue.json`, basis-ui step 1.15, format 2 since 7e434e2, with parallax's grids and charts), by family; one component's purpose, when to use it, what goes with it, props with their origin and default, variants, and example; or the components whose description matches WORDS. The catalogue is about 1 MB, so agents read it only through this command. |
 | `ctzd run JOB [--local] [--wait]` | Runs a job in Airflow and prints the run link, `--wait` follows it to success or failure; `--local` runs it on the desktop. |
 | `ctzd add job NAME --schedule CRON [--timezone ZONE]` | Adds a job module, its test, and its `app.toml` entry; the schedule runs in ZONE (default UTC). |
 | `ctzd check [--fast]` | Runs every gate, fixing formatting and simple lint locally; `--fast` skips the tests. |

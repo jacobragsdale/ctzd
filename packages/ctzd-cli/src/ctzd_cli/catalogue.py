@@ -2,22 +2,27 @@
 
 The catalogue is `web/node_modules/@basis/ui/catalogue.json`, written when
 basis-ui builds the package, so it always describes the version the app
-installed: each component's family, purpose, props, variants, and, for each
-family, one example that type-checks. Without a name the command lists the
-families and their components; with one, it gives that component in full.
+installed: each component's module (`@basis/ui`, or `@basis/parallax` for its
+grids and charts), family, purpose, when to use it and what goes with it, props
+(with where each comes from and its default), variants, and, for each family,
+one example that type-checks. Without a name the command lists the families and
+their components; with one, it gives that component in full; `--search` finds
+components by what they are for. The catalogue is large (format 2 is about
+1 MB), so an agent reads it through this command, never whole.
 """
 
 import difflib
 import re
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from ctzd_cli.errors import CliError, UsageError
 
 CATALOGUE = Path("web") / "node_modules" / "@basis" / "ui" / "catalogue.json"
 _FIRST_SENTENCE = re.compile(r"(.+?\.)(\s|$)")
 _SUGGESTIONS = 3
+_FOUND = 10
 
 
 class _Model(BaseModel):
@@ -30,6 +35,9 @@ class Prop(_Model):
     type: str
     optional: bool = False
     description: str = ""
+    default: str | None = None
+    # The package that declares it: @basis/ui's own, or inherited, such as Base UI's (@base-ui/react).
+    origin: str | None = Field(default=None, alias="from")
 
 
 class Variant(_Model):
@@ -40,7 +48,10 @@ class Variant(_Model):
 class Component(_Model):
     name: str
     family: str
+    module: str = "@basis/ui"
     purpose: str = ""
+    use: str = ""
+    goes_with: tuple[str, ...] = Field(default=(), alias="with")
     extends: tuple[str, ...] = ()
     props: tuple[Prop, ...] = ()
     variants: dict[str, Variant] = {}
@@ -88,16 +99,31 @@ def entry(catalogue: Catalogue, name: str) -> dict[str, object]:
     found = by_name.get(name.lower())
     if found is None:
         close = difflib.get_close_matches(name, [component.name for component in catalogue.components], n=_SUGGESTIONS)
-        msg = f"@basis/ui has no component named {name!r}."
-        raise UsageError(msg, hint=(f"Did you mean {', '.join(close)}? " if close else "Run `ctzd docs ui` for the list. ") + "Grids, pivots and charts are parallax's: see the ctzd-pages skill.")
+        msg = f"The catalogue has no component named {name!r}."
+        raise UsageError(msg, hint=f"Did you mean {', '.join(close)}?" if close else "Run `ctzd docs ui --search WORDS` to find one by what it is for.")
     example = found.example or next((member.example for member in catalogue.components if member.family == found.family and member.example is not None), None)
     return {
         "name": found.name,
+        "module": found.module,
         "family": found.family,
         "purpose": found.purpose,
+        "use": found.use,
+        "with": list(found.goes_with),
         "extends": list(found.extends),
-        "props": [prop.model_dump() for prop in found.props],
+        "props": [prop.model_dump(exclude_none=True, by_alias=True) for prop in found.props],
         "variants": {key: variant.model_dump() for key, variant in found.variants.items()},
         "example": example,
         "family_components": [member.name for member in catalogue.components if member.family == found.family],
     }
+
+
+def search(catalogue: Catalogue, text: str) -> list[dict[str, str]]:
+    """The components whose name, purpose, or use mentions every word of `text`, best first: name matches lead."""
+    words = [word.lower() for word in text.split() if word]
+    found: list[tuple[int, Component]] = []
+    for component in catalogue.components:
+        haystack = f"{component.name} {component.family} {component.purpose} {component.use}".lower()
+        if words and all(word in haystack for word in words):
+            found.append((0 if any(word in component.name.lower() for word in words) else 1, component))
+    found.sort(key=lambda pair: (pair[0], pair[1].name))
+    return [{"name": component.name, "module": component.module, "purpose": _summary(component.purpose)} for _rank, component in found[:_FOUND]]

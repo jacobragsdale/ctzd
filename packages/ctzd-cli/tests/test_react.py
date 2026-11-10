@@ -87,8 +87,33 @@ def test_the_catalogue_lists_families_and_gives_a_component_its_family_s_example
     title = catalogue.entry(found, "cardtitle")
     assert title["example"] == "<Card />"
     assert title["family_components"] == ["Card", "CardTitle"]
-    with pytest.raises(UsageError, match="no component named 'Grid'"):
-        catalogue.entry(found, "Grid")
+    with pytest.raises(UsageError, match="no component named 'Grod'"):
+        catalogue.entry(found, "Grod")
+
+
+def test_a_format_2_catalogue_gives_use_companions_and_where_each_prop_comes_from(tmp_path: Path) -> None:
+    button = {
+        "name": "Button",
+        "family": "button",
+        "module": "@basis/ui",
+        "purpose": "A button. It keeps a button's role.",
+        "use": "For an action on the page, such as submitting a form.",
+        "with": ["ButtonLink"],
+        "props": [{"name": "nativeButton", "type": "boolean | undefined", "optional": True, "default": "true", "from": "@base-ui/react", "description": ""}],
+        "variants": {},
+    }
+    grid = {"name": "Grid", "family": "grid", "module": "@basis/parallax", "purpose": "A grid of a dataset.", "use": "For rows to sort and filter.", "props": []}
+    document = {"format": "basis-ui-catalogue/2", "package": "@basis/ui", "components": [button, grid], "functions": [], "types": [], "modules": [], "icons": []}
+    path = tmp_path / catalogue.CATALOGUE
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps(document), encoding="utf-8")
+    found = catalogue.load(tmp_path)
+    entry = catalogue.entry(found, "Button")
+    assert entry["use"] == "For an action on the page, such as submitting a form."
+    assert entry["with"] == ["ButtonLink"]
+    assert entry["props"] == [{"name": "nativeButton", "type": "boolean | undefined", "optional": True, "description": "", "default": "true", "from": "@base-ui/react"}]
+    assert catalogue.search(found, "submitting form") == [{"name": "Button", "module": "@basis/ui", "purpose": "A button."}]
+    assert [match["name"] for match in catalogue.search(found, "grid")] == ["Grid"]
 
 
 def test_without_the_page_s_packages_there_is_no_catalogue(tmp_path: Path) -> None:

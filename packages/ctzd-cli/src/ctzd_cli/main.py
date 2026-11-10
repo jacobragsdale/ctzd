@@ -64,6 +64,7 @@ class Args(BaseModel):
     timezone: str = "UTC"
     candidate: int | None = None
     table: str | None = None
+    search: str | None = None
 
 
 def _setup_parsers(sub: argparse._SubParsersAction[argparse.ArgumentParser], common: argparse.ArgumentParser) -> None:
@@ -97,6 +98,7 @@ def _app_parsers(sub: argparse._SubParsersAction[argparse.ArgumentParser], commo
         .add_parser("ui", parents=[common], help="the firm's components: every family, or one component's props, variants, and example")
     )
     docs_ui.add_argument("name", nargs="?", help="a component, such as Button")
+    docs_ui.add_argument("--search", help="words saying what the component is for, such as 'date picker'")
     shot = sub.add_parser("shot", parents=[common], help="a picture of a page ctzd dev serves, and the problems on it")
     shot.add_argument("page", nargs="?", default="/", help="the page's path, such as /bonds; default: /")
     exec_ = sub.add_parser("exec", parents=[common], help="run a command in the app with its credentials, as ctzd dev does: ctzd exec --json -- python -c '...'")
@@ -194,7 +196,7 @@ HANDLERS: dict[str, Handler] = {
     "open": lambda a, ctx: commands.open_app(ctx, name=_required(a.name, "NAME"), sbu=_required(a.sbu, "--sbu"), directory=a.dir),
     "dev": lambda a, ctx: commands.dev(ctx, port=a.port, stop=a.stop, fake=a.fake),
     "shot": lambda a, ctx: commands.shot(ctx, page=a.page),
-    "docs ui": lambda a, ctx: commands.docs_ui(ctx, name=a.name),
+    "docs ui": lambda a, ctx: commands.docs_ui(ctx, name=a.name, search=a.search),
     "add dataset": lambda a, ctx: commands.add_dataset(ctx, name=_required(a.name, "NAME"), source=a.source),
     "add page": lambda a, ctx: commands.add_page(ctx, name=_required(a.name, "NAME"), dataset=_required(a.dataset, "--dataset")),
     "api list": lambda _a, ctx: commands.api_list(ctx),

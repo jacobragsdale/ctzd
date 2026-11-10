@@ -35,7 +35,8 @@ Use the `ctzd` command for everything, always with `--json`:
   chart that drew nothing or too small. Run it after every change to a page and look at the picture.
 - `ctzd add dataset NAME [--source SOURCE]` and `ctzd add page PAGE --dataset NAME` write a
   working dataset and a page for it; `ctzd api list --json` lists the datasets the pages can read.
-- `ctzd docs ui [NAME] --json` lists the firm's components by family, or gives one component's
+- `ctzd docs ui --search WORDS --json` finds the firm's components (and parallax's grids and charts)
+  by what they are for. `ctzd docs ui [NAME] --json` lists them by family, or gives one component's
   props, variants, and a working example. Read it before you use a component.
 - `ctzd exec --json -- python -c "..."` runs a command with the app's credentials, such as a quick
   look at what a loader returns from the live source.
