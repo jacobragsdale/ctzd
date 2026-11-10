@@ -36,7 +36,7 @@ function PricesPage(): ReactElement {
   const dataset = useDataset("sector_prices", prices);
   return (
     <div className="h-96">
-      <Grid dataset={dataset} layout={{}} />
+      <Grid dataset={dataset} layout={{}} asOf="2026-11-06" />
     </div>
   );
 }
@@ -56,6 +56,11 @@ function PricesPage(): ReactElement {
   the chart, and its tooltips read it from the dataset, so a page names no formats. Change a
   column's kind in `src/app/api/datasets.py`, not in the page. A layout's `formats` overrides
   one column only when a page must show it differently from everywhere else.
+- Give every `<Grid>` and `<Pivot>` the date its data is for as `asOf`, an ISO date
+  (`"2026-11-06"`): its status bar then says "as of 2026-11-06". Use the day the page asked the
+  dataset for, or, for "the latest", the newest date in the data, from a one-row dataset such as
+  `latest_date` that the page reads with its generated function. Never the day the page loaded:
+  without `asOf` the bar says no date at all, and a malformed one shows an error in its place.
 - `ParallaxProvider` in `web/src/pages/layout.tsx` starts the engine for every page; leave it there.
 
 Pick the chart from the person's question:

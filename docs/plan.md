@@ -476,9 +476,9 @@ the guidance is the smallest part of the system:
   who open a dashboard are not only the person who built it. The starter's
   sample page is marked by its first line: `ctzd check` warns while it is
   there, `ctzd deploy` refuses, and Jenkins' check fails, so the first push
-  that `ctzd new` makes deploys nothing. (parallax's own footer still shows when
-  the browser loaded the data, "just now"; basis-ui is asked to show the data's
-  date instead.)
+  that `ctzd new` makes deploys nothing. Each `<Grid>` and `<Pivot>` takes the
+  data's date as `asOf` and shows it in its status bar, never the time the
+  browser loaded the data (basis-ui 8358a51, at ctzd's request on 2026-11-09).
 
 **The order of work for a person who does not code**, taught in `AGENTS.md`
 and `ctzd-workflow`:
