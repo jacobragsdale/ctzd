@@ -95,7 +95,15 @@ Rules, which `ctzd check` enforces with the fix in each message:
 - Never round or format a number yourself (`toFixed`, `Math.round`, `toLocaleString`,
   `Intl.NumberFormat`): use the number components or parallax's `formats`, and
   `numberText(value, { decimals })` from `@basis/ui` for a number inside a string.
-- Never call `fetch`: data comes only through `#api/client.ts`.
+- Never call `fetch`, `XMLHttpRequest`, `WebSocket`, `EventSource`, or `navigator.sendBeacon`: data
+  comes only through `#api/client.ts`, and a value that changes is polled with the hook's `refetchInterval`.
+- Dates show through `DateTime` or `relativeTime` from `@basis/ui/dates`, never `toLocaleDateString`
+  or `Intl.DateTimeFormat`. Charts are parallax's, never recharts; no react-hook-form, sonner, or React Aria.
+- On plain elements, no `dark:`, no `!important` (`!p-4`), no arbitrary variants (`[&>*]:`), no
+  filters (`grayscale`), no `black` or `white`, and no class built from a template string.
+- No comment turns a check off: no `oxlint-disable`, `eslint-disable`, `@ts-expect-error`,
+  `@ts-ignore`, or `@ts-nocheck`. Fix what the rule or the compiler reports; parse a value of
+  unknown shape with a zod schema.
 - Under each page's title, say where its numbers come from, in the person's words ("the
   pricing team's end-of-day prices"), and the date they are for, taken from the data (the
   newest `as_of_date` in the rows), never the day the page loaded. The people who open a

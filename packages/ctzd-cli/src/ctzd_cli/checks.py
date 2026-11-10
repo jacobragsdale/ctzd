@@ -326,10 +326,37 @@ def client(root: Path, mode: Mode) -> Step:
     return Step("client", "fixed", "Regenerated the page's client from the datasets.") if changed else Step("client", "passed")
 
 
+_SUPPRESSION = re.compile(r"(?:oxlint|eslint)-disable(?:-next-line|-line)?(?P<rules>[^\n*]*)|@ts-(?:expect-error|ignore|nocheck)")
+_ALLOWED_SUPPRESSION = "oxc/no-barrel-file"
+
+
+def web_suppressions(root: Path) -> list[str]:
+    """Each comment in the pages that turns a check off, which basis-ui's lint refuses: only `oxc/no-barrel-file` in
+    `src/api` may be disabled. Read as text, as basis-ui's `check-full` does, since a comment that turns off every rule
+    hides from the lint itself; ctzd runs `vp check`, not `check-full`, which expects an app `vp run sync` writes."""
+    found: list[str] = []
+    source = root / WEB / "src"
+    for path in sorted(item for pattern in ("*.ts", "*.tsx") for item in source.rglob(pattern)):
+        relative = path.relative_to(root / WEB).as_posix()
+        if relative.startswith("src/api/generated/"):
+            continue
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            for match in _SUPPRESSION.finditer(line):
+                rules = (match.group("rules") or "").split("--", 1)[0].strip()
+                if relative.startswith("src/api/") and rules == _ALLOWED_SUPPRESSION:
+                    continue
+                found.append(f"web/{relative}:{number}: `{match.group(0).strip()}` turns a check off; fix what it reports instead (ctzd-pages).")
+    return found
+
+
 def web_check(root: Path, mode: Mode) -> Step:
-    """The pages' formatting, lint and types, at basis-ui's settings; locally it fixes what it can first."""
+    """The pages' formatting, lint and types, at basis-ui's settings, and no comment that turns a check off; locally it
+    fixes what it can first."""
     result = _pnpm(root, "exec", "vp", "check") if mode == "ci" else _pnpm(root, "exec", "vp", "check", "--fix")
-    return Step("web check", "passed") if result.ok else Step("web check", "failed", proc.tail(result.output, 60))
+    suppressed = web_suppressions(root)
+    if result.ok and not suppressed:
+        return Step("web check", "passed")
+    return Step("web check", "failed", "\n".join([*([] if result.ok else [proc.tail(result.output, 60)]), *suppressed]))
 
 
 def web_build(root: Path) -> Step:

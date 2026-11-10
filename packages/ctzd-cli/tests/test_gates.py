@@ -34,3 +34,14 @@ def test_the_smoke_test_opens_every_page_the_app_routes(tmp_path: Path) -> None:
     (tmp_path / "web" / "src" / "nav.ts").write_text('const pages = [{ path: "/", title: "Home" }, { path: "/sector-prices", title: "Sector prices" }] as const;\n')
     (tmp_path / "web" / "src" / "routes.ts").write_text('createRoute({ path: "/bonds/$isin" });\ncreateRoute({ path: "/about" });\n')
     assert smoke.page_paths(tmp_path) == ["/", "/about", "/sector-prices"]
+
+
+def test_a_comment_that_turns_a_page_check_off_is_refused_except_the_clients_barrel(tmp_path: Path) -> None:
+    make_app(tmp_path)
+    assert checks.web_suppressions(tmp_path) == []  # the starter's src/api/client.ts disables only oxc/no-barrel-file
+    page = tmp_path / "web" / "src" / "pages" / "prices.tsx"
+    page.write_text("/* oxlint-disable */\nconst x = 1; // @ts-expect-error -- later\n// eslint-disable-next-line oxc/no-barrel-file\n")
+    (tmp_path / "web" / "src" / "api" / "generated").mkdir(parents=True)
+    (tmp_path / "web" / "src" / "api" / "generated" / "client.ts").write_text("// @ts-nocheck\n")
+    found = checks.web_suppressions(tmp_path)
+    assert [line.split(": ", 1)[0] for line in found] == ["web/src/pages/prices.tsx:1", "web/src/pages/prices.tsx:2", "web/src/pages/prices.tsx:3"]
