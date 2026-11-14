@@ -83,3 +83,9 @@ def test_a_callback_that_reads_outside_ui_load_or_is_not_async_is_named(monkeypa
     direct = drive.read_problems(page.direct)
     assert len(direct) == 1
     assert "data.holdings()" in direct[0][0]
+
+
+def test_a_page_with_nothing_to_choose_is_called_on_load_through_its_address() -> None:
+    by_address = {"output": "today-total.children", "inputs": [{"id": "_pages_location", "property": "pathname"}], "state": []}
+    assert drive.called_on_load(by_address, {"today-total"})
+    assert drive.ordered([by_address]) == [by_address]

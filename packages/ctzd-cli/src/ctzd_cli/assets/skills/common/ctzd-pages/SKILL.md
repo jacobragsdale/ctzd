@@ -100,6 +100,48 @@ What every page does:
 - **One callback per thing that changes for a different reason**: the template gives the curve its own callback,
   because it depends only on the date.
 
+## A page with nothing to choose
+
+A page with no filter still gets its data through a callback: the layout never reads. Give the callback the page's
+own address as its one input, `Input("_pages_location", "pathname")`, a component Dash Pages puts on every page. Dash
+calls the callback once when the page opens, as it does any other, and `ctzd check` and `ctzd render` drive it the
+same way. The argument is the page's path, which the callback need not use: name it with a leading underscore.
+
+```python
+"""Today: the book's totals and its sectors at the last close, with nothing for the person to choose."""
+
+import dash
+import dash_mantine_components as dmc
+from dash import Input, Output, callback
+
+from app import ui
+from app.data import holdings
+from app.logic import positions as rules
+from app.pages.positions import last_close
+
+dash.register_page(__name__, path="/today", title="Today", name="Today")
+
+LOCATION = "_pages_location"
+"""Dash Pages' own component, on every page: its `pathname` is the page's address."""
+TOTAL = "today-total"
+GRID = "today-grid"
+USD = ui.money("USD", 0)
+COLUMNS = [ui.column("sector", "Sector", pinned=True), ui.column("market_value", "Market value", USD), ui.column("pnl", "Day P&L", USD)]
+
+
+def layout() -> dmc.Stack:
+    return dmc.Stack([ui.stat(TOTAL, "Market value"), ui.card("Sectors", ui.grid(GRID, COLUMNS, height=320))], gap="md")
+
+
+@callback(Output(TOTAL, "children"), Output(GRID, "rowData"), Input(LOCATION, "pathname"))
+async def show(_path: str) -> tuple[object, ...]:
+    shown = rules.positions(await ui.load(holdings, last_close()), "")
+    return ui.text(rules.totals(shown)["market_value"], USD), ui.rows(rules.by_sector(shown))
+```
+
+Never trigger a callback from a component's `id` or from a hidden component made for the purpose: the address is
+the one input every page has.
+
 ## Formats
 
 A page names a format for every number it shows, in a grid column, a stat or a chart axis, and never writes one.
