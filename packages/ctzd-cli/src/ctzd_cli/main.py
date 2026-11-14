@@ -55,6 +55,8 @@ class Args(BaseModel):
     path: Path | None = None
     no_apps: bool = False
     part: str | None = None
+    page: str | None = None
+    sets: tuple[str, ...] = ()
 
 
 def _setup_parsers(sub: argparse._SubParsersAction[argparse.ArgumentParser], common: argparse.ArgumentParser) -> None:
@@ -78,6 +80,9 @@ def _app_parsers(sub: argparse._SubParsersAction[argparse.ArgumentParser], commo
     dev.add_argument("--port", type=int, help="default: 8501, or the next free port")
     dev.add_argument("--stop", action="store_true", help="stop the local dashboard")
     dev.add_argument("--fake", action="store_true", help="serve every source's sample rows instead of the real sources")
+    render = sub.add_parser("render", parents=[common], help="what a page shows after its load, as JSON, on the sample rows")
+    render.add_argument("page", help="the page's path or name, such as / or Positions")
+    render.add_argument("--set", dest="sets", action="append", default=[], metavar="ID.PROP=VALUE", help="a component's value in place of its layout's, as JSON or text")
     exec_ = sub.add_parser("exec", parents=[common], help="run a command in the app with its credentials, as ctzd dev does: ctzd exec --json -- python -c '...'")
     exec_.add_argument("argv", nargs=argparse.REMAINDER, help="the command, after --")
     run = sub.add_parser("run", parents=[common], help="run a job; --local runs it on this desktop")
@@ -147,6 +152,7 @@ HANDLERS: dict[str, Handler] = {
     "login": lambda a, ctx: commands.login_start(ctx, open_browser=not a.no_browser) if a.start else commands.login_wait(ctx),
     "new": lambda a, ctx: commands.new(ctx, name=_required(a.name, "NAME"), sbu=_required(a.sbu, "--sbu"), kind=a.kind, directory=a.dir, owner=a.owner, offline=a.offline),
     "dev": lambda a, ctx: commands.dev(ctx, port=a.port, stop=a.stop, fake=a.fake),
+    "render": lambda a, ctx: commands.render_page(ctx, page=_required(a.page, "PAGE"), sets=a.sets),
     "run": lambda a, ctx: commands.run_job(ctx, job=_required(a.job, "JOB"), local=a.local),
     "exec": lambda a, ctx: commands.exec_command(ctx, argv=a.argv),
     "check": lambda a, ctx: commands.check(ctx, fast=a.fast),

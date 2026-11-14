@@ -77,11 +77,11 @@ def init_module(kit: KitDir) -> str:
         f'"""{kit.title}\'s kit: what its apps import. `ctzd kit add source` writes this file from the source folders."""',
         "",
         *sorted(
-            [*(f"from {kit.module}.sources.{name} import loaders as {name}" for name in sources), "from ctzd_kit import app_query as query", "from ctzd_kit import sample, store"],
+            [*(f"from {kit.module}.sources.{name} import loaders as {name}" for name in sources), "from ctzd_kit import app_query as query", "from ctzd_kit import cached, sample, store"],
             key=lambda line: line.split()[1],
         ),
         "",
-        "__all__ = [" + ", ".join(f'"{name}"' for name in sorted([*sources, "query", "sample", "store"])) + "]",
+        "__all__ = [" + ", ".join(f'"{name}"' for name in sorted([*sources, "cached", "query", "sample", "store"])) + "]",
         "",
     ]
     return "\n".join(lines)

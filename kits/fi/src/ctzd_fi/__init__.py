@@ -4,6 +4,6 @@ from ctzd_fi.sources.fi_curves import loaders as fi_curves
 from ctzd_fi.sources.fi_pricing import loaders as fi_pricing
 from ctzd_fi.sources.fi_risk import loaders as fi_risk
 from ctzd_kit import app_query as query
-from ctzd_kit import sample, store
+from ctzd_kit import cached, sample, store
 
-__all__ = ["fi_curves", "fi_pricing", "fi_risk", "query", "sample", "store"]
+__all__ = ["cached", "fi_curves", "fi_pricing", "fi_risk", "query", "sample", "store"]

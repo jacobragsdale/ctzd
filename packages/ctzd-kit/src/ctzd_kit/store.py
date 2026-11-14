@@ -22,7 +22,7 @@ import pandas as pd
 
 from ctzd_common import samples
 from ctzd_kit.errors import StoreError
-from ctzd_kit.frames import Storage, floats
+from ctzd_kit.frames import Storage, floats, local_path
 from ctzd_kit.settings import settings
 
 _TABLE = re.compile(r"[a-z][a-z0-9_]{0,62}")
@@ -50,8 +50,8 @@ def storage_for(url: str, sas_token: str | None = None) -> Storage:
             msg = f"Store URL {url!r} must look like abfs://container@account.dfs.core.windows.net/prefix."
             raise StoreError(msg)
         return Storage.azure(account=parts.hostname.split(".", 1)[0], container_path=parts.username + parts.path, sas_token=sas_token)
-    if parts.scheme in {"", "file"}:
-        root = Path(parts.path if parts.scheme == "file" else url).resolve()
+    if (folder := local_path(url)) is not None:
+        root = Path(folder).resolve()
         root.mkdir(parents=True, exist_ok=True)
         return Storage.local(root.as_posix())
     msg = f"Unsupported store URL scheme {parts.scheme!r}; use abfs:// or a local path."

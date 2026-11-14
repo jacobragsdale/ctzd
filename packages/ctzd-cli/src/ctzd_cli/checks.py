@@ -2,6 +2,7 @@
 
 import ast
 import datetime as dt
+import json
 import os
 import re
 import tomllib
@@ -325,6 +326,42 @@ def sample(root: Path, mode: Mode) -> Step:
     return Step("sample", "failed", detail) if mode == "ci" else Step("sample", "passed", detail, warning=detail)
 
 
+DRIVE = Path(__file__).parent / "inapp" / "drive.py"
+"""The page driving, checks and render, which run inside the app's own environment."""
+
+
+def drive(target: Target, *args: str) -> tuple[proc.Completed, dict[str, object] | None]:
+    """`python drive.py ARGS` in the app's environment, on the sample rows, and the JSON it printed last."""
+    result = proc.run([_uv(), "run", "--no-sync", "python", str(DRIVE), *args], cwd=target.root, env=fake_env(target), timeout=_TOOL_TIMEOUT)
+    last = result.output.strip().splitlines()[-1] if result.output.strip() else ""
+    try:
+        found: object = json.loads(last) if last.startswith("{") else None
+    except ValueError:
+        found = None
+    return result, ({str(key): value for key, value in found.items()} if isinstance(found, dict) else None)
+
+
+def pages(target: Target) -> Step:
+    """Gate 10: the dashboard driven on its sample rows with no browser (`inapp/drive.py`)."""
+    result, found = drive(target, "check")
+    if found is None:
+        return Step("pages", "failed", f"The page checks did not run: {proc.tail(result.output, 30)}")
+    problems = found.get("problems")
+    listed = [f"{item[0]}: {item[1]}." for item in problems if isinstance(item, list) and len(item) == 2] if isinstance(problems, list) else []  # noqa: PLR2004 - what, and its fix
+    return Step("pages", "failed", "\n".join(listed)) if listed else Step("pages", "passed")
+
+
+def jobs(target: Target) -> Step:
+    """Gate 11: each job's `main()` run once on the sample rows, writing to a scratch store and sending nothing."""
+    problems: list[str] = []
+    for job in target.app.jobs:
+        command = ("python", "-c", f"import sys; from app.jobs.{job.name} import main; sys.exit(main())")
+        result = proc.run([_uv(), "run", "--no-sync", *command], cwd=target.root, env=fake_env(target) | {"CTZD_MESSAGES": "off"}, timeout=_TOOL_TIMEOUT)
+        if not result.ok:
+            problems.append(f"Job {job.name} failed on the sample rows (exit {result.code}); run `ctzd run {job.name} --local` to see it:\n{proc.tail(result.output, 20)}")
+    return Step("jobs", "failed", "\n".join(problems)) if problems else Step("jobs", "passed")
+
+
 def run_all(target: Target, *, mode: Mode, fast: bool, upgrade: bool = True, now: dt.datetime | None = None) -> list[Step]:
     """Every gate, in PLAN.md's order; locally, with every test run and every gate passed, the kit's next major version
     is tried (`next_major`)."""
@@ -340,6 +377,11 @@ def run_all(target: Target, *, mode: Mode, fast: bool, upgrade: bool = True, now
     known = None if found is None else frozenset(source.name for source in found.sources)
     steps += [formatting(root, mode), lint(root, mode), types(root), layers(root), sql_files(root, sql_dialects(root, found)), numbers(root), app_toml(target, known)]
     steps.append(Step("tests", "skipped", "--fast") if fast else tests(target))
+    # The jobs run before the pages, into the same scratch store, so a page that reads a job's table finds it.
+    if target.app.jobs:
+        steps.append(Step("jobs", "skipped", "--fast") if fast else jobs(target))
+    if target.app.app.kind == "dash":
+        steps.append(pages(target))
     steps.append(sample(root, mode))
     if mode == "ci" or fast or not upgrade:
         return steps

@@ -1,109 +1,106 @@
 # Instructions for AI agents
 
-This is a ctzd app. The person you are working with is not a programmer: do
-every technical step yourself, explain results in plain language, and never
-ask them to run a command, open a terminal, use git, or read code.
+This is a ctzd app: one repository, made from the **dash** template (one dashboard, plus any number of jobs) or the
+**job** template (only scheduled jobs). It is Python only: Dash pages on dash-mantine-components, dash-ag-grid and
+Plotly, and jobs that Airflow runs. It reads data only through its department's kit.
 
-## The order of work
+The person you work with is not a programmer. Do every technical step yourself with the `ctzd` command, explain
+results in plain words, and never ask them to run a command, open a terminal, edit a file or use git. The only thing
+they ever do on GitHub is click a link you give them.
 
-1. Ask at most three things, all about the business: what question the page
-   answers, who looks at it and how often, and which numbers matter. Never ask
-   where the data lives: `ctzd sources --json` says what each source holds and
-   when its data is current, and the app's `sbu-<sbu>` skill adds more. Pick the
-   one that matches and tell the person in their words which data you will use
-   ("the bond prices the pricing team publishes each morning").
-2. Look at the real tables and columns of the source (`ctzd sources SOURCE --json`,
-   then `ctzd sources SOURCE TABLE --json`; see `ctzd-data`), and write a few
-   made-up rows with those columns in `fixtures/SOURCE/NAME.csv`.
-3. Build the page on those rows: run `ctzd dev --fake`, then `ctzd shot` and look
-   at the picture it writes; fix every problem it lists. Then give the person the
-   link `ctzd dev` returned, to open on their own machine. Change the page until
-   they say it is right, then run `ctzd dev` without `--fake` for the real data.
-4. Check a number or two with them against what they see elsewhere.
-5. Deploy when they say so (`ctzd deploy`), and give them the live link.
-6. Offer the obvious next step, such as emailing it every morning, without pushing.
+## Layout
 
-## Commands
+```text
+app.toml              the app: name, sbu, kind, owners, [sources].use, [[jobs]]   (you edit it)
+pyproject.toml        edit [project].dependencies only, with `uv add NAME`
+src/app/
+  app.py              dash: the Dash app and its title
+  pages/              dash: one module per page, its layout and its callbacks        (ctzd-pages)
+  data/               the only I/O: calls into the kit, and sql/*.sql                (ctzd-data)
+  logic/              pure functions: frames in, frames out
+  jobs/NAME.py        one module per job, each with main() -> int                   (ctzd-jobs)
+  __main__.py theme.py ui.py                                                         locked (dash)
+tests/                tests of logic/, each page's callbacks and each job            (ctzd-testing)
+fixtures/SOURCE/NAME.csv   made-up rows for the app's own SQL
+```
 
-Use the `ctzd` command for everything, always with `--json`:
-
-- `ctzd dev` builds the page, starts the app in the background, and returns its `url`; run it
-  again after a change, and `ctzd dev --stop` when you are done. `ctzd dev --fake` serves the
-  rows in `fixtures/` instead of the real sources. `ctzd run JOB --local` runs a job.
-- `ctzd shot [PATH] --json` takes a picture of a page `ctzd dev` serves (default `/`), writes it
-  under `.ctzd/shots/`, and lists each problem on the page: errors, failed requests, and a grid or
-  chart that drew nothing or too small. Run it after every change to a page and look at the picture.
-- `ctzd add dataset NAME [--source SOURCE]` and `ctzd add page PAGE --dataset NAME` write a
-  working dataset and a page for it; `ctzd api list --json` lists the datasets the pages can read.
-- `ctzd docs ui --search WORDS --json` finds the firm's components (and parallax's grids and charts)
-  by what they are for. `ctzd docs ui [NAME] --json` lists them by family, or gives one component's
-  props, variants, and a working example. Read it before you use a component.
-- `ctzd exec --json -- python -c "..."` runs a command with the app's credentials, such as a quick
-  look at what a loader returns from the live source.
-- `ctzd sources --json` lists the platform's sources with what each holds; `ctzd sources SOURCE --json`
-  lists a source's tables, and `ctzd sources SOURCE TABLE --json` a table's columns and first rows.
-- `ctzd env` fetches read-only credentials for the sources in `app.toml`.
-- `ctzd check` runs every gate and regenerates the page's client from the datasets. Run it before
-  you say you are done.
-- `ctzd deploy` checks, commits, pushes, and returns the live URL.
-- `ctzd status`, `ctzd logs`, `ctzd releases`, `ctzd rollback` for running apps.
-- `ctzd add job NAME --schedule "CRON" --timezone ZONE` adds a scheduled job that runs in ZONE
-  (such as `Europe/London`), clock changes included.
-
-## Shipping
-
-- When the person says the live app is wrong, run `ctzd rollback --json` first, so they see the
-  last good version again; then fix the change and deploy.
-
-## Talking with the person
-
-- Say what changed for them, with the link. Leave out the words they do not use: commit, push,
-  branch, build, Jenkins, pipeline, repository, GitHub, lint, tests, coverage, smoke test, cron,
-  UTC, port, `.env`, API, dataset, React, file paths, and command names. Say "the previous
-  version", not "v3".
-- Never pass on a raw error or log; say in plain words what went wrong and what happens next.
-- Ask only what the person knows: what they want to see, for whom, and when.
-
-## Where code goes
-
-- `src/app/data/`: loaders, the only code that reads data. SQL lives in `src/app/data/sql/*.sql`.
-- `src/app/logic/`: pure functions, DataFrames in and out. No I/O and no `ctzd`.
-- `src/app/api/datasets.py`: what the page reads. Each dataset is a function of the page's
-  parameters that calls loaders and logic and returns a frame (`ctzd-data`).
-- `src/app/jobs/<name>.py`: one scheduled job per module, each with `main() -> int`.
-- `web/src/pages/*.tsx`: the pages, on the firm's components and parallax's grid and charts
-  (`ctzd-pages`); `web/src/routes.ts` lists them.
-- `tests/`: tests for logic, loaders, datasets, and jobs.
-- `app.toml`: app settings, sources, and job schedules.
-
-`ctzd check` enforces these layers; do not work around them. Never read `web/node_modules/`,
-`web/dist/`, `web/src/api/generated/`, or the lockfiles: `ctzd check` writes them.
+The layers, which `ctzd check` enforces: `pages` and `jobs` import `data` and `logic`; `data` and `logic` never
+import each other; only `data` imports the kit's sources, `query` and `store`; `logic` does no I/O, but may use the
+kit's `helpers`; only `pages` and `jobs` send email or Slack (`ctzd_common`); only `app.py` and `pages` import `ui`
+and `theme`. Nothing imports `ctzd_kit`.
 
 ## Rules
 
-- Never open, print, copy, or source `.env`, and never pass it to a program yourself; it holds
-  credentials. `ctzd dev`, `ctzd run --local`, and `ctzd exec` load it for you.
-- Never edit platform-owned files: this file, `.agents/`, `.claude/`, `Dockerfile`, `Jenkinsfile`,
-  `ruff.toml`, `ty.toml`, `.importlinter`, `pytest.toml`, `.pre-commit-config.yaml`,
-  `.gitignore`, `.gitattributes`, `.dockerignore`, `.python-version`, `.ctzd/`,
-  `web/vite.config.ts`, `web/tsconfig.json`, `web/src/styles.css`, and
-  `web/src/api/generated/`. Fix the code instead.
-- Never add `# noqa`, `# ty: ignore`, `oxlint-disable`, or lint exclusions to make a check pass.
-- Every number is a float64. Never round one or format it as text outside the page: no `ROUND`
-  or decimal casts in SQL, no `round()`, `.round()`, or `f"{x:.2f}"` in Python. The page shows
-  each number to its decimals; `ctzd.display` writes numbers into emails and messages. Select ids
-  and account numbers as text.
-- Add Python packages with `uv add NAME`; never edit `uv.lock` or `web/pnpm-lock.yaml` by hand.
-- Never commit, push, reset, or rewrite history with git yourself: `ctzd deploy` saves and ships
-  every change after its checks, and a push of your own would ship code that skipped them.
-  Reading history (`git log`, `git show`) is fine.
-- Never stop processes with `kill` or `pkill`, and never search this computer for apps, data, or
-  credentials; `ctzd` does both for you.
-- Datasets must be fast: cache their loaders with `@ctzd.cached`, and move any query slower than
-  about 3 seconds into a job that writes a table with `ctzd.write_table`.
+- **Data only through the kit.** Call one of its loaders, or run your own SQL file with its `query`, from `data/`.
+  Never write a connection string or import a database driver. `ctzd sources` and the `sbu-<sbu>` skill say what the
+  kit has; if nothing matches what the person asked for, tell them, never invent a source.
+- **Numbers are never rounded.** Every number is a float64 from the source to the screen. A page names one of
+  `ui.py`'s formats for each column, stat and axis; an email or a Slack message names a `ctzd_common.display`
+  format. No `ROUND` or decimal casts in SQL, no `round()`, `.round()` or `f"{x:.2f}"` in Python: `ctzd check`
+  refuses them. Ids are text.
+- **Never open `.env`.** Never read, print, copy or source it, and never pass it to a program yourself: it holds
+  credentials. To look at live data, run `ctzd exec --json -- python -c "..."`, which loads them for you.
+- **Never edit locked files**: this file, `.agents/`, `.claude/`, `src/app/__main__.py`, `src/app/theme.py`,
+  `src/app/ui.py`, `.github/`, `Dockerfile`, `ruff.toml`, `ty.toml`, `.importlinter`, `pytest.toml`,
+  `.pre-commit-config.yaml`, `.gitignore`, `.cursorignore`, `.gitattributes`, `.dockerignore`, `.python-version`,
+  `.env.example`, `.ctzd/`. ctzd puts them back. Read `ui.py`'s docstrings: they are the page API.
+- Never add `# noqa`, `# type: ignore`, `# ty: ignore` or an exclusion to pass a check. Fix the code.
+- Never run git to commit, push, branch or merge: `ctzd deploy` does it after the checks. Reading history is fine.
+- Never stop processes with `kill`, and never search this computer for apps, data or credentials.
+- The template's sample page or sample job (its first line says `ctzd: sample`) blocks a deploy: replace it with
+  what the person asked for, and delete that line.
+
+## The order of work
+
+1. Ask at most three things, all about the business: what the page or job answers, who reads it and how often, which
+   numbers matter. Never ask where the data lives.
+2. `ctzd sources --json`: pick the source whose description matches, and tell the person in their words which data
+   you will use ("the bond prices the pricing team publishes each morning"). Name it in `app.toml`'s `[sources].use`.
+3. Write `data/`, `logic/`, then the page or job, then their tests.
+4. `ctzd dev --fake --json` runs the dashboard on sample rows; `ctzd render PAGE --json` shows you what the page
+   holds. `ctzd run JOB --local --json` runs a job. Fix until they show what was asked.
+5. `ctzd env --json`, then `ctzd dev --json`, for real data. Give the person the `url` to look at, and check a
+   number or two with them against what they see elsewhere.
+6. `ctzd check --json` until it passes.
+7. When they are happy, `ctzd deploy --json`. Give them the dev address to look at, and the review link: "send this
+   link to a colleague to look over". After the colleague approves, `ctzd promote --json` takes it to prod.
+
+## Commands
+
+Always pass `--json`, and read `ok`, `summary` and `next`: `next` says what to do.
+
+| Command | What it does |
+|---|---|
+| `ctzd sources [SOURCE [TABLE]]` | the kit's sources and loaders; a database source's tables; a table's columns and first rows |
+| `ctzd dev [--fake] [--stop]` | runs the dashboard in the background and returns its `url`; run it again to restart |
+| `ctzd render PAGE [--set ID.PROP=VALUE]` | what a page shows after its load, as JSON, on the sample rows |
+| `ctzd run JOB --local` | runs a job here; messages are kept in `.ctzd/outbox/`, tables in `.ctzd/out/store/` |
+| `ctzd env` | the dev credentials of the sources in `[sources].use` |
+| `ctzd exec -- COMMAND` | runs a command with the app's credentials |
+| `ctzd check [--fast]` | every gate; `--fast` skips the tests while you iterate |
+| `ctzd deploy` | checks, opens or updates the pull request, puts it on the dev address |
+| `ctzd promote`, `ctzd rollback` | sends a release to prod after a second approval; puts an earlier one back at once |
+| `ctzd status`, `ctzd releases`, `ctzd logs`, `ctzd run JOB --env dev\|prod` | the live app |
 
 ## Skills
 
-Read the skill that matches the task before starting it. They are in `.agents/skills/`:
-`ctzd-workflow`, `ctzd-pages`, `ctzd-data`, `ctzd-jobs`, `ctzd-testing`, `python-standards`,
-`ctzd-troubleshoot`, and the skill for this app's business unit, `sbu-<sbu>`.
+Read the one that matches the task before you start it. They are in `.agents/skills/` (and `.claude/skills/`):
+
+| Skill | For |
+|---|---|
+| `ctzd-pages` | adding or changing a page: layout, callbacks, grids, charts, stats, `ctzd render` |
+| `ctzd-data` | reading data: loaders, your own SQL, sample rows, `ctzd sources`, `ctzd exec`, the store |
+| `sbu-<sbu>` | this department's sources, loaders, columns and conventions, written from its kit |
+| `ctzd-jobs` | scheduled jobs, email and Slack |
+| `ctzd-testing` | what to test and how |
+| `ctzd-workflow` | checking, deploying, the two approvals, prod, rollback |
+| `ctzd-troubleshoot` | any command that returns `ok: false`, or a live app that misbehaves |
+| `python-standards` | any Python you write, and ruff or ty findings |
+
+## Talking with the person
+
+- Say what changed for them, with the link. Leave out words they do not use: commit, push, branch, pull request,
+  merge, build, pipeline, repository, lint, tests, coverage, smoke test, cron, UTC, port, `.env`, callback, loader,
+  file paths and command names. Say "the previous version", not "release 7".
+- Never pass on a raw error or log: say in plain words what went wrong and what happens next.
+- Ask only what the person knows: what they want to see, for whom, and when.

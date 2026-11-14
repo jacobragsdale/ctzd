@@ -177,3 +177,17 @@ class Storage:
 
     def delete_dir(self, path: str) -> None:
         self._fs.delete_dir(path)
+
+
+def local_path(url: str) -> str | None:
+    """`url` as a local folder, when it is one: a path, a Windows path whose drive letter `urlsplit` reads as a scheme
+    (`C:\\Users\\...`), or `file://`. None for any other URL."""
+    from pathlib import Path  # noqa: PLC0415 - only for this
+    from urllib.parse import unquote, urlsplit  # noqa: PLC0415
+
+    parts = urlsplit(url)
+    if parts.scheme == "file":
+        return unquote(parts.path)
+    if parts.scheme == "" or (len(parts.scheme) == 1 and parts.scheme.isalpha()):
+        return str(Path(url))
+    return None

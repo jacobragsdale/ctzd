@@ -30,7 +30,11 @@ def _opened() -> tuple[pafs.FileSystem, str, str]:
             raise SourceError(msg)
         token = None if config.sas_token is None else config.sas_token.get_secret_value()
         return pafs.AzureFileSystem(account_name=parts.hostname.split(".", 1)[0], sas_token=token), (parts.username + parts.path).rstrip("/"), source.name
-    return pafs.LocalFileSystem(), Path(parts.path if parts.scheme == "file" else config.url).resolve().as_posix(), source.name
+    folder = frames.local_path(config.url)
+    if folder is None:
+        msg = f"Source {source.name!r}'s url {config.url!r} is neither a folder nor abfs://."
+        raise SourceError(msg)
+    return pafs.LocalFileSystem(), Path(folder).resolve().as_posix(), source.name
 
 
 def _inside(root: str, name: str) -> str:

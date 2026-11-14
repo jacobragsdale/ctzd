@@ -60,7 +60,8 @@ def test_each_kind_of_source_gets_a_working_scaffold_and_the_kits_init_names_it(
     assert (kit.package / "sources" / "eq_oracle" / "sql" / "example.sql").is_file()
     init = (kit.package / "__init__.py").read_text()
     assert "from ctzd_eq.sources.eq_rest import loaders as eq_rest" in init
-    assert '"query", "sample", "store"' in init
+    assert '"eq_rest", "query", "sample", "store"' in init
+    assert '"cached"' in init
     problems = kitwork.shape(kit, workspace)
     assert problems
     assert all("scaffold's words" in problem for problem in problems)

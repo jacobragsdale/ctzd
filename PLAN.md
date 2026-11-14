@@ -230,8 +230,8 @@ The platform owns one seam and the delivery of secrets. Everything behind the se
 ```text
 kits/fi/
 ├── pyproject.toml              # ctzd-fi: depends on ctzd-kit and on FI's own packages
-├── kit.toml                    # the department: its code, title, GitHub team and code owners
 ├── src/ctzd_fi/
+│   ├── kit.toml                # the department: its code, title, GitHub team and code owners
 │   ├── sources/
 │   │   ├── fi_pricing/         # one folder per source, always these four things
 │   │   │   ├── source.toml     # what it holds, its kind, how its secret arrives
@@ -638,3 +638,40 @@ Phase 0's checks:
   Dash 4.3) on `ctzd dev` only.
 - **An app directory.** None in v1. If people cannot find each other's dashboards, a page listing each
   department's apps from GitHub is the next step.
+
+## 18. Decided while building
+
+Steps 1 to 5 were built on 2026-11-13. Where this plan was silent the builder decided, and where the code departs from
+a sentence above, this section says so. Each is open to change.
+
+- **kit.toml lives inside the package** (`src/ctzd_fi/kit.toml`, beside `NOTES.md`), not beside `pyproject.toml`, so
+  an installed kit can be read by `ctzd sources`, the generated skill and the contract check.
+- **ctzd-kit depends on ctzd-common**, for one module, `ctzd_common.samples`: the kit marks each source that served
+  sample rows there, and a page's `ui.load` reads the mark to show the sample-data banner without importing ctzd_kit.
+- **The limit for each source is in the kit's loader seam**, a semaphore of the source's `max_concurrent` (default 4,
+  in `source.toml`), so it holds for jobs too; `ui.load` runs the read with anyio's default thread limiter.
+- **Sample rows** are one CSV per loader, `sources/NAME/fixtures/LOADER.csv`, and for an app's own SQL
+  `fixtures/SOURCE/FILE_STEM.csv` in the app. They ignore the loader's arguments: an as-of date does not filter them.
+- **app.py builds the app with `ui.dash_app(TITLE)`**, a `dash.Dash` on the FastAPI backend with Dash Pages, every
+  setting given explicitly, React 19 and `on_error`, then sets `theme.shell(TITLE)` as its layout.
+- **The look** is basis-dash's tokens, grid theme and chart template, forked, with the desktop's own fonts (no font
+  files are bundled) and the colour scheme following the person's system setting, with no switch.
+- **A chart's axes and hover text** are formatted by Plotly in the browser from each axis's format, so a tie can round
+  differently there in its last digit; grids, stats, emails and Slack use the one rule.
+- **The models**: `api_models.py` is gone; app.toml's models are in `appconfig.py`, and the job spec's in `render.py`.
+- **Departments** are listed in the CLI's `platform.toml` (`[sbus.<sbu>]`: name, kit requirement, GitHub team).
+- **import-linter** treats the kit and ctzd_common as root packages, so the contracts can name `ctzd_fi.helpers`,
+  `ctzd_fi.sources` and `ctzd_common.email`.
+- **`ctzd check` runs the app's tests, its jobs and then its pages on the sample rows**, with one scratch store and
+  outbox in `.ctzd/out/`, so a page that reads a job's table finds it; a job's run sends no message. Section 10 lists
+  pages before jobs.
+- **Kit releases reach an app in `ctzd check`**, not in every command: the environment step moves it to the kit's
+  newest release within its major version, and once every gate passes the next major version is tried, at most once a
+  day, and kept only when every gate passes on it. Both need the index, which every command would otherwise wait on.
+- **Kits give apps `cached`** beside `query`, `store` and `sample`, so a slow read in `data/` can be cached.
+- **The two locked modules carry the platform's only suppressions**: Dash's private opt-in to React 19 in `ui.py`, and
+  DMC 3.0.0's mistyped `theme` argument in `theme.py`. `ctzd_common.email` keeps its name through ruff's
+  `allowed-modules`.
+- **Not built in steps 3 to 5**, as section 15 orders: the GitHub and Key Vault side. `ctzd new` without `--offline`
+  and `ctzd run` without `--local` say so; `open`, `env`, `deploy`, `promote`, `rollback`, `logs`, `status`, `releases`
+  and `delete` are not in the CLI until step 7.

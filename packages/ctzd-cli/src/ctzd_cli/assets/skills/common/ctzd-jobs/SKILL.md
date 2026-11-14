@@ -1,178 +1,167 @@
 ---
 name: ctzd-jobs
-description: "Scheduled jobs in a ctzd app: ctzd add job with a cron schedule in the person's time zone, main() -> int and exit codes, ctzd.write_table, email and Teams messages, local and Airflow runs, and safe reruns. Use for 'every Monday', 'each morning', 'send me', 'email the team', or a slow query that must be precomputed."
+description: "Scheduled jobs in a ctzd app: a module in src/app/jobs/ with main() -> int, its [[jobs]] entry in app.toml (cron schedule, timezone, size, retries), ctzd run JOB --local, email and Slack with ctzd_common, where messages go in each environment, writing and reading tables with the kit's store, schedules running in prod only, and ctzd run JOB --env dev. Use for 'every Monday', 'each morning', 'send me', 'email the team', 'post to Slack', or a slow read a page should not wait on."
 ---
 
 # Jobs in a ctzd app
 
-A job is `src/app/jobs/NAME.py` with `main() -> int`. Airflow calls its `main()`
-in the app's image on the schedule in `app.toml`.
+A job is a module, `src/app/jobs/NAME.py`, with `def main() -> int:`. Airflow calls `main()` in the app's image on
+the schedule in `app.toml`. A job app has only jobs; a dash app may have any number beside its dashboard, and often
+should: a job that reads something slow each morning and writes a table the page reads keeps the page fast.
 
-## Rules
+The job template's `jobs/daily_positions.py` is a complete job: it reads through `data/`, checks and transforms with
+`logic/`, writes two tables and emails a summary. Read it before you write one.
 
-- Add a job with `ctzd add job NAME --schedule "CRON" --timezone ZONE --json`
-  (`--size s|m|l`, default `m`). NAME is lowercase letters, digits, and underscores. It writes
-  `src/app/jobs/NAME.py`, `tests/test_job_NAME.py`, and a `[[jobs]]` entry.
-- The schedule is five-field cron (minute, hour, day of month, month, weekday)
-  in the job's `timezone`, an IANA name such as `Europe/London` or
-  `America/New_York`; the default is `UTC`. Ask where the person is when the
-  time matters, and write their local time as it is: 07:00 in London is
-  `"0 7 * * 1-5"` with `--timezone Europe/London`, all year. Never add a second
-  run or a clock check to follow daylight saving.
-- The exit code is the contract. Return 0 only when the work is done. Return 1
-  (or let the exception raise) when it is not: Airflow retries (`retries` in
-  `app.toml`), then emails the app's owners. Never catch an error to return 0,
-  and never write your own failure email.
-- Reuse the dashboard's loaders and logic; a job holds no rules of its own.
-- A rerun must give the same result. Compute the whole table from the inputs
-  for one date and publish it with `ctzd.write_table`; never append to the
-  previous version or depend on what the last run left.
-- Publish the table first and send messages last, so a failed run never sends
-  a half result. A retry sends the messages again. Log with `logging`, not `print`.
-- Change `schedule`, `timezone`, `size`, `retries` (0-5), or `timeout_minutes` in the job's `[[jobs]]` entry.
+## Adding a job
 
-| Schedule | Cron |
+1. The reads and writes in `src/app/data/` (`ctzd-data`), the rules in `src/app/logic/`.
+2. `src/app/jobs/NAME.py` with `main() -> int`, as below. NAME is lowercase letters, digits and underscores.
+3. Its `[[jobs]]` entry in `app.toml`, with the same name.
+4. Tests of its rules, and of `main()` on the sample rows (`ctzd-testing`).
+5. `ctzd run NAME --local --json`, read what it wrote and kept, then `ctzd check --json`.
+
+When the person's app is the job template, replace `daily_positions` (module, test and `[[jobs]]` entry) rather than
+adding beside it, and delete the module's `ctzd: sample` first line.
+
+## app.toml
+
+```toml
+[[jobs]]
+name = "sector_summary"
+schedule = "0 7 * * 1-5"         # minute hour day-of-month month weekday
+timezone = "Europe/London"       # an IANA zone: the schedule is the person's local time, clock changes included
+size = "m"                       # s | m | l: the memory and CPU of its pod
+retries = 1                      # 0 to 5; Airflow retries a failed run, then emails the owners
+timeout_minutes = 60
+```
+
+Ask where the person is when the time matters, and write their local time as it is: 07:00 in London is
+`"0 7 * * 1-5"` with `timezone = "Europe/London"`, all year. Never add a second run or a clock check for daylight
+saving. Without `timezone` the schedule is UTC.
+
+| They say | `schedule` |
 |---|---|
-| Weekdays 07:00 | `0 7 * * 1-5` |
-| Every day 06:30 | `30 6 * * *` |
-| Mondays 08:00 | `0 8 * * 1` |
-| First of the month 07:00 | `0 7 1 * *` |
-| Every 4 hours | `0 */4 * * *` |
+| weekdays at 7 | `0 7 * * 1-5` |
+| every day at 6:30 | `30 6 * * *` |
+| Mondays at 8 | `0 8 * * 1` |
+| the first of the month at 7 | `0 7 1 * *` |
+| every 4 hours | `0 */4 * * *` |
 
 ## A job
 
-`src/app/jobs/sector_summary.py`
+`src/app/jobs/sector_summary.py`:
 
 ```python
-"""Job `sector_summary`: each weekday morning, publish the sector summary and email it."""
+"""Each weekday morning: the sector summary of the last close, written to the app's table `sector_summary` and
+emailed to the desk."""
 
-import datetime as dt
 import logging
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
-import ctzd
+from ctzd_common import display, email, slack
 
-from app.data.loaders import load_prices
-from app.logic.prices import sector_summary
+from app.data import holdings, write
+from app.logic import positions as rules
 
-_LOG = logging.getLogger(__name__)
-RECIPIENTS = ("desk-team@contoso.com",)
+DESK = ZoneInfo("Europe/London")
+SATURDAY = 5
+TO = ("desk-team@contoso.com",)
+CHANNEL = "fi-desk"
 DASHBOARD = "https://fi-bond-prices.ctzd.contoso.com"
+USD = display.Format("money", 0, currency="USD")
+_LOG = logging.getLogger(__name__)
 
 
-class SectorSummary(ctzd.Row):
-    """One sector of the summary, as the email and its workbook show it."""
+def last_close(today: date) -> date:
+    day = today - timedelta(days=1)
+    while day.weekday() >= SATURDAY:
+        day -= timedelta(days=1)
+    return day
 
-    sector: str
-    bonds: ctzd.Count
-    avg_price: ctzd.Price
 
-
-def run(as_of: dt.date) -> int:
-    prices = load_prices(as_of)
-    if prices.empty:
-        _LOG.error("No prices for %s yet; nothing published.", as_of)
+def run(day: date) -> int:
+    held = holdings(day)
+    if held.empty:
+        _LOG.error("No holdings for %s yet; nothing written.", day.isoformat())
         return 1
-    summary = sector_summary(prices)
-    version = ctzd.write_table(summary, "sector_summary")
-    table = ctzd.notify.Table(summary, SectorSummary, title="Sector summary")
-    ctzd.notify.email(RECIPIENTS, f"Sector summary {as_of:%d %b %Y}", "Today's sector summary.", table=table, attachments={"sector_summary.xlsx": table}, as_of=as_of, link=DASHBOARD)
-    ctzd.notify.teams("desk_channel", f"The sector summary for {as_of:%d %b %Y} is ready.", title="Sector summary")
-    _LOG.info("Published %d sectors as version %s.", len(summary), version)
+    sectors = rules.by_sector(rules.positions(held, ""))
+    write(sectors, "sector_summary")
+    table = email.Table(sectors, {"market_value": USD, "dv01": USD, "pnl": USD}, title=f"Sectors at the close of {day.isoformat()}")
+    total = display.money(float(sectors["market_value"].sum()), "USD", decimals=0)
+    email.send(list(TO), f"Sector summary for {day.isoformat()}", f"Market value {total}.", table=table, attachments={"sector_summary.xlsx": table}, link=DASHBOARD)
+    slack.post(CHANNEL, f"The sector summary for {day.isoformat()} is out: market value {total}.", table=table)
     return 0
 
 
 def main() -> int:
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    return run(dt.datetime.now(dt.UTC).date())
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+    return run(last_close(datetime.now(DESK).date()))
 ```
 
-`run(as_of)` takes the date so tests can fix it; only `main()` reads the clock.
-Label messages with the date of the data they carry, not the day the job ran: a
-morning job that reports the latest prices says the previous business day.
+- **The exit code is the contract.** Return 0 only when the work is done; return 1, or let the error raise, when it
+  is not. Airflow then retries and emails the owners. Never catch an error to return 0, and never write your own
+  failure email.
+- **`run(day)` takes the date**, so tests can fix it; only `main()` reads the clock. Label messages with the date of
+  the data, not the day the job ran.
+- **A rerun gives the same result.** Compute the whole table from the inputs for one date and publish it whole;
+  never append to the last version or depend on what the last run left.
+- **Write first, send last**, so a failed run never sends half a result. A retry sends again.
+- **Reuse the dashboard's `data/` and `logic/`**: a job holds no rules of its own.
+- Log with `logging` and `%s` arguments, never `print`. A job is synchronous: no `async`, no `ui.load`, no `ui`.
 
-## Messages and tables
+## Email and Slack
 
-- `ctzd.notify.email(to, subject, body, *, attachments=None, table=None, as_of=None, link=None)`:
-  `to` is one address or a sequence. Attachment names end in `.xlsx` or `.csv`.
-- Wrap a frame in `ctzd.notify.Table(frame, RowType, title=None)`, with a row
-  type like a dataset's, declared in the job's module (a job cannot import
-  `app.api`), to send it as the page shows it: `table=` puts it in the email's body, each number
-  written as the page writes it, and as an `.xlsx` attachment it keeps every
-  number raw and shows it through Excel's number formats from the column kinds,
-  with a frozen header, column widths, and a filter. A plain frame is attached
-  as it is. `as_of` adds the date the data is for, and `link` the dashboard's address.
-- `ctzd.notify.teams(source, text, title=None)`: `source` is a `teams` source,
-  a channel webhook the platform team adds. Ask the person which channel; never
-  guess the name.
-- A number in a subject, a body, or a Teams message goes through `ctzd.display`,
-  which rounds it the way the page does: `ctzd.display.number(total, decimals=0)`,
-  `ctzd.display.money(par, "USD")`, `ctzd.display.percent(weight, decimals=1)` and
-  `ctzd.display.bps(spread)` (rates and spreads are fractions: 0.0525 is 5.25%
-  and 525 bp). Never `round()` it or write `f"{x:.2f}"`; `ctzd check` refuses
-  both. Attachments carry the raw numbers, and Excel shows them.
-- `ctzd.write_table(frame, "name")` refuses an empty frame. Pass
-  `allow_empty=True` only when no rows is a real answer ("no breaches today").
-- The dashboard reads the table through a loader that calls
-  `ctzd.read_table("name")` (see `ctzd-data`).
+Only `pages` and `jobs` send messages.
 
-## Running
+- `email.send(to, subject, body, *, table=None, attachments=None, link=None)`: `to` is one address or a list.
+  `table` is written into the body as the page would show it. `attachments` maps a file name ending in `.xlsx` or
+  `.csv` to a frame or a `Table`: an `.xlsx` keeps every number raw and shows it through Excel's formats, with a
+  frozen header and a filter. `link` adds "See it live".
+- `slack.post(channel, text, *, table=None)`: `channel` is the channel's name, with or without `#`; the platform's
+  bot must be in it. Ask the person which channel; never guess.
+- `email.Table(frame, formats, title=None)`: `formats` maps each number column to a
+  `display.Format(kind, decimals, currency=None, step=None)`, `kind` being `"number"`, `"pct"`, `"bps"`, `"money"`,
+  `"price"` or `"price32"`: the same formats a page names with `ui.py`.
+- A number in a subject, a body or a Slack text goes through `ctzd_common.display`, which rounds as the page does:
+  `display.number(value, decimals=0)`, `display.money(value, "USD")`, `display.percent(value, decimals=1)`,
+  `display.bps(value)`, `display.price(value, decimals=3)`, `display.price32(value)`. Never `round()` it or write
+  `f"{value:.2f}"`: `ctzd check` refuses both.
 
-| Where | Command | Result |
+Where a message goes depends on where the job runs, so a job is safe to run anywhere:
+
+| Where | Email | Slack |
 |---|---|---|
-| Here | `ctzd run NAME --local --json` | `exit_code`, `output` (last 40 lines). Messages are saved to `.ctzd/out/outbox/` (`email-*.eml`, `teams-*.json`), tables to `.ctzd/out/store/`. Nothing is sent. Run `ctzd env --json` first. |
-| Airflow | `ctzd run NAME --wait --json` | Runs the deployed job now and waits: `state` is `success` or `failed`, `url` is the run page for the person. Deploy first. |
-| Logs | `ctzd logs --job NAME --json` | The latest Airflow run's log. |
+| this desktop (`ctzd run --local`, tests) | kept in `.ctzd/outbox/` as `email-*.eml`, never sent | kept as `slack-*.json`, never sent |
+| dev | sent only to the app's owners, marked `[dev]`, saying who it would go to | a direct message to each owner, marked `[dev]` |
+| prod | to whoever the code names | to the channel |
 
-After adding or changing a job, `ctzd deploy --json`; its `dags` field maps each
-job to its Airflow page. If a dashboard reads the job's table, deploy and run
-the job before the page that reads it goes live.
+The owners are `app.toml`'s `[app].owners`. `ctzd check` and the deploy's smoke test run each job with messages off.
 
-## Tests
+## Tables
 
-The starter test runs `main()` against `ctzd.testing.fake_store`. Replace it
-with tests of `run` against fixed dates (see `ctzd-testing`).
+Write with the kit's `store.write_table(frame, NAME)` and read with `store.read_table(NAME)`, both wrapped in
+`data/` (`ctzd-data`; the job template's `data/__init__.py` has `write` and `read`). A table name is lowercase
+letters, digits and underscores. An empty frame is refused unless `allow_empty=True`, for a real "nothing today".
+Each environment has its own store: `--local` writes to `.ctzd/out/store/`, and dev and prod to theirs. A table
+written from sample rows carries the mark, and a page that shows it shows the sample-data banner.
 
-`tests/test_job_sector_summary.py`
+A page that reads a job's table must still work before the job has run in that environment: on a fresh dev or prod
+deploy the table does not exist yet. Until it does, `store.read_table` raises, and the page tells the person
+"Table ... has never been written here", which means nothing to them. So after the first deploy with a new job, run
+it once in dev (`ctzd run NAME --env dev --wait --json`, below) before you send the review link, and once in prod
+right after the first `ctzd promote`. Say on the page when the figures refresh ("updated each weekday by 07:00").
 
-```python
-import datetime as dt
-from pathlib import Path
+## Running a job
 
-import ctzd
-import pandas as pd
+| Where | Command | What happens |
+|---|---|---|
+| here | `ctzd run NAME --local --json` | runs `main()` with the app's credentials; `exit_code`, the last lines of `output`; messages kept, tables in `.ctzd/out/store/` |
+| dev | `ctzd run NAME --env dev --json` | after a deploy: runs it once in dev's Airflow now and reports the result and the Airflow link |
+| prod | `ctzd run NAME --env prod --json` | runs the live job now, out of its schedule, with no approval |
 
-from app.jobs.sector_summary import run
+Add `--wait` to wait for the run to finish; a failed run returns its last log lines.
 
-DAY = dt.date(2026, 11, 4)
-
-
-def prices() -> pd.DataFrame:
-    return pd.DataFrame({"isin": ["XS0000000001", "XS0000000002"], "sector": ["Banks", "Utilities"], "clean_price": [99.5, 101.25]})
-
-
-def test_the_job_publishes_and_emails_the_summary(tmp_path: Path) -> None:
-    with ctzd.testing.fake_sources(pricing_db={"sql/prices.sql": prices()}), ctzd.testing.fake_store(tmp_path), ctzd.testing.outbox() as sent:
-        assert run(DAY) == 0
-        assert ctzd.read_table("sector_summary")["sector"].tolist() == ["Banks", "Utilities"]
-    email, _teams = sent
-    assert isinstance(email, ctzd.EmailMessage)
-    assert [item.filename for item in email.attachments] == ["sector_summary.xlsx"]
-
-
-def test_a_day_without_prices_fails_and_sends_nothing(tmp_path: Path) -> None:
-    with ctzd.testing.fake_sources(pricing_db={"sql/prices.sql": prices().iloc[0:0]}), ctzd.testing.fake_store(tmp_path), ctzd.testing.outbox() as sent:
-        assert run(DAY) == 1
-    assert sent == []
-
-
-def test_a_rerun_publishes_the_same_table(tmp_path: Path) -> None:
-    with ctzd.testing.fake_sources(pricing_db={"sql/prices.sql": prices()}), ctzd.testing.fake_store(tmp_path), ctzd.testing.outbox():
-        run(DAY)
-        first = ctzd.read_table("sector_summary")
-        run(DAY)
-        pd.testing.assert_frame_equal(ctzd.read_table("sector_summary"), first)
-```
+**Schedules run in prod only.** In dev a job has no schedule: it runs only when `ctzd run NAME --env dev` starts it,
+so a dev deploy never emails anyone twice or queries a source on a timer. After `ctzd promote` the schedule starts,
+and the owners get an email with each job's Airflow link. Give the person that link: Airflow is where they see each
+run.

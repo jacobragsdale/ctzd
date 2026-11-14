@@ -15,7 +15,7 @@ from ctzd_cli.errors import CliError, UsageError
 ENV_FILE = ".env"
 _TEMPLATE_JOB = Job(name="daily_positions", schedule="0 7 * * 1-5", timezone="Europe/London")
 # Commands that work inside an app; each brings the app's platform files to this CLI before it runs.
-APP_COMMANDS = frozenset({"dev", "run", "exec", "check", "sync", "sources"})
+APP_COMMANDS = frozenset({"dev", "render", "run", "exec", "check", "sync", "sources"})
 NOT_BUILT = "is not built yet: it arrives with the GitHub side of the platform (PLAN.md section 15, step 7)"
 
 
@@ -321,6 +321,24 @@ def ci_release(ctx: Context, *, image: str, commit: str, now: Callable[[], objec
     git.tag(name, release.message(record), commit)
     git.push_tag(name)
     return Outcome(summary=f"Tagged {commit[:8]} as {name}.", data={"release": number, "tag": name})
+
+
+def render_page(ctx: Context, *, page: str, sets: tuple[str, ...]) -> Outcome:
+    """What a page shows after its load, on the sample rows, as JSON: the agent's eyes, with no browser."""
+    root, app = _app(ctx)
+    if app.app.kind != "dash":
+        msg = "This app has no dashboard; it runs only jobs."
+        raise UsageError(msg, hint="Run a job on this desktop with `ctzd run JOB --local`.")
+    result, found = checks.drive(_target(root, app), "render", page, *sets)
+    if found is None:
+        return Outcome(summary="The page could not be rendered.", data={"output": proc.tail(result.output, 40)}, ok=False, next_steps=["Run `ctzd check`: its pages step says why."])
+    if "error" in found:
+        raise UsageError(str(found["error"]))
+    failed = found.get("failed")
+    count = len(failed) if isinstance(failed, list) else 0
+    sample = " Some of it is sample rows, so the page shows the sample-data banner." if found.get("sample_data") else ""
+    summary = f"Rendered {found.get('page')}: {len(found.get('outputs') or {})} output(s) shown, {count} callback(s) failed.{sample}"  # ty: ignore[invalid-argument-type] - outputs is a JSON object
+    return Outcome(summary=summary, data=found, ok=count == 0, next_steps=["Fix each failed callback, then `ctzd render` again."] if count else [])
 
 
 # ---------------------------------------------------------------- looking at data

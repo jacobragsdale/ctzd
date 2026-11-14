@@ -127,3 +127,14 @@ def test_unsupported_store_urls_are_refused(url: str) -> None:
 def test_a_file_url_is_a_local_folder(tmp_path: Path) -> None:
     assert storage_for(f"file://{tmp_path.as_posix()}/store").root == (tmp_path / "store").as_posix()
     assert (tmp_path / "store").is_dir()
+
+
+@pytest.mark.parametrize(
+    ("url", "folder"),
+    [("C:\\Users\\ann\\app\\.ctzd\\out\\store", "C:\\Users\\ann\\app\\.ctzd\\out\\store"), ("relative/store", "relative/store"), ("file:///srv/store", "/srv/store"), ("https://x.invalid/s", None)],
+)
+def test_a_windows_path_is_a_folder_not_a_url_scheme(url: str, folder: str | None) -> None:
+    from ctzd_kit.frames import local_path  # noqa: PLC0415 - the one test of this helper
+
+    found = local_path(url)
+    assert found == (None if folder is None else str(Path(folder)))

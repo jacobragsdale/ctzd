@@ -43,11 +43,9 @@ def server() -> FastAPI:
         return PlainTextResponse(token)
 
     routes = [("/health/live", live), ("/health/ready", live), *([("/_ctzd/dev", dev)] if token else [])]
+    # Added before Dash's first request sets up its own routes, so they come before its catch-all page route.
     for path, endpoint in routes:
         built.add_api_route(path, endpoint, methods=["GET"], include_in_schema=False)
-    built.router.routes[:] = [route for route in built.router.routes if getattr(route, "path", "") in dict(routes)] + [
-        route for route in built.router.routes if getattr(route, "path", "") not in dict(routes)
-    ]
     return built
 
 
