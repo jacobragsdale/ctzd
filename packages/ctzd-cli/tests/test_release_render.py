@@ -21,17 +21,17 @@ def test_next_release_number_follows_the_highest() -> None:
     assert release.next_number([]) == 1
 
 
-def test_react_values_run_the_app_server_with_the_api_s_readiness() -> None:
+def test_dash_values_run_the_app_module_with_its_readiness() -> None:
     values = render.helm_values(config.load(), app_config(), image="acr/fi-bond-prices:abc", release=7)
     assert values.enabled
     assert values.host == "fi-bond-prices.ctzd.contoso.com"
     assert values.readiness_path == "/health/ready"
-    assert values.command[:3] == ("uvicorn", "--factory", "ctzd.api:asgi")
+    assert values.command[:3] == ("python", "-m", "app")
     assert values.model_dump(by_alias=True)["readinessPath"] == "/health/ready"
 
 
 def test_jobs_only_app_has_no_dashboard() -> None:
-    assert not render.helm_values(config.load(), app_config(ui="none"), image="i", release=None).enabled
+    assert not render.helm_values(config.load(), app_config(kind="job"), image="i", release=None).enabled
 
 
 def test_airflow_spec_names_each_dag_and_runs_its_module() -> None:

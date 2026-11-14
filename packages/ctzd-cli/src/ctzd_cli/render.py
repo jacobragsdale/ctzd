@@ -3,13 +3,12 @@
 from pydantic import BaseModel, ConfigDict, Field
 
 from ctzd_cli.appconfig import AppConfig
-from ctzd_cli.config import PlatformConfig, dag_id, source_secret
+from ctzd_cli.config import Environment, PlatformConfig, dag_id, source_secret
 
 PORT = 8080
-# One process serves the datasets under /api and the built pages at /.
-_REACT = ("uvicorn", "--factory", "ctzd.api:asgi", "--host=0.0.0.0", f"--port={PORT}", "--proxy-headers")
-_COMMANDS = {"react": _REACT}
-_READINESS = {"react": "/health/ready"}
+# A dash app serves itself: `python -m app` runs its locked `__main__.py`, uvicorn on Dash's FastAPI backend.
+_COMMANDS = {"dash": ("python", "-m", "app", "--host", "0.0.0.0", "--port", str(PORT))}  # noqa: S104 - the pod's own interface
+READINESS = "/health/ready"
 
 
 class _Model(BaseModel):
@@ -57,7 +56,7 @@ class JobSpec(_Model):
 
 
 class AirflowSpec(_Model):
-    """The file Jenkins commits to ctzd-dags as `specs/<sbu>/<app>.json`; the factory DAG reads it."""
+    """The file the reusable workflow commits to ctzd-dags as `specs/<env>/<sbu>/<app>.json`; the factory DAG reads it."""
 
     version: int = 2
     sbu: str
@@ -70,8 +69,8 @@ class AirflowSpec(_Model):
     jobs: tuple[JobSpec, ...]
 
 
-def runtime_env(platform: PlatformConfig, app: AppConfig) -> dict[str, str]:
-    return {"CTZD_APP": app.app.name, "CTZD_SBU": app.app.sbu, "CTZD_ENV": "cluster", "CTZD_STORE_URL": platform.platform.store_url}
+def runtime_env(platform: PlatformConfig, app: AppConfig, env: Environment = "prod") -> dict[str, str]:
+    return {"CTZD_APP": app.app.name, "CTZD_SBU": app.app.sbu, "CTZD_ENV": env, "CTZD_OWNERS": ",".join(app.app.owners), "CTZD_STORE_URL": platform.environments[env].store_url}
 
 
 def job_command(name: str) -> tuple[str, ...]:
@@ -89,19 +88,19 @@ def _resources(platform: PlatformConfig, size: str) -> Resources:
 
 
 def helm_values(platform: PlatformConfig, app: AppConfig, *, image: str, release: int | None) -> HelmValues:
-    ui = app.app.ui
+    kind = app.app.kind
     fullname = platform.repo_name(app.app.sbu, app.app.name)
     return HelmValues(
-        enabled=ui != "none",
+        enabled=kind == "dash",
         app=app.app.name,
         sbu=app.app.sbu,
         fullname=fullname,
         image=image,
         release=release,
-        host=f"{fullname}.{platform.platform.apps_domain}",
+        host=f"{fullname}.{platform.environments['prod'].apps_domain}",
         port=PORT,
-        command=_COMMANDS.get(ui, ()),
-        readiness_path=_READINESS.get(ui, "/healthz"),
+        command=_COMMANDS.get(kind, ()),
+        readiness_path=READINESS,
         resources=_resources(platform, app.app.size),
         env=runtime_env(platform, app),
         source_secrets=source_secrets(app),

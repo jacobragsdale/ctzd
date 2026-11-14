@@ -1,4 +1,4 @@
-"""GitHub login with the OAuth device flow. The token authenticates git and the platform API.
+"""GitHub login with the OAuth device flow. The token authenticates git and the CLI's calls to GitHub.
 
 The flow is split into `start` and `wait` because agents see a command's output
 only when it ends: `ctzd login --start` returns the code to show the person,

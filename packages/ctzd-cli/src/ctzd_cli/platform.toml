@@ -1,32 +1,30 @@
-# Platform settings baked into the ctzd CLI: where the platform's services are.
-# Every value is a contoso placeholder: the company copy of this repository
-# replaces them, or CTZD_PLATFORM_CONFIG points at another file with the same
-# shape. What goes into apps (build files, guidance, starter code, tool pins,
-# the package index and its sources, npm versions) is not here: it ships in
-# platform releases, see assets/release.toml.
-version = 2
+# Platform settings baked into the ctzd CLI: where the platform's services are, and its departments. Every value is a
+# contoso placeholder: the firm's fork replaces them, or CTZD_PLATFORM_CONFIG points at another file with the same
+# shape. What goes into apps (templates, build files, guidance, tool pins, the package index) is in assets/.
+version = 3
 
 [github]
-host = "github.contoso.com"
-api_url = "https://github.contoso.com/api/v3"
-org = "ctzd-apps"
-oauth_client_id = "Iv1.0000000000000000"
+host = "github.com"
+api_url = "https://api.github.com"
+org = "contoso-ctzd-apps"
+oauth_client_id = "Ov23li00000000000000"
 
 [platform]
-api_url = "https://api.ctzd.contoso.com"
-apps_domain = "ctzd.contoso.com"
-airflow_url = "https://airflow.ctzd.contoso.com"
 registry = "contosoctzd.azurecr.io"
 base_image = "contosoctzd.azurecr.io/ctzd/base:py3.14"
-store_url = "abfs://ctzd@contosoctzdstore.dfs.core.windows.net"
 mingit_url = "https://ctzd.contoso.com/downloads/MinGit-64-bit.zip"
-node_url = "https://ctzd.contoso.com/downloads/node-v26.13.0-win-x64.zip"
 
-# The internal npm registry, which `ctzd setup` makes the desktop's default and installs pnpm from. What an app
-# installs, and from where, is not here: it ships in platform releases (assets/release.toml), so a desktop and
-# Jenkins always write the same build files. Only the platform's own tests override it, with [release_overrides].
-[npm]
-registry = "https://npm.contoso.com/"
+[environments.dev]
+apps_domain = "ctzd-dev.contoso.com"
+airflow_url = "https://airflow.ctzd-dev.contoso.com"
+key_vault = "https://contoso-ctzd-dev.vault.azure.net"
+store_url = "abfs://ctzd-dev@contosoctzdstore.dfs.core.windows.net"
+
+[environments.prod]
+apps_domain = "ctzd.contoso.com"
+airflow_url = "https://airflow.ctzd.contoso.com"
+key_vault = "https://contoso-ctzd-prod.vault.azure.net"
+store_url = "abfs://ctzd-prod@contosoctzdstore.dfs.core.windows.net"
 
 # Resources per app.toml size. Requests stay small so idle dashboards cost little.
 [sizes.s]
@@ -47,7 +45,13 @@ cpu_limit = "2"
 memory_request = "2Gi"
 memory_limit = "8Gi"
 
+# The departments. A new one is a new kit in kits/<sbu> and a CLI release that lists it here.
 [sbus.fi]
 name = "Fixed Income"
-library = "ctzd-fi>=0.1"
+kit = "ctzd-fi>=0.1,<1"
 github_team = "sbu-fi"
+
+[sbus.mas]
+name = "Multi-Asset Solutions"
+kit = "ctzd-mas>=0.1,<1"
+github_team = "sbu-mas"

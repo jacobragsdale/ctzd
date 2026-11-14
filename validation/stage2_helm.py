@@ -20,12 +20,12 @@ from ctzd_cli.appconfig import AppConfig
 from validation.harness import REPO, Report
 
 CHART = REPO / "deploy" / "helm" / "ctzd-app"
-PLATFORM_VALUES = REPO / "jenkins" / "resources" / "ctzd" / "platform-values.yaml"
+PLATFORM_VALUES = CHART / "platform-values.yaml"
 SOURCES = ("fi_pricing", "fi_trading")
 
 
-def app(ui: str, sources: tuple[str, ...]) -> AppConfig:
-    return AppConfig.model_validate({"app": {"name": "bond-prices", "sbu": "fi", "ui": ui, "owners": ["ann.lee@contoso.com"]}, "sources": {"use": list(sources)}})
+def app(kind: str, sources: tuple[str, ...]) -> AppConfig:
+    return AppConfig.model_validate({"app": {"name": "bond-prices", "sbu": "fi", "kind": kind, "owners": ["ann.lee@contoso.com"]}, "sources": {"use": list(sources)}})
 
 
 def helm(binary: str, *args: str) -> subprocess.CompletedProcess[str]:
@@ -42,7 +42,7 @@ def main() -> int:
     work.mkdir(parents=True)
     report = Report("stage 2b (Helm chart, offline)")
     values = work / "values.json"
-    values.write_text(render.helm_values(config.load(), app("react", SOURCES), image="reg/apps/fi-bond-prices:abc", release=3).model_dump_json(by_alias=True))
+    values.write_text(render.helm_values(config.load(), app("dash", SOURCES), image="reg/apps/fi-bond-prices:abc", release=3).model_dump_json(by_alias=True))
     linted = helm(binary, "lint", str(CHART), "-f", str(PLATFORM_VALUES), "-f", str(values))
     report.expect("the chart lints with the platform values and rendered values", ok=linted.returncode == 0, seen=linted.stdout + linted.stderr)
     rendered = helm(binary, "template", "fi-bond-prices", str(CHART), "-f", str(PLATFORM_VALUES), "-f", str(values))
@@ -73,7 +73,7 @@ def main() -> int:
     blank = helm(binary, "template", "fi-bond-prices", str(CHART), "-f", str(values), "--set", "auth.enabled=true")
     report.expect("auth.enabled without its settings is refused", ok=blank.returncode != 0 and "auth.issuer is required" in blank.stderr, seen=blank.stderr)
     none = work / "none.json"
-    none.write_text(render.helm_values(config.load(), app("none", ()), image="i", release=1).model_dump_json(by_alias=True))
+    none.write_text(render.helm_values(config.load(), app("job", ()), image="i", release=1).model_dump_json(by_alias=True))
     empty = helm(binary, "template", "fi-bond-prices", str(CHART), "-f", str(PLATFORM_VALUES), "-f", str(none))
     report.expect("an app without a dashboard renders nothing", ok=empty.returncode == 0 and "kind: Deployment" not in empty.stdout and "kind: HTTPRoute" not in empty.stdout, seen=empty.stdout[:500])
     return report.finish()

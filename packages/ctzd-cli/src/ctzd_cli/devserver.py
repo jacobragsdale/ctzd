@@ -35,7 +35,7 @@ _PORTS_TRIED = 20
 _START_SECONDS = 180.0  # The first `uv run` in a fresh app installs its packages.
 _STOP_SECONDS = 10.0
 _POLL_SECONDS = 0.5
-ID_VARIABLE = "CTZD_DEV_ID"  # ctzd.api reports it at IDENTITY_PATH
+ID_VARIABLE = "CTZD_DEV_ID"  # the app's __main__.py reports it at IDENTITY_PATH
 IDENTITY_PATH = "/_ctzd/dev"
 
 

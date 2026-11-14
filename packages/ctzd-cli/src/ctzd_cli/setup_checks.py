@@ -11,7 +11,7 @@ from typing import Literal
 
 import httpx
 
-from ctzd_cli import auth, config, node, proc
+from ctzd_cli import auth, config, proc
 from ctzd_cli.errors import CliError
 
 # The first Claude Code release whose docs say it reads AGENTS.md without a CLAUDE.md.
@@ -59,58 +59,6 @@ def check_git(*, client: httpx.Client) -> Check:
     if os.name != "nt":
         return Check("git", "missing", "Install git with the system package manager.")
     return Check("git", "fixed", f"Installed a private git at {install_mingit(client=client)}")
-
-
-def _version(executable: str, cwd: Path) -> str:
-    return proc.run([executable, "--version"], cwd=cwd, env=node.env(), timeout=60).output.strip()
-
-
-def _install_node(*, client: httpx.Client, cwd: Path) -> Check:
-    """Node into ctzd's own folder: the platform host's zip, or else the Node wheel through uv. Unverified on Windows."""
-    url = config.load().platform.node_url
-    if url is not None:
-        try:
-            response = client.get(url, follow_redirects=True)
-            response.raise_for_status()
-            node.unpack_node(response.content, node.node_dir())
-            return Check("node", "fixed", f"Installed Node into {node.node_dir()}")
-        except (httpx.HTTPError, CliError) as err:
-            failure = str(err).splitlines()[0]
-    else:
-        failure = "the platform names no Node download"
-    wheel = proc.run([proc.which("uv", hint="Install uv first."), "tool", "install", f"nodejs-wheel=={node.NODE_MAJOR}.*"], cwd=cwd, timeout=900)
-    if wheel.ok:
-        return Check("node", "fixed", "Installed Node from its wheel with uv.")
-    return Check("node", "missing", f"Node could not be installed ({failure}; the wheel: {proc.tail(wheel.output, 3)}). Ask the platform team.")
-
-
-def check_node(*, client: httpx.Client, cwd: Path) -> Check:
-    """Node, which a React app's pages build with, at version 26 or later."""
-    found = node.which("node")
-    if found is not None and (node.major(_version(found, cwd)) or 0) >= node.NODE_MAJOR:
-        return Check("node", "ok", found)
-    if os.name != "nt":
-        return Check("node", "missing", f"Install Node {node.NODE_MAJOR} or later with the system package manager.")
-    return _install_node(client=client, cwd=cwd)
-
-
-def check_pnpm(cwd: Path) -> Check:
-    """pnpm, at the version basis-ui pins, installed from the internal npm registry, which also becomes the default."""
-    # Only a desktop's npm is pointed at the internal registry; a developer's machine keeps its own.
-    registry = config.load().npm.registry if os.name == "nt" else None
-    npm = node.which("npm")
-    if npm is not None and registry is not None:
-        proc.run([npm, "config", "set", "registry", registry], cwd=cwd, env=node.env(), timeout=60)
-    found = node.which("pnpm")
-    if found is not None and _version(found, cwd).split(".", 1)[0] == node.PNPM_VERSION.split(".", 1)[0]:
-        return Check("pnpm", "ok", found)
-    if npm is None:
-        return Check("pnpm", "missing", "pnpm needs Node first; run `ctzd setup` again once Node is installed.")
-    registry_args = ["--registry", registry] if registry is not None else []
-    installed = proc.run([npm, "install", "--global", f"pnpm@{node.PNPM_VERSION}", "--prefix", str(node.npm_dir()), *registry_args], cwd=cwd, env=node.env(), timeout=900)
-    if installed.ok:
-        return Check("pnpm", "fixed", f"Installed pnpm {node.PNPM_VERSION} into {node.npm_dir()}")
-    return Check("pnpm", "missing", f"npm could not install pnpm: {proc.tail(installed.output, 3)}")
 
 
 def check_login(*, client: httpx.Client) -> Check:
@@ -167,13 +115,4 @@ def check_claude_files(cwd: Path) -> Check:
 
 
 def run(cwd: Path, *, client: httpx.Client) -> list[Check]:
-    found_node = check_node(client=client, cwd=cwd)
-    return [
-        Check("uv", "ok", proc.which("uv", hint="Install uv first.")),
-        check_git(client=client),
-        found_node,
-        check_pnpm(cwd) if found_node.state != "missing" else Check("pnpm", "missing", "pnpm needs Node first."),
-        check_login(client=client),
-        check_claude(cwd),
-        check_claude_files(cwd),
-    ]
+    return [Check("uv", "ok", proc.which("uv", hint="Install uv first.")), check_git(client=client), check_login(client=client), check_claude(cwd), check_claude_files(cwd)]

@@ -1,2 +1,0 @@
-@Library('ctzd') _
-ctzdApp()

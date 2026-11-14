@@ -2,7 +2,7 @@
 
 Every number is a float64 from the source to the page. The page rounds each one
 once, when it shows it, by the rule the firm's spreadsheets use, and
-`ctzd.display` does the same for text a job writes into an email or a message.
+`ctzd_common.display` does the same for text a job writes into an email or a message.
 Rounding anywhere earlier changes the data, and two places that round differently
 show two numbers for one value. So the gate refuses, in `src/app/`:
 
@@ -26,7 +26,10 @@ import sqlglot
 import sqlglot.errors
 from sqlglot import exp
 
-FIX = "Keep the number as it is: the page shows it to the decimals its column declares, and an email or Teams message writes it with ctzd.display, such as ctzd.display.number(value, decimals=2)."
+FIX = (
+    "Keep the number as it is: a page names one of ui.py's formats for the column or axis, "
+    "and an email or a Slack message writes it with ctzd_common.display, such as display.number(value, decimals=2)."
+)
 _SPEC = re.compile(r"(?:.?[<>=^])?[-+ ]?z?#?0?\d*(?P<grouping>[,_])?(?:\.(?P<precision>\d+))?(?P<kind>[bcdeEfFgGnosxX%])?")
 _NUMBER_KINDS = frozenset("eEfFgGn%")
 _PERCENT_FORMAT = re.compile(r"%(?:\([^)]*\))?[-+ #0]*(?:\d+|\*)?(?:\.\d+)?[diueEfFgG]")

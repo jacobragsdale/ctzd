@@ -4,9 +4,7 @@ version = "0.1.0"
 description = "FI (fixed income) library for ctzd apps: the SBU's package stack and shared loaders"
 readme = "README.md"
 requires-python = ">=3.14"
-dependencies = [
-    "ctzd-core>=0.1",
-]
+dependencies = []
 
 [build-system]
 requires = ["uv_build>=0.13.6,<0.14"]

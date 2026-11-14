@@ -1,0 +1,28 @@
+# What this CLI writes into the managed tables of every app's pyproject.toml. It ships with the CLI, as the rest of
+# assets/ does: an app's build files are this CLI version's, recorded in its .ctzd/version, and CI checks the app with
+# exactly that version. A change here reaches an app the next time someone works on it with a newer CLI.
+[python]
+requires = ">=3.14,<3.15"
+build_backend = "uv_build>=0.13.6,<0.14"
+dev = [
+    "import-linter==2.15",
+    "pandas-stubs==3.1.0.261029",
+    "pre-commit==4.7.0",
+    "pytest==9.2.0",
+    "pytest-cov==7.1.0",
+    "ruff==0.17.3",
+    "ty==0.0.95",
+]
+
+# The package index every app installs from, written into [tool.uv] of its pyproject.toml.
+[[python.index]]
+name = "internal"
+url = "https://pypi.contoso.com/simple"
+default = true
+
+# What `ctzd new` puts in [project].dependencies beside the department's kit, for each kind of app.
+[kinds.dash]
+dependencies = ["ctzd-common[dash]>=0.1,<1"]
+
+[kinds.job]
+dependencies = ["ctzd-common>=0.1,<1"]

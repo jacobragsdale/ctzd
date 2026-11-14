@@ -1,6 +1,6 @@
 [project]
 name = "ctzd"
-version = "0.4.0"
+version = "0.5.0"
 description = "The ctzd command line: create, check, and deploy citizen-developer apps"
 readme = "README.md"
 requires-python = ">=3.14"
@@ -9,15 +9,11 @@ dependencies = [
     "httpx>=0.28",
     "keyring>=25.7",
     "packaging>=25",
-    "playwright>=1.64",  # `ctzd shot`, and the smoke test Jenkins runs
     "pydantic>=2.14",
     "sqlglot>=30.29",
     "tomlkit>=0.15",
     "tzdata>=2025.2; sys_platform == 'win32'",  # Windows has no time zone database for zoneinfo
 ]
-
-[project.optional-dependencies]
-ci = ["playwright>=1.64"]
 
 [project.scripts]
 ctzd = "ctzd_cli.main:main"

@@ -12,7 +12,7 @@ VALID = """
 [app]
 name = "bond-prices"
 sbu = "fi"
-ui = "react"
+kind = "dash"
 owners = ["ann.lee@contoso.com"]
 
 [[jobs]]
@@ -53,7 +53,7 @@ def test_duplicate_job_names_are_rejected() -> None:
 
 def test_unknown_keys_are_rejected() -> None:
     with pytest.raises(CliError, match="replicas"):
-        appconfig.parse(VALID.replace('ui = "react"', 'ui = "react"\nreplicas = 3'))
+        appconfig.parse(VALID.replace('kind = "dash"', 'kind = "dash"\nreplicas = 3'))
 
 
 def test_render_round_trips() -> None:
@@ -94,7 +94,7 @@ def test_a_job_runs_in_its_time_zone_and_unknown_zones_are_refused() -> None:
 
 
 def test_the_time_zone_reaches_app_toml(tmp_path: Path) -> None:
-    (tmp_path / "app.toml").write_text('[app]\nname = "bond-prices"\nsbu = "fi"\nui = "none"\nowners = ["a@contoso.com"]\n')
+    (tmp_path / "app.toml").write_text('[app]\nname = "bond-prices"\nsbu = "fi"\nkind = "job"\nowners = ["a@contoso.com"]\n')
     config = appconfig.add_job(tmp_path, Job(name="summary", schedule="0 7 * * 1-5", timezone="Europe/London"))
     assert config.jobs[0].timezone == "Europe/London"
     assert 'timezone = "Europe/London"' in (tmp_path / "app.toml").read_text()

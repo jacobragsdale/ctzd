@@ -5,14 +5,12 @@ import os
 import shutil
 import subprocess
 import sys
-import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 CTZD = REPO / ".venv" / "bin" / "ctzd"
 PLATFORM_TOML = REPO / "packages" / "ctzd-cli" / "src" / "ctzd_cli" / "platform.toml"
-RELEASE_TOML = REPO / "packages" / "ctzd-cli" / "src" / "ctzd_cli" / "assets" / "release.toml"
 
 
 def tool(name: str) -> str:
@@ -23,57 +21,36 @@ def tool(name: str) -> str:
     return found
 
 
+WHEELS = ("ctzd-kit", "ctzd-common", "ctzd-fi", "ctzd-mas", "contoso-risklib")
+"""The packages an app installs from this repository, built as local wheels."""
+
+
 def build_wheels(target: Path) -> Path:
-    """ctzd-core and ctzd-fi as local wheels, so generated apps can install them."""
+    """The kits and what they build on, as local wheels, so apps made offline can install them."""
     target.mkdir(parents=True, exist_ok=True)
-    for package in ("ctzd-core", "ctzd-fi"):
+    for package in WHEELS:
         subprocess.run([tool("uv"), "build", "--quiet", "--package", package, "--out-dir", str(target)], cwd=REPO, check=True)
     return target
 
 
-def replace_sample_page(app: Path) -> None:
-    """Take the starter's sample-page marker out, as an agent does once it has built the person's page, so the app ships."""
-    page = app / "web" / "src" / "pages" / "home.tsx"
-    if page.is_file():
-        page.write_text("".join(line for line in page.read_text().splitlines(keepends=True) if "ctzd: sample page" not in line))
+def remove_sample_marks(app: Path) -> None:
+    """Take the template's sample marks out, as an agent does once it has built what the person asked for, so the app ships."""
+    for path in [*(app / "src" / "app" / "pages").glob("*.py"), *(app / "src" / "app" / "jobs").glob("*.py")]:
+        first, _, rest = path.read_text().partition("\n")
+        if "ctzd: sample" in first:
+            path.write_text(rest)
 
 
-def npm_packages(base: Path, url: str) -> dict[str, str]:
-    """The firm's npm packages, copied into `base/npm` and served from `url`, by package: replacements for the bundled
-    release's `file:` paths, which point into the operator's home. SHIM (MVP), until a registry serves them.
-
-    A URL, not a `file:` path, because pnpm writes a tarball's path into the lockfile relative to the app, and
-    the build's workspace is not where the person's app is.
-    """
-    target = base / "npm"
-    target.mkdir(parents=True, exist_ok=True)
-    found: dict[str, str] = {}
-    for package, spec in tomllib.loads(RELEASE_TOML.read_text())["npm"]["packages"].items():
-        if not spec.startswith("file:"):
-            continue
-        source = Path(spec.removeprefix("file:")).expanduser()
-        copied = target / source.name
-        if not copied.is_file():
-            # A copy under a name of its own first, so trials starting together never read a half-written file.
-            partial = target / f".{source.name}.{os.getpid()}"
-            shutil.copyfile(source, partial)
-            partial.replace(copied)
-        found[package] = f"{url}/{source.name}"
-    return found
-
-
-def platform_config(work: Path, wheels: Path, *, api_url: str, extra: dict[str, str] | None = None, npm: dict[str, str] | None = None) -> Path:
-    """The bundled platform.toml with other values overridden, and release overrides: local wheels plus PyPI for the
-    release's internal index, and `npm` for its npm packages."""
-    text = PLATFORM_TOML.read_text().replace('api_url = "https://api.ctzd.contoso.com"', f'api_url = "{api_url}"')
+def platform_config(work: Path, wheels: Path, *, extra: dict[str, str] | None = None) -> Path:
+    """The bundled platform.toml with other values overridden, and build overrides: local wheels plus PyPI for the
+    internal index."""
+    text = PLATFORM_TOML.read_text()
     for old, new in (extra or {}).items():
         text = text.replace(old, new)
     text += f"""
-[release_overrides]
+[build_overrides]
 python_index = [{{name = "local", url = "{wheels}", format = "flat"}}, {{name = "pypi", url = "https://pypi.org/simple", default = true}}]
 """
-    if npm is not None and npm:
-        text += "npm_packages = {" + ", ".join(f'"{package}" = "{spec}"' for package, spec in npm.items()) + "}\n"
     path = work / "platform.toml"
     path.write_text(text)
     return path

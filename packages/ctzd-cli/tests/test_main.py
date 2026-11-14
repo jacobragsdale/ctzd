@@ -8,32 +8,10 @@ from ctzd_cli import commands, main
 from .conftest import make_app, run
 
 
-def test_add_job_writes_the_module_and_app_toml(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    make_app(tmp_path)
-    code, out = run(["add", "job", "nightly", "--schedule", "0 2 * * *"], tmp_path, capsys)
-    assert code == 0
-    assert out["files"] == ["src/app/jobs/nightly.py", "tests/test_job_nightly.py"]
-    assert 'name = "nightly"' in (tmp_path / "app.toml").read_text()
-
-
-def test_a_bad_schedule_is_a_usage_error(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    make_app(tmp_path)
-    code, out = run(["add", "job", "nightly", "--schedule", "daily"], tmp_path, capsys)
-    assert code == main.EXIT_USAGE
-    assert out["ok"] is False
-
-
 def test_outside_an_app_the_error_says_what_to_do(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     code, out = run(["sync"], tmp_path, capsys)
     assert code == main.EXIT_FAILED
     assert out["next"] == ["Run ctzd from the app's folder, or create one with `ctzd new`."]
-
-
-def test_delete_needs_confirmation(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    make_app(tmp_path)
-    code, out = run(["delete"], tmp_path, capsys)
-    assert code == main.EXIT_USAGE
-    assert "--yes" in str(out["next"])
 
 
 def test_ci_render_writes_both_files(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -44,26 +22,24 @@ def test_ci_render_writes_both_files(tmp_path: Path, capsys: pytest.CaptureFixtu
     assert json.loads((tmp_path / "out" / "airflow-spec.json").read_text())["jobs"] == []
 
 
-@pytest.mark.parametrize(("text", "number"), [("v12", 12), ("12", 12), (None, None)])
-def test_release_arguments(text: str | None, number: int | None) -> None:
-    assert commands.parse_release(text) == number
-
-
-def test_dotenv_values_survive_quotes() -> None:
-    assert commands._dotenv_value('{"kind":"rest"}') == """'{"kind":"rest"}'"""  # noqa: SLF001 - the quoting rule is the unit under test.
-    assert commands._dotenv_value("it's") == '"it\'s"'  # noqa: SLF001 - the quoting rule is the unit under test.
-
-
-def test_an_app_made_offline_says_it_is_not_on_the_platform(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    make_app(tmp_path)
-    code, out = run(["env"], tmp_path, capsys)
+def test_new_without_offline_says_the_github_side_is_not_built(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    code, out = run(["new", "bond-prices", "--sbu", "fi", "--owner", "ann.lee@contoso.com"], tmp_path, capsys)
     assert code == main.EXIT_USAGE
-    assert "not on the platform" in str(out["summary"])
-    assert "ctzd new bond-prices --sbu fi" in str(out["next"])
+    assert "not built yet" in str(out["summary"])
+    assert not (tmp_path / "bond-prices").exists()
 
 
-@pytest.mark.parametrize("argv", [["--json", "env"], ["env", "--json"]])
+def test_a_job_app_has_no_dashboard(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    from .conftest import app_config  # noqa: PLC0415 - the one test that needs a job app
+
+    make_app(tmp_path, app_config(kind="job"))
+    code, out = run(["dev"], tmp_path, capsys)
+    assert code == main.EXIT_USAGE
+    assert "no dashboard" in str(out["summary"])
+
+
+@pytest.mark.parametrize("argv", [["--json", "sync"], ["sync", "--json"]])
 def test_json_works_before_or_after_the_command(tmp_path: Path, capsys: pytest.CaptureFixture[str], argv: list[str]) -> None:
     make_app(tmp_path)
-    main.main(argv, ctx=commands.Context(cwd=tmp_path, platform_factory=commands.default_platform))
-    assert json.loads(capsys.readouterr().out)["command"] == "env"
+    main.main(argv, ctx=commands.Context(cwd=tmp_path))
+    assert json.loads(capsys.readouterr().out)["command"] == "sync"

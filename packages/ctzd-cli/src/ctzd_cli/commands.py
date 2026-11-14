@@ -1,36 +1,22 @@
 """The ctzd commands. Each returns an Outcome; `main` prints it as text or JSON."""
 
-import contextlib
-import json
 import shutil
 import time
-import tomllib
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Protocol, assert_never
 
-from pydantic import ValidationError
-
-from ctzd_cli import api_client, appconfig, assets, auth, catalogue, checks, config, devserver, generate, gitops, proc, release, render, scaffold, setup_checks, sync
-from ctzd_cli import api_models as m
-from ctzd_cli import shot as shooting
-from ctzd_cli.appconfig import AppConfig, AppSection, Job, SourcesSection, Ui
-from ctzd_cli.assets import start_guide
-from ctzd_cli.errors import CliError, NotFoundError, UsageError
-from ctzd_cli.releases import ReleaseSource, require_usable, upgrade_hint
+from ctzd_cli import appconfig, assets, auth, checks, config, devserver, gitops, proc, release, render, scaffold, setup_checks, sync
+from ctzd_cli.appconfig import AppConfig, AppSection, Job, Kind, SourcesSection
+from ctzd_cli.errors import CliError, UsageError
 
 ENV_FILE = ".env"
-FIXTURES = "fixtures"
-FAKE_FIXTURES = "CTZD_FAKE_FIXTURES"  # ctzd.api serves the fake rows in this folder
-_POLL_SECONDS = 10.0
-_DAG_WAIT_SECONDS = 180.0  # Airflow picks up new job specs within a few minutes of a deploy.
-_DEFAULT_JOB = Job(name="refresh", schedule="0 6 * * *")
-# Commands that work inside an app; each refreshes the app's guidance before it runs.
-APP_COMMANDS = frozenset(
-    {"dev", "shot", "run", "exec", "add job", "add dataset", "add page", "api list", "docs ui", "check", "env", "deploy", "status", "logs", "releases", "rollback", "sync", "delete"}
-)
+_TEMPLATE_JOB = Job(name="daily_positions", schedule="0 7 * * 1-5", timezone="Europe/London")
+# Commands that work inside an app; each brings the app's platform files to this CLI before it runs.
+APP_COMMANDS = frozenset({"dev", "run", "exec", "check", "sync"})
+NOT_BUILT = "is not built yet: it arrives with the GitHub side of the platform (PLAN.md section 15, step 7)"
 
 
 @dataclass
@@ -47,79 +33,51 @@ class CheckRunner(Protocol):
 
 @dataclass(frozen=True)
 class Context:
-    """What every command needs: where it runs, and how to reach GitHub and the platform."""
+    """What every command needs: where it runs, and the seams tests replace."""
 
     cwd: Path
-    platform_factory: Callable[[], api_client.Platform]
     token: Callable[[], str] = auth.require_token
     run_checks: CheckRunner = checks.run_all
     sleep: Callable[[float], None] = time.sleep
     clock: Callable[[], float] = time.monotonic
     now: Callable[[], datetime] = auth.utc_now
-    releases: ReleaseSource = field(default_factory=lambda: ReleaseSource(None))
 
 
-def default_platform() -> api_client.Platform:
-    return api_client.PlatformClient(config.load().platform.api_url, auth.require_token())
+def _app(ctx: Context) -> tuple[Path, AppConfig]:
+    root = appconfig.find_root(ctx.cwd)
+    return root, appconfig.load(root)
 
 
-def release_platform() -> api_client.Platform:
-    """The platform for fetching releases, which needs no login: Jenkins checks apps without a token."""
-    return api_client.PlatformClient(config.load().platform.api_url, auth.token())
-
-
-# ---------------------------------------------------------------- guidance
-
-
-def refresh_guidance(ctx: Context, root: Path, app: AppConfig, *, force: bool = False) -> list[str]:
-    """Bring AGENTS.md and the skills to the channel's current release; return hints for the agent."""
-    stamp = sync.read_stamp(root)
-    now = ctx.now()
-    if not force and stamp is not None and now - stamp.checked_at < sync.GUIDANCE_REFRESH and (root / "AGENTS.md").is_file():
-        return []
-    current = ctx.releases.current(app.app.sbu, app.app.name)
-    hints: list[str] = []
-    if ctx.releases.unreachable is not None:
-        hints.append(f"The agent guidance could not be refreshed ({ctx.releases.unreachable}); it may be out of date.")
-    if current is not None:
-        chosen = require_usable(ctx.releases.get(current.release))
-        hint = upgrade_hint(current)
-        if hint is not None:
-            hints.append(hint)
-    elif not (root / "AGENTS.md").is_file():
-        chosen = require_usable(ctx.releases.newest_local())
-    else:
-        # Without the platform, keep the guidance that is there and ask again on the next command.
-        return hints
-    sync.write_guidance(root, chosen, app.app.sbu)
-    sync.write_stamp(root, chosen.release, now)
-    return hints
+def _target(root: Path, app: AppConfig) -> checks.Target:
+    return checks.Target(root=root, app=app, platform=config.load())
 
 
 def prepare(ctx: Context, command: str) -> list[str]:
-    """Run before every command: inside an app, refresh its guidance. Returns hints to add to `next`."""
+    """Run before every command: inside an app, bring its platform files and guidance to this CLI. Returns hints."""
     if command not in APP_COMMANDS:
         return []
     try:
-        root = appconfig.find_root(ctx.cwd)
-        app = appconfig.load(root)
+        root, app = _app(ctx)
     except CliError:
         return []  # The command itself reports a missing or broken app.toml.
-    return refresh_guidance(ctx, root, app)
+    step = checks.platform_files(_target(root, app), "local")
+    if step.state == "failed":
+        raise CliError(step.detail)
+    sync.write_guidance(root)
+    return []
 
 
 # ---------------------------------------------------------------- setup and login
 
 
-def setup(ctx: Context) -> Outcome:
+def setup(_ctx: Context) -> Outcome:
     with auth.http_client() as client:
-        results = setup_checks.run(ctx.cwd, client=client)
+        results = setup_checks.run(_ctx.cwd, client=client)
     missing = [check for check in results if check.state == "missing"]
     data: dict[str, object] = {"checks": [{"name": check.name, "state": check.state, "detail": check.detail} for check in results]}
     if missing:
         return Outcome(summary="ctzd needs attention: " + ", ".join(check.name for check in missing), data=data, next_steps=[check.detail for check in missing], ok=False)
-    # The guide comes from the platform's current release, so starting an app is taught by served text.
-    data["guide"] = start_guide(require_usable(ctx.releases.for_app()))
+    data["guide"] = assets.start_guide()
     return Outcome(summary="ctzd is ready.", data=data, next_steps=["Read `guide`: it says how to start a new app or open an existing one."])
 
 
@@ -139,7 +97,7 @@ def login_wait(ctx: Context) -> Outcome:
     return Outcome(summary=f"Logged in to GitHub as {profile.login}.", data={"login": profile.login, "email": profile.email})
 
 
-# ---------------------------------------------------------------- creating and opening apps
+# ---------------------------------------------------------------- creating apps
 
 
 def _owner_email(explicit: str | None) -> str:
@@ -156,60 +114,48 @@ def _uv(root: Path, *args: str) -> proc.Completed:
     return proc.run([proc.which("uv", hint="Install uv first."), *args], cwd=root, timeout=900)
 
 
-def new(ctx: Context, *, name: str, sbu: str, ui: Ui, directory: Path | None, owner: str | None, offline: bool) -> Outcome:  # noqa: PLR0913 - one keyword per command-line option.
+def new(ctx: Context, *, name: str, sbu: str, kind: Kind, directory: Path | None, owner: str | None, offline: bool) -> Outcome:  # noqa: PLR0913 - one keyword per command-line option.
+    if not offline:
+        msg = f"Creating the app's GitHub repository {NOT_BUILT}."
+        raise UsageError(msg, hint="For platform tests, pass --offline: the app is written locally and can never be deployed.")
     platform = config.load()
     platform.sbu(sbu)
-    app = AppConfig(app=AppSection(name=name, sbu=sbu, ui=ui, owners=(_owner_email(owner),)), sources=SourcesSection(), jobs=(_DEFAULT_JOB,) if ui == "none" else ())
+    jobs = (_TEMPLATE_JOB,) if kind == "job" else ()
+    app = AppConfig(app=AppSection(name=name, sbu=sbu, kind=kind, owners=(_owner_email(owner),)), sources=SourcesSection(use=("sample",)), jobs=jobs)
     root = (directory or ctx.cwd) / name
     if root.exists() and any(root.iterdir()):
         msg = f"{root} already exists and is not empty."
         raise UsageError(msg, hint="Choose another name or folder.")
-    chosen = require_usable(ctx.releases.newest_local() if offline else ctx.releases.for_app(sbu, name))
-    # Everything local comes first, and a failure leaves the folder as it was, so running the same command again works;
-    # the repository is created only once the app installs.
     made = not root.exists()
     try:
         root.mkdir(parents=True, exist_ok=True)
-        _install_new(ctx, root, platform=platform, app=app, release=chosen)
-        created = None if offline else ctx.platform_factory().create_app(m.CreateAppRequest(sbu=sbu, name=name, ui=ui, owners=app.app.owners))
+        scaffold.scaffold(root, platform=platform, app=app)
+        _install(root)
     except BaseException:
         _empty(root, remove=made)
         raise
-    git = gitops.open_repo(root, token=None if offline else ctx.token(), identity=auth.identity() or ("ctzd", "ctzd@localhost"))
-    git.init(None if created is None else created.clone_url)
-    git.commit_all(f"Create {name} on platform release {chosen.release}")
-    if created is not None:
-        git.push_main()
-    url = platform.app_url(sbu, name)
+    git = gitops.open_repo(root, token=None, identity=auth.identity() or ("ctzd", "ctzd@localhost"))
+    git.init(None)
+    git.commit_all(f"Create {name} with ctzd {assets.version()}")
     return Outcome(
-        summary=f"Created {name} in {root}." + ("" if created is None else f" It goes live at {url} with its first `ctzd deploy`."),
-        data={"path": str(root), "repo": None if created is None else created.repo, "url": url, "guide": _guide(root)},
-        next_steps=[
-            f"Read `guide`, the app's {root / 'AGENTS.md'}: your editor may hide that file. Then work inside {root} and read the skills it names before you write code.",
-            "Run `ctzd dev` to see it locally, then `ctzd deploy` to ship changes.",
-        ],
+        summary=f"Created {name} in {root}, offline: it has no repository and can never be deployed.",
+        data={"path": str(root), "repo": None, "url": platform.app_url(sbu, name), "guide": _guide(root)},
+        next_steps=[f"Read `guide`, the app's {root / 'AGENTS.md'}, and the skills it names before you write code. Then work inside {root}."],
     )
 
 
+def _install(root: Path) -> None:
+    installed = _uv(root, "sync")
+    if not installed.ok:
+        msg = "The new app's packages could not be installed."
+        raise CliError(msg, hint=proc.tail(installed.output, 20) + "\nFix the cause, then run the same `ctzd new` command again.")
+
+
 def _guide(root: Path) -> str | None:
-    """The app's AGENTS.md, returned by `ctzd new` and `ctzd open`: the first session starts outside the app folder,
-    where Cursor hides the gitignored file from its agent."""
+    """The app's AGENTS.md, returned by `ctzd new`: the first session starts outside the app folder, where Cursor hides
+    the gitignored file from its agent."""
     path = root / "AGENTS.md"
     return path.read_text(encoding="utf-8") if path.is_file() else None
-
-
-def _install_new(ctx: Context, root: Path, *, platform: config.PlatformConfig, app: AppConfig, release: m.PlatformRelease) -> None:
-    scaffold.scaffold(root, platform=platform, app=app, release=release)
-    sync.write_stamp(root, release.release, ctx.now())
-    locked = _uv(root, "sync")
-    if not locked.ok:
-        msg = "The new app's packages could not be installed."
-        raise CliError(msg, hint=proc.tail(locked.output, 20) + "\nFix the cause, then run the same `ctzd new` command again.")
-    if app.app.ui == "react":
-        for step in (checks.web_install(root, "local"), checks.client(root, "local")):
-            if step.state == "failed":
-                msg = f"The new app's pages could not be set up ({step.name})."
-                raise CliError(msg, hint=f"{step.detail}\nFix the cause, then run the same `ctzd new` command again.")
 
 
 def _empty(root: Path, *, remove: bool) -> None:
@@ -224,63 +170,22 @@ def _empty(root: Path, *, remove: bool) -> None:
             entry.unlink(missing_ok=True)
 
 
-def open_app(ctx: Context, *, name: str, sbu: str, directory: Path | None) -> Outcome:
-    platform = config.load()
-    root = (directory or ctx.cwd) / name
-    if root.exists():
-        msg = f"{root} already exists."
-        raise UsageError(msg, hint="Choose another folder with --dir.")
-    try:
-        ctx.platform_factory().status(sbu, name)
-    except NotFoundError:
-        msg = f"There is no app {platform.repo_name(sbu, name)} on the platform."
-        raise UsageError(msg, hint=f"Check the name and business unit with the person; a link such as {platform.app_url(sbu, name)} holds both.") from None
-    url = f"https://{platform.github.host}/{platform.github.org}/{platform.repo_name(sbu, name)}.git"
-    gitops.open_repo(ctx.cwd, token=ctx.token(), identity=auth.identity()).clone(url, root)
-    hints = refresh_guidance(ctx, root, appconfig.load(root), force=True)
-    installed = _uv(root, "sync")
-    return Outcome(
-        summary=f"Opened {name} in {root}.",
-        data={"path": str(root), "url": platform.app_url(sbu, name), "guide": _guide(root)},
-        next_steps=[f"Read `guide`, the app's {root / 'AGENTS.md'}, before you change anything: it says what to do first when the live app is wrong. Then work inside {root}.", *hints]
-        + ([] if installed.ok else ["`uv sync` failed; run `ctzd check` to see why."]),
-    )
-
-
 # ---------------------------------------------------------------- working locally
 
 
-def _target(ctx: Context, root: Path, app: AppConfig) -> checks.Target:
-    return checks.Target(root=root, app=app, platform=config.load(), releases=ctx.releases)
-
-
-def _app(ctx: Context) -> tuple[Path, AppConfig]:
-    root = appconfig.find_root(ctx.cwd)
-    return root, appconfig.load(root)
-
-
-def _platform_app(ctx: Context) -> tuple[Path, AppConfig]:
-    """The app, for a command that needs it on the platform: one made with `ctzd new --offline` is not."""
-    root, app = _app(ctx)
-    if not (root / ".git").exists() or not gitops.open_repo(root, token=None, identity=None).has_remote():
-        msg = f"{app.app.name} is not on the platform: it has no repository, as when it was made with `ctzd new --offline`."
-        hint = f"Run `ctzd new {app.app.name} --sbu {app.app.sbu} --dir PARENT` in another folder, copy this app's src/, tests/, app.toml, and README.md into it, and work there."
-        raise UsageError(msg, hint=hint)
-    return root, app
-
-
-def local_env(root: Path, app: AppConfig) -> dict[str, str]:
-    env = {"CTZD_APP": app.app.name, "CTZD_SBU": app.app.sbu, "CTZD_ENV": "local", "CTZD_STORE_URL": str(root / ".ctzd" / "out" / "store")}
-    if _env_file_has(root, "CTZD_SHARED_STORE_SAS"):
-        env["CTZD_SHARED_STORE_URL"] = config.load().platform.store_url
-    return env
-
-
-def _env_file_has(root: Path, key: str) -> bool:
-    path = root / ENV_FILE
-    if not path.is_file():
-        return False
-    return any(line.split("=", 1)[0].strip() == key and line.split("=", 1)[1].strip() not in {"", "''", '""'} for line in path.read_text(encoding="utf-8").splitlines() if "=" in line)
+def local_env(root: Path, app: AppConfig, *, fake: bool = False) -> dict[str, str]:
+    """What the app's code reads of where it runs, on the desktop: the kit serves sample rows for every source with
+    `fake`, and for each one `.env` has no credentials for without it."""
+    env = {
+        "CTZD_APP": app.app.name,
+        "CTZD_SBU": app.app.sbu,
+        "CTZD_ENV": "local",
+        "CTZD_OWNERS": ",".join(app.app.owners),
+        "CTZD_STORE_URL": str(root / ".ctzd" / "out" / "store"),
+        "CTZD_OUTBOX": str(root / ".ctzd" / "outbox"),
+        "CTZD_FIXTURES": str(root / "fixtures"),
+    }
+    return env | ({"CTZD_FAKE": "1"} if fake else {})
 
 
 def _uv_run(root: Path, *command: str) -> list[str]:
@@ -295,70 +200,23 @@ def dev(ctx: Context, *, port: int | None, stop: bool, fake: bool = False) -> Ou
     if stop:
         summary = "The local dashboard stopped." if stopped is not None else "No local dashboard was running."
         return Outcome(summary=summary, data={"stopped": stopped is not None})
-    if app.app.ui == "none":
-        msg = "This app has no dashboard."
-        raise UsageError(msg, hint="Run a job locally with `ctzd run JOB --local`.")
+    if app.app.kind != "dash":
+        msg = "This app has no dashboard; it runs only jobs."
+        raise UsageError(msg, hint="Run a job on this desktop with `ctzd run JOB --local`.")
     chosen = _dev_port(port, previous=None if stopped is None else stopped.port)
-    for step in (checks.web_install(root, "local"), checks.client(root, "local"), checks.web_build(root)):
-        if step.state == "failed":
-            return Outcome(summary=f"The page could not be built ({step.name}).", data={"step": step.name, "output": step.detail}, ok=False)
-    command = _uv_run(root, "uvicorn", "--factory", "ctzd.api:asgi", "--host", "localhost", "--port", str(chosen))
-    env = local_env(root, app) | ({FAKE_FIXTURES: str(root / FIXTURES)} if fake else {})
-    data = " on the fake rows in fixtures/" if fake else ""
-    match devserver.start(root, command, port=chosen, env=env):
+    command = _uv_run(root, "python", "-m", "app", "--dev", "--port", str(chosen))
+    where = " on the sample rows" if fake else ""
+    match devserver.start(root, command, port=chosen, env=local_env(root, app, fake=fake)):
         case devserver.Started(server, _process):
             return Outcome(
-                summary=f"The dashboard runs at {server.url}{data} in the background; ctzd dev restarts it, ctzd dev --stop stops it.",
+                summary=f"The dashboard runs at {server.url}{where} in the background; ctzd dev restarts it, ctzd dev --stop stops it.",
                 data={"url": server.url, "port": server.port, "log": devserver.LOG.as_posix()},
+                next_steps=["Run `ctzd render PAGE` to see what a page shows, as JSON."],
             )
         case devserver.Failed(reason, log):
             return Outcome(summary=f"The local dashboard {reason}.", data={"output": log, "log": devserver.LOG.as_posix()}, ok=False)
         case unreachable:
             assert_never(unreachable)
-
-
-def shot(ctx: Context, *, page: str) -> Outcome:
-    """A picture of a page that `ctzd dev` serves, and each problem on it, for the agent to look at."""
-    root, app = _app(ctx)
-    if app.app.ui != "react":
-        msg = "ctzd shot takes pictures of a React app's pages."
-        raise UsageError(msg)
-    server = devserver.recorded(root)
-    if server is None:
-        msg = "No local dashboard is running."
-        raise UsageError(msg, hint="Run `ctzd dev`, then `ctzd shot` again.")
-    path = page if page.startswith("/") else f"/{page}"
-    result = shooting.shoot(server.url + path, shooting.picture_path(root, path))
-    picture = result.picture.relative_to(root).as_posix() if result.picture.is_file() else None
-    look = f"Look at {picture} before you show the person the page." if picture is not None else "Fix the problems, run `ctzd dev`, then `ctzd shot` again."
-    if result.ok:
-        return Outcome(summary=f"The page {path} drew without problems.", data={"url": result.url, "picture": picture, "problems": []}, next_steps=[look])
-    return Outcome(
-        summary=f"The page {path} has {len(result.problems)} problem(s): " + "; ".join(result.problems),
-        data={"url": result.url, "picture": picture, "problems": result.problems},
-        next_steps=["Fix each problem, run `ctzd dev`, then `ctzd shot` again.", look],
-        ok=False,
-    )
-
-
-def docs_ui(ctx: Context, *, name: str | None, search: str | None = None) -> Outcome:
-    """The firm's components, from the catalogue the app's own @basis/ui ships: every family, one in full, or a search."""
-    root, _app_config = _app(ctx)
-    found = catalogue.load(root)
-    if search is not None:
-        matches = catalogue.search(found, search)
-        summary = f"{len(matches)} component(s) match {search!r}: " + ", ".join(match["name"] for match in matches) + "." if matches else f"No component matches {search!r}."
-        return Outcome(summary=summary, data={"components": matches}, next_steps=["Run `ctzd docs ui NAME --json` for a component's props, variants, and example before you use it."])
-    if name is None:
-        families = catalogue.overview(found)
-        count = sum(len(family["components"]) if isinstance(family["components"], list) else 0 for family in families.values())
-        return Outcome(
-            summary=f"{count} components of {found.package} in {len(families)} families.",
-            data={"families": families, "icons": list(found.icons)},
-            next_steps=["Run `ctzd docs ui NAME` for a component's props, variants, and example before you use it."],
-        )
-    component = catalogue.entry(found, name)
-    return Outcome(summary=f"{component['name']}: {component['purpose']}", data=component)
 
 
 def _dev_port(asked: int | None, *, previous: int | None) -> int:
@@ -377,191 +235,32 @@ def _dev_port(asked: int | None, *, previous: int | None) -> int:
 
 
 def exec_command(ctx: Context, *, argv: tuple[str, ...]) -> Outcome:
-    """Run a command in the app's environment with its source credentials, the way `ctzd dev` runs the page."""
+    """Run a command in the app's environment with its credentials, the way `ctzd dev` runs the dashboard."""
     root, app = _app(ctx)
     command = list(argv[1:] if argv[:1] == ("--",) else argv)
     if not command:
         msg = "ctzd exec needs a command after --."
-        raise UsageError(msg, hint='For example: ctzd exec --json -- python -c "from app.data.loaders import load_prices; print(load_prices().head())"')
+        raise UsageError(msg, hint='For example: ctzd exec --json -- python -c "from app.data import positions; print(positions())"')
     result = proc.run(_uv_run(root, *command), cwd=root, env=local_env(root, app), timeout=3600)
     return Outcome(summary=f"The command {'finished' if result.ok else 'failed'} (exit {result.code}).", data={"exit_code": result.code, "output": proc.tail(result.output, 200)}, ok=result.ok)
 
 
-def run_job(ctx: Context, *, job: str, local: bool, wait: bool, timeout: float) -> Outcome:
+def run_job(ctx: Context, *, job: str, local: bool) -> Outcome:
     root, app = _app(ctx)
     app.job(job)
-    if local:
-        result = proc.run(_uv_run(root, *render.job_command(job)), cwd=root, env=local_env(root, app), timeout=3600)
-        return Outcome(
-            summary=f"Job {job} {'finished' if result.ok else 'failed'} locally (exit {result.code}).", data={"exit_code": result.code, "output": proc.tail(result.output, 40)}, ok=result.ok
-        )
-    _platform_app(ctx)
-    platform = ctx.platform_factory()
-    created = platform.run_job(app.app.sbu, app.app.name, job)
-    if not wait:
-        return Outcome(summary=f"Started job {job} in Airflow.", data=created.model_dump(), next_steps=[f"Follow the run at {created.url}, or run `ctzd run {job} --wait`."])
-    deadline = ctx.clock() + timeout
-    state = platform.job_run(app.app.sbu, app.app.name, job, created.run_id)
-    while state.state in {"queued", "running"} and ctx.clock() < deadline:
-        ctx.sleep(_POLL_SECONDS)
-        state = platform.job_run(app.app.sbu, app.app.name, job, created.run_id)
-    if state.state == "failed":
-        return Outcome(summary=f"Job {job} failed in Airflow.", data=state.model_dump(), next_steps=[f"Read `ctzd logs --job {job}`, fix the cause, deploy, and run it again."], ok=False)
-    finished = state.state == "success"
-    return Outcome(
-        summary=f"Job {job} {'finished' if finished else 'is still ' + state.state} in Airflow.", data=state.model_dump(), next_steps=[] if finished else [f"Follow the run at {state.url}."]
-    )
-
-
-def _source_line(source: m.SourceInfo) -> str:
-    kind = f" ({source.kind})" if source.kind is not None else ""
-    description = f": {source.description}" if source.description is not None else ""
-    refreshed = f" Current: {source.refreshed}." if source.refreshed is not None else ""
-    return f"{source.name}{kind}{description}{refreshed}"
-
-
-def sources(ctx: Context, *, source: str | None = None, table: str | None = None) -> Outcome:
-    """The platform's sources with what each holds; with SOURCE, what its account can read; with TABLE, its columns and rows."""
-    if source is not None:
-        return explore_source(ctx, source=source, table=table)
-    found = ctx.platform_factory().sources().sources
-    return Outcome(
-        summary="\n".join(["Sources:", *(f"- {_source_line(item)}" for item in found)]) if found else "No sources are configured yet.",
-        data={"sources": [item.model_dump() for item in found]},
-        next_steps=[
-            "Pick the source whose description matches what the person asked for, and tell them in business words which one you will use.",
-            "Add it to [sources].use in app.toml, run `ctzd env`, then `ctzd sources SOURCE --json` to see its tables and `ctzd sources SOURCE TABLE --json` for a table's columns and rows.",
-        ],
-    )
-
-
-_TABLES_SHOWN = 40  # a screenful in the summary; `tables` in the JSON has them all
-
-
-def explore_source(ctx: Context, *, source: str, table: str | None) -> Outcome:
-    root, app = _app(ctx)
-    if source not in app.sources.use or not _env_file_has(root, f"CTZD_SOURCE_{source.upper()}"):
-        msg = f"This app cannot read {source} yet."
-        raise UsageError(msg, hint=f"Add {source!r} to [sources].use in app.toml, run `ctzd env --json`, then run this again.")
-    command = ["python", "-m", "ctzd.explore", source, *([] if table is None else [table])]
-    result = proc.run(_uv_run(root, *command), cwd=root, env=local_env(root, app), timeout=300)
-    last = result.output.strip().splitlines()[-1] if result.output.strip() else ""
-    try:
-        found: dict[str, object] = dict(json.loads(last)) if last.startswith("{") else {}
-    except ValueError:
-        found = {}
-    if not result.ok or "error" in found or not found:
-        problem = str(found.get("error") or proc.tail(result.output, 20))
-        return Outcome(summary=f"{source} could not be read: {problem}", data={"output": problem}, ok=False, next_steps=["See the ctzd-troubleshoot skill, or tell the person and the platform team."])
-    listed = found.get("tables")
-    if table is None and isinstance(listed, list):
-        tables = [item for item in listed if isinstance(item, dict)]
-        names = ", ".join(".".join(str(part) for part in (item.get("schema_name"), item.get("name")) if part) for item in tables[:_TABLES_SHOWN])
-        more = f" and {len(tables) - 40} more" if len(tables) > 40 else ""  # noqa: PLR2004 - a screenful
-        return Outcome(
-            summary=f"{source} has {len(tables)} table(s) and view(s): {names}{more}.", data=found, next_steps=[f"Run `ctzd sources {source} TABLE --json` for a table's columns and first rows."]
-        )
-    if "columns" in found:
-        columns = found["columns"] if isinstance(found["columns"], list) else []
-        return Outcome(
-            summary=f"{table} in {source}: {len(columns)} column(s), first rows below.",
-            data=found,
-            next_steps=["Select only the columns the page needs, ids as text; write them as made-up rows in fixtures/SOURCE/NAME.csv (never these real rows)."],
-        )
-    return Outcome(summary=str(found.get("message", f"{source} has no tables.")), data=found)
-
-
-def add_job(ctx: Context, *, name: str, schedule: str, size: appconfig.Size, timezone: str = "UTC") -> Outcome:
-    root, _app_config = _app(ctx)
-    try:
-        job = Job(name=name, schedule=schedule, size=size, timezone=timezone)
-    except ValidationError as err:
-        problems = "; ".join(str(error["msg"]).removeprefix("Value error, ") for error in err.errors(include_url=False))
-        raise UsageError(problems) from None
-    recorded = sync.recorded_release(root)
-    chosen = ctx.releases.newest_local() if recorded is None else ctx.releases.get(recorded)
-    appconfig.add_job(root, job)
-    files = scaffold.add_job_files(root, require_usable(chosen), job)
-    return Outcome(
-        summary=f"Added job {name} on schedule {schedule!r} ({timezone}).",
-        data={"job": name, "files": files},
-        next_steps=[f"Write the job in src/app/jobs/{name}.py, then run `ctzd run {name} --local`."],
-    )
-
-
-def _react_app(ctx: Context) -> Path:
-    root, app = _app(ctx)
-    if app.app.ui != "react":
-        msg = "This app has no pages; it runs only scheduled jobs."
-        raise UsageError(msg, hint="Datasets and pages belong to an app made with `ctzd new NAME --ui react`.")
-    return root
-
-
-def add_dataset(ctx: Context, *, name: str, source: str | None) -> Outcome:
-    """A dataset with its row type, loader, SQL file when it reads a source, and test; then the regenerated client."""
-    root = _react_app(ctx)
-    files = generate.add_dataset(root, name, source)
-    refreshed = generate.refresh_client(root)
-    if refreshed.state == "failed":
-        return Outcome(summary=f"Added dataset {name}, but the page's client could not be regenerated.", data={"files": files, "output": refreshed.detail}, ok=False)
-    route = name.replace("_", "-")
-    steps = [
-        f"Write its query in src/app/data/sql/{name}.sql" if source is not None else f"Replace the example rows in load_{name} in src/app/data/loaders.py with a real loader (ctzd-data)",
-        f"and its columns in the row type in src/app/api/datasets.py; then `ctzd add page PAGE --dataset {name}`, or read it in a page through `{generate.camel(name)}()`.",
-    ]
-    return Outcome(
-        summary=f"Added dataset {name}, served at /api/datasets/{route}; the page's client has `{generate.camel(name)}()`.",
-        data={"dataset": name, "route": f"/api/datasets/{route}", "function": generate.camel(name), "files": files},
-        next_steps=[" ".join(steps)],
-    )
-
-
-def add_page(ctx: Context, *, name: str, dataset: str) -> Outcome:
-    """A page showing a dataset as a chart and a grid, routed and linked from the header."""
-    root = _react_app(ctx)
-    refreshed = generate.refresh_client(root)
-    if refreshed.state == "failed":
-        return Outcome(summary="The page's client could not be regenerated, so no page was added.", data={"output": refreshed.detail}, ok=False)
-    files, routed = generate.add_page(root, name, dataset)
-    route_step = [] if routed else [f"web/src/routes.ts no longer has the starter's shape: add a route for /{name} to {generate.pascal(name)}Page there yourself."]
-    return Outcome(
-        summary=f"Added the page /{name}, showing {dataset} as a chart and a grid.",
-        data={"page": f"/{name}", "files": files, "routed": routed},
-        next_steps=[*route_step, f"Run `ctzd dev`, then `ctzd shot /{name}`, and look at the picture."],
-    )
-
-
-def api_list(ctx: Context) -> Outcome:
-    """Each dataset's route, client function, parameters, and columns, from the regenerated document."""
-    root = _react_app(ctx)
-    refreshed = generate.refresh_client(root)
-    if refreshed.state == "failed":
-        return Outcome(summary="The datasets could not be read.", data={"output": refreshed.detail}, ok=False)
-    found = generate.datasets(root)
-    return Outcome(
-        summary=f"{len(found)} dataset(s): " + ", ".join(dataset.name for dataset in found) + "." if found else "No datasets yet; `ctzd add dataset NAME` adds one.",
-        data={
-            "datasets": [
-                {
-                    "name": dataset.name,
-                    "route": dataset.path,
-                    "function": dataset.function,
-                    "parameters": dataset.parameters,
-                    "columns": [{"name": column.name, "type": column.kind, "format": column.format} for column in dataset.columns],
-                }
-                for dataset in found
-            ]
-        },
-    )
+    if not local:
+        msg = f"Running a job in an environment's Airflow {NOT_BUILT}."
+        raise UsageError(msg, hint=f"Run it on this desktop with `ctzd run {job} --local`.")
+    result = proc.run(_uv_run(root, *render.job_command(job)), cwd=root, env=local_env(root, app), timeout=3600)
+    return Outcome(summary=f"Job {job} {'finished' if result.ok else 'failed'} locally (exit {result.code}).", data={"exit_code": result.code, "output": proc.tail(result.output, 40)}, ok=result.ok)
 
 
 def check(ctx: Context, *, fast: bool) -> Outcome:
     root, app = _app(ctx)
-    steps = ctx.run_checks(_target(ctx, root, app), mode="local", fast=fast)
-    return _check_outcome(steps)
+    return check_outcome(ctx.run_checks(_target(root, app), mode="local", fast=fast))
 
 
-def _check_outcome(steps: list[checks.Step]) -> Outcome:
+def check_outcome(steps: list[checks.Step]) -> Outcome:
     failed = [step for step in steps if step.state == "failed"]
     warnings = [f"{step.name}: {step.warning}" for step in steps if step.warning is not None]
     return Outcome(
@@ -572,290 +271,18 @@ def _check_outcome(steps: list[checks.Step]) -> Outcome:
     )
 
 
-def _dotenv_value(value: str) -> str:
-    if "'" not in value:
-        return f"'{value}'"
-    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
-
-
-def env(ctx: Context) -> Outcome:
-    root, app = _platform_app(ctx)
-    variables = ctx.platform_factory().env(app.app.sbu, app.app.name, app.sources.use).variables
-    lines = ["# Written by `ctzd env`. Read-only credentials: never open, print, or commit this file."]
-    lines += [f"{key}={_dotenv_value(value)}" for key, value in sorted(variables.items())]
-    path = root / ENV_FILE
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    return Outcome(summary=f"Wrote {len(variables)} credential(s) to .env.", data={"variables": sorted(variables)})
-
-
-# ---------------------------------------------------------------- shipping
-
-
-def wait_for_build(ctx: Context, platform: api_client.Platform, app: AppConfig, commit: str, *, timeout: float) -> m.Build:
-    deadline = ctx.clock() + timeout
-    build = platform.build_for_commit(app.app.sbu, app.app.name, commit)
-    while build.state in {"queued", "running", "not_found"} and ctx.clock() < deadline:
-        ctx.sleep(_POLL_SECONDS)
-        build = platform.build_for_commit(app.app.sbu, app.app.name, commit)
-    return build
-
-
-def _missing_dags_step(missing: tuple[str, ...]) -> str:
-    names = ", ".join(missing)
-    return (
-        f"Airflow has not loaded the job(s) {names} yet. Run `ctzd status` in a few minutes: if they are still missing, Airflow refused them, "
-        "so check each schedule in app.toml with the person and see the ctzd-troubleshoot skill. Until then the job does not run and sends no failure email."
-    )
-
-
-def _build_outcome(ctx: Context, platform: api_client.Platform, app: AppConfig, commit: str, build: m.Build) -> Outcome:
-    data: dict[str, object] = {"commit": commit, "build": build.model_dump()}
-    if build.state == "failed":
-        return Outcome(
-            summary=f"The deploy failed at {build.stage or 'an unknown step'}. Production still runs the previous release.",
-            data=data,
-            next_steps=["Read build.log_tail, fix the cause, then run `ctzd deploy` again.", "See the ctzd-troubleshoot skill."],
-            ok=False,
-        )
-    if build.state != "succeeded":
-        return Outcome(summary=f"The build is still {build.state}.", data=data, next_steps=["Run `ctzd status --wait` to keep waiting."])
-    if build.release is None:
-        # Jenkins passes the checks but skips the deploy while the app is paused after a rollback.
-        return Outcome(
-            summary="The build passed its checks but nothing was deployed; production still runs the previous release.",
-            data=data,
-            next_steps=["Run `ctzd status`: if auto-deploy is still paused after a rollback, run `ctzd deploy` again, which clears the pause before it pushes."],
-            ok=False,
-        )
-    status = platform.status(app.app.sbu, app.app.name)
-    deadline = ctx.clock() + _DAG_WAIT_SECONDS
-    while status.missing_dags and ctx.clock() < deadline:
-        ctx.sleep(_POLL_SECONDS)
-        status = platform.status(app.app.sbu, app.app.name)
-    data |= {"release": build.release, "url": status.url if app.app.ui != "none" else None, "dags": status.dags, "missing_dags": list(status.missing_dags)}
-    where = status.url if app.app.ui != "none" else ", ".join(link for job, link in status.dags.items() if job not in status.missing_dags) or "Airflow"
-    if status.missing_dags:
-        return Outcome(
-            summary=f"Release v{build.release} is live: {where}; Airflow has not loaded the job(s) {', '.join(status.missing_dags)} yet.",
-            data=data,
-            next_steps=[_missing_dags_step(status.missing_dags)],
-        )
-    return Outcome(summary=f"Release v{build.release} is live: {where}", data=data)
-
-
-_NAMES_IN_MESSAGE = 5
-
-
-def commit_message(changed: list[str], message: str | None) -> str:
-    if message is not None:
-        return message
-    if not changed:
-        return "Resume auto-deploy after a rollback"
-    more = " and more" if len(changed) > _NAMES_IN_MESSAGE else ""
-    return "Update " + ", ".join(changed[:_NAMES_IN_MESSAGE]) + more
-
-
-def _outside_managed(text: str | None) -> object:
-    """pyproject.toml without the tables the platform manages: what the person may change."""
-    if text is None:
-        return None
-    try:
-        document: dict[str, object] = dict(tomllib.loads(text))
-    except tomllib.TOMLDecodeError:
-        return None
-    for dotted in sync.MANAGED_PYPROJECT_KEYS:
-        *parents, last = dotted.split(".")
-        node: object = document
-        for part in parents:
-            node = node.get(part) if isinstance(node, dict) else None
-        if isinstance(node, dict):
-            node.pop(last, None)
-    return document
-
-
-def platform_changes(ctx: Context, root: Path, git: gitops.Git) -> list[str]:
-    """Uncommitted changes that are the platform's: build files of the recorded release or of HEAD's.
-
-    pyproject.toml and uv.lock count as the platform's only while the person
-    has changed nothing in pyproject.toml outside the managed tables.
-    """
-    changed = git.changed_paths()
-    owned = {sync.VERSION_FILE}
-    committed = git.show(sync.VERSION_FILE)
-    numbers = {sync.recorded_release(root), int(committed) if committed is not None and committed.strip().isdigit() else None}
-    for number in sorted(number for number in numbers if number is not None):
-        with contextlib.suppress(CliError):
-            owned |= assets.locked_files(ctx.releases.get(number), appconfig.load(root).app.ui).keys()
-    paths = [path for path in changed if path in owned]
-    pyproject = (root / "pyproject.toml").read_text(encoding="utf-8") if (root / "pyproject.toml").is_file() else None
-    if _outside_managed(git.show("pyproject.toml")) == _outside_managed(pyproject):
-        paths += [path for path in changed if path in {"pyproject.toml", "uv.lock"}]
-    # The same for the pages: the firm's npm pins in web/package.json and pnpm's overrides, with the lockfile.
-    recorded = sync.recorded_release(root)
-    if recorded is not None and any(path in changed for path in sync.WEB_FILES):
-        with contextlib.suppress(CliError):
-            release_files = ctx.releases.get(recorded)
-            platform = config.load()
-            web = [sync.PACKAGE_JSON, sync.PNPM_WORKSPACE]
-            if all(
-                sync.outside_managed_web(path, git.show(path), platform, release_files)
-                == sync.outside_managed_web(path, (root / path).read_text(encoding="utf-8") if (root / path).is_file() else None, platform, release_files)
-                for path in web
-            ):
-                paths += [path for path in changed if path in sync.WEB_FILES]
-    return sorted(paths)
-
-
-def platform_commit_message(root: Path, paths: list[str]) -> str:
-    recorded = sync.recorded_release(root)
-    verb = "Upgrade" if sync.VERSION_FILE in paths else "Restore"
-    return f"{verb} platform files to platform release {recorded}"
-
-
-def _fixed_by_checks(before: set[str], after: list[str]) -> list[str]:
-    """Files the checks' automatic fixes changed that were clean before them: the app's code and pages, not the client
-    the checks regenerate from the person's datasets."""
-    generated = ("web/openapi.json", "web/src/api/generated/")
-    return [path for path in after if path not in before and (path.endswith(".py") or path.startswith("web/src/")) and not path.startswith(generated)]
-
-
-def deploy(ctx: Context, *, message: str | None, detach: bool, timeout: float) -> Outcome:
-    root, app = _platform_app(ctx)
-    git = gitops.open_repo(root, token=ctx.token(), identity=auth.identity() or ("ctzd", "ctzd@localhost"))
-    before = set(git.changed_paths())
-    steps = ctx.run_checks(_target(ctx, root, app), mode="local", fast=False)
-    gate = _check_outcome(steps)
-    if not gate.ok:
-        gate.summary = "Not deployed. " + gate.summary
-        return gate
-    sample = next((step for step in steps if step.name == "sample pages" and step.warning is not None), None)
-    if sample is not None:
-        return Outcome(summary="Not deployed. " + sample.detail, data=gate.data, next_steps=["Build the page the person asked for in place of the sample, then run `ctzd deploy` again."], ok=False)
-    platform = ctx.platform_factory()
-    # The platform's own changes go in a commit of their own, before the person's change; with an upgrade, so do the
-    # automatic fixes the new release's checks made to code the person had not touched.
-    platform_paths = platform_changes(ctx, root, git)
-    if sync.VERSION_FILE in platform_paths:
-        platform_paths = sorted({*platform_paths, *_fixed_by_checks(before, git.changed_paths())})
-    upgraded = git.commit_paths(platform_paths, platform_commit_message(root, platform_paths))
-    changed = git.changed_paths()
-    paused = platform.status(app.app.sbu, app.app.name).paused
-    # Clear a rollback pause before pushing, so the build this push starts deploys.
-    platform.resume(app.app.sbu, app.app.name)
-    # With nothing new, a deploy still needs a new build when the last one failed (a passing hiccup) or after a rollback.
-    head = git.head()
-    retry = not changed and not upgraded and not paused and head is not None and platform.build_for_commit(app.app.sbu, app.app.name, head).state == "failed"
-    summary = (message or "Deploy again after a failed build") if retry else commit_message(changed, message)
-    committed = git.commit_all(summary, allow_empty=(paused or retry) and not upgraded) or upgraded
-    git.rebase_onto_remote()
-    git.push_main()
-    commit = git.head() or ""
-    if detach:
-        return Outcome(summary="Pushed; Jenkins is building it.", data={"commit": commit, "committed": committed}, next_steps=["Run `ctzd status --wait`.", *gate.next_steps])
-    build = wait_for_build(ctx, platform, app, commit, timeout=timeout)
-    outcome = _build_outcome(ctx, platform, app, commit, build)
-    # What a passing check warned about (a release the app stays off, a deprecation) still reaches the agent.
-    outcome.next_steps += gate.next_steps
-    return outcome
-
-
-def status(ctx: Context, *, wait: bool, timeout: float) -> Outcome:
-    root, app = _platform_app(ctx)
-    platform = ctx.platform_factory()
-    if wait:
-        commit = gitops.open_repo(root, token=None, identity=None).head()
-        if commit is None:
-            msg = "This app has no commits yet."
-            raise UsageError(msg)
-        return _build_outcome(ctx, platform, app, commit, wait_for_build(ctx, platform, app, commit, timeout=timeout))
-    current = platform.status(app.app.sbu, app.app.name)
-    paused = " Auto-deploy is paused after a rollback; the next `ctzd deploy` resumes it." if current.paused else ""
-    missing = f" Airflow has not loaded the job(s) {', '.join(current.missing_dags)}." if current.missing_dags else ""
-    release_text = f"v{current.release}" if current.release is not None else "nothing yet"
-    return Outcome(summary=f"{app.app.name} runs {release_text}.{paused}{missing}", data=current.model_dump(), next_steps=[_missing_dags_step(current.missing_dags)] if current.missing_dags else [])
-
-
-def logs(ctx: Context, *, job: str | None, tail: int) -> Outcome:
-    _root, app = _platform_app(ctx)
-    if job is not None:
-        app.job(job)
-    text = ctx.platform_factory().logs(app.app.sbu, app.app.name, job=job, tail=tail).text
-    return Outcome(summary=text or "No log lines yet.", data={"text": text})
-
-
-def list_releases(ctx: Context) -> Outcome:
-    root, _app_config = _platform_app(ctx)
-    git = gitops.open_repo(root, token=ctx.token(), identity=None)
-    git.fetch_tags()
-    found = release.parse_tags(git.tags(release.TAG_PREFIX))
-    lines = [f"v{item.release}  {item.created_at:%Y-%m-%d %H:%M} UTC  {item.commit[:8]}" for item in found]
-    return Outcome(summary="\n".join(lines) or "No releases yet.", data={"releases": [item.model_dump(mode="json", exclude={"app_toml"}) for item in found]})
-
-
-def parse_release(text: str | None) -> int | None:
-    if text is None:
-        return None
-    digits = text.removeprefix("v")
-    if not digits.isdigit():
-        msg = f"{text!r} is not a release; use the form v12."
-        raise UsageError(msg)
-    return int(digits)
-
-
-def rollback(ctx: Context, *, target: str | None, timeout: float) -> Outcome:
-    _root, app = _platform_app(ctx)
-    platform = ctx.platform_factory()
-    accepted = platform.rollback(app.app.sbu, app.app.name, parse_release(target))
-    deadline = ctx.clock() + timeout
-    current = platform.status(app.app.sbu, app.app.name)
-    while current.release != accepted.release and ctx.clock() < deadline:
-        ctx.sleep(_POLL_SECONDS)
-        current = platform.status(app.app.sbu, app.app.name)
-    done = current.release == accepted.release
-    return Outcome(
-        summary=(f"Rolled back to v{accepted.release}." if done else f"Rolling back to v{accepted.release}; not finished yet.") + " Auto-deploy is paused until the next `ctzd deploy`.",
-        data={"release": accepted.release, "done": done, "url": current.url},
-        next_steps=["Fix the problem (or `git revert` the bad change), then run `ctzd deploy`."],
-        ok=True,
-    )
-
-
 def sync_files(ctx: Context) -> Outcome:
+    """Everything `prepare` already did before this command ran: the platform files and guidance are this CLI's."""
+    root, _app_config = _app(ctx)
+    return Outcome(summary=f"Platform files are ctzd {assets.version()}'s.", data={"version": str(sync.recorded_version(root))})
+
+
+# ---------------------------------------------------------------- steps the reusable workflow runs
+
+
+def ci_check(ctx: Context) -> Outcome:
     root, app = _app(ctx)
-    step = checks.platform_files(_target(ctx, root, app), "local")
-    if step.state == "failed":
-        raise CliError(step.detail)
-    refresh_guidance(ctx, root, app, force=True)
-    recorded = sync.recorded_release(root)
-    return Outcome(summary=f"Platform files are at platform release {recorded}." + (f" {step.detail}" if step.detail else ""), data={"release": recorded, "changed": list(step.paths)})
-
-
-def delete(ctx: Context, *, confirmed: bool) -> Outcome:
-    _root, app = _app(ctx)
-    if not confirmed:
-        msg = "Deleting an app removes its dashboard and jobs; its tables go after 30 days."
-        raise UsageError(msg, hint="Confirm with the person, then run `ctzd delete --yes`.")
-    _platform_app(ctx)
-    ctx.platform_factory().delete(app.app.sbu, app.app.name)
-    return Outcome(summary=f"Deleted {app.app.name}. Its tables are removed in 30 days.")
-
-
-# ---------------------------------------------------------------- steps Jenkins runs
-
-
-def ci_check(ctx: Context, *, candidate: int | None = None) -> Outcome:
-    """Jenkins' checks against the app's recorded release; with `candidate`, the platform's check of a release before it
-    is promoted: the app moved to that release, with every automatic fix, as an upgrade on a desktop would do."""
-    root, app = _app(ctx)
-    if candidate is None:
-        return _check_outcome(ctx.run_checks(_target(ctx, root, app), mode="ci", fast=False))
-    release = require_usable(ctx.releases.get(candidate))
-    steps = checks.run_all(_target(ctx, root, app), mode="local", fast=False, candidate=release)
-    outcome = _check_outcome(steps)
-    git = gitops.open_repo(root, token=None, identity=None)
-    outcome.data["changed"] = git.changed_paths() if (root / ".git").exists() else []
-    outcome.summary = f"On platform release {candidate}: {outcome.summary}"
-    return outcome
+    return check_outcome(ctx.run_checks(_target(root, app), mode="ci", fast=False))
 
 
 def ci_render(ctx: Context, *, image: str, release_number: int | None, out: Path) -> Outcome:
@@ -879,15 +306,3 @@ def ci_release(ctx: Context, *, image: str, commit: str, now: Callable[[], objec
     git.tag(name, release.message(record), commit)
     git.push_tag(name)
     return Outcome(summary=f"Tagged {commit[:8]} as {name}.", data={"release": number, "tag": name})
-
-
-def ci_smoke(ctx: Context, *, url: str) -> Outcome:
-    _root, app = _app(ctx)
-    from ctzd_cli import smoke  # noqa: PLC0415 - playwright comes with the optional ci extra, so import it only here.
-
-    result = smoke.smoke(url, ui=app.app.ui, paths=smoke.page_paths(_root))
-    return Outcome(
-        summary="The dashboard rendered without errors." if result.ok else "The dashboard shows errors: " + "; ".join(result.problems),
-        data={"pages": result.pages, "problems": result.problems},
-        ok=result.ok,
-    )

@@ -1,18 +1,20 @@
-"""Platform settings: where the platform's services are. The bundled `platform.toml`, or the file named by CTZD_PLATFORM_CONFIG."""
+"""Platform settings: where the platform's services are, and its departments. The bundled `platform.toml`, or the file
+named by CTZD_PLATFORM_CONFIG."""
 
 import functools
 import os
 import tomllib
 from importlib import resources
 from pathlib import Path
+from typing import Literal
 
 from packaging.requirements import InvalidRequirement, Requirement
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator
 
-from ctzd_cli.api_models import PackageIndex
 from ctzd_cli.errors import CliError
 
 _CONFIG = ConfigDict(extra="forbid", frozen=True, validate_default=True, revalidate_instances="always", allow_inf_nan=False)
+Environment = Literal["dev", "prod"]
 
 
 class _Model(BaseModel):
@@ -26,32 +28,33 @@ class GitHubConfig(_Model):
     oauth_client_id: str
 
 
-class PlatformUrls(_Model):
-    api_url: str
+class EnvironmentConfig(_Model):
+    """One cluster and what lives beside it."""
+
     apps_domain: str
     airflow_url: str
+    key_vault: str
+    store_url: str
+
+
+class PlatformUrls(_Model):
     registry: str
     base_image: str
-    store_url: str
     mingit_url: str
-    # Node's Windows zip, which `ctzd setup` unpacks into ctzd's own folder; without it, setup installs the Node wheel.
-    node_url: str | None = None
 
 
-class NpmConfig(_Model):
-    """The internal npm registry, which `ctzd setup` makes the user's default and installs pnpm from. Which versions an
-    app's pages use is the platform release's (`ReleaseNpm`)."""
+class PackageIndex(_Model):
+    name: str
+    url: str
+    default: bool = False
+    format: str | None = None
 
-    registry: str | None = None
 
-
-class ReleaseOverrides(_Model):
-    """For the platform's own tests only (scripts/e2e.sh, validation/): values that replace what every platform release
-    writes into an app, such as a folder of locally built wheels for the internal index. The bundled platform.toml has
-    none: everything written into an app comes from its platform release, so a desktop and Jenkins always agree."""
+class BuildOverrides(_Model):
+    """For the platform's own tests only (scripts/e2e.sh, validation/): a package index that replaces the internal one in
+    every app this CLI writes, such as a folder of locally built wheels. The bundled platform.toml has none."""
 
     python_index: tuple[PackageIndex, ...] | None = None
-    npm_packages: dict[str, str] | None = None
 
 
 class SizeConfig(_Model):
@@ -62,11 +65,13 @@ class SizeConfig(_Model):
 
 
 class SbuConfig(_Model):
+    """A department: its kit, which its apps depend on, and the GitHub team whose members may create apps on it."""
+
     name: str
-    library: str
+    kit: str
     github_team: str
 
-    @field_validator("library")
+    @field_validator("kit")
     @classmethod
     def _requirement(cls, value: str) -> str:
         try:
@@ -76,28 +81,38 @@ class SbuConfig(_Model):
             raise ValueError(msg) from None
         return value
 
+    @property
+    def kit_package(self) -> str:
+        """The kit's distribution name, such as `ctzd-fi`."""
+        return Requirement(self.kit).name
+
+    @property
+    def kit_module(self) -> str:
+        """The kit's import name, such as `ctzd_fi`."""
+        return self.kit_package.replace("-", "_")
+
 
 class PlatformConfig(_Model):
     version: int
     github: GitHubConfig
     platform: PlatformUrls
-    npm: NpmConfig = Field(default_factory=NpmConfig)
-    release_overrides: ReleaseOverrides | None = None
+    environments: dict[Environment, EnvironmentConfig]
+    build_overrides: BuildOverrides | None = None
     sizes: dict[str, SizeConfig]
     sbus: dict[str, SbuConfig]
 
     def sbu(self, key: str) -> SbuConfig:
-        config = self.sbus.get(key)
-        if config is None:
-            msg = f"Unknown business unit {key!r}."
-            raise CliError(msg, hint=f"Known business units: {', '.join(sorted(self.sbus))}.")
-        return config
+        found = self.sbus.get(key)
+        if found is None:
+            msg = f"Unknown department {key!r}."
+            raise CliError(msg, hint=f"Known departments: {', '.join(sorted(self.sbus))}.")
+        return found
 
-    def app_url(self, sbu: str, name: str) -> str:
-        return f"https://{sbu}-{name}.{self.platform.apps_domain}"
+    def app_url(self, sbu: str, name: str, env: Environment = "prod") -> str:
+        return f"https://{self.repo_name(sbu, name)}.{self.environments[env].apps_domain}"
 
-    def dag_url(self, sbu: str, name: str, job: str) -> str:
-        return f"{self.platform.airflow_url.rstrip('/')}/dags/{dag_id(sbu, name, job)}"
+    def dag_url(self, sbu: str, name: str, job: str, env: Environment = "prod") -> str:
+        return f"{self.environments[env].airflow_url.rstrip('/')}/dags/{dag_id(sbu, name, job)}"
 
     def repo_name(self, sbu: str, name: str) -> str:
         return f"{sbu}-{name}"

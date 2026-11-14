@@ -6,20 +6,19 @@ import sys
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal, get_args
+from typing import get_args
 
 import httpx
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from ctzd_cli import assets, commands, releases
-from ctzd_cli.appconfig import Ui
+from ctzd_cli import assets, commands
+from ctzd_cli.appconfig import Kind
 from ctzd_cli.commands import Context, Outcome
 from ctzd_cli.errors import CliError, UsageError
 
 EXIT_OK = 0
 EXIT_FAILED = 1
 EXIT_USAGE = 2
-_DEPLOY_TIMEOUT = 540.0  # under the 10-minute ceiling most agents put on one command
 
 
 class Args(BaseModel):
@@ -31,7 +30,7 @@ class Args(BaseModel):
     action: str | None = None
     name: str | None = None
     sbu: str | None = None
-    ui: Ui = "react"
+    kind: Kind = "dash"
     dir: Path | None = None
     owner: str | None = None
     offline: bool = False
@@ -42,29 +41,13 @@ class Args(BaseModel):
     stop: bool = False
     job: str | None = None
     local: bool = False
-    schedule: str | None = None
-    size: Literal["s", "m", "l"] = "m"
     fast: bool = False
-    message: str | None = None
-    detach: bool = False
-    timeout: float = _DEPLOY_TIMEOUT
-    tail: int = 200
-    target: str | None = None
-    yes: bool = False
     image: str | None = None
     release: int | None = None
     out: Path | None = None
     commit: str | None = None
-    url: str | None = None
-    page: str = "/"
     fake: bool = False
-    source: str | None = None
-    dataset: str | None = None
     argv: tuple[str, ...] = ()
-    timezone: str = "UTC"
-    candidate: int | None = None
-    table: str | None = None
-    search: str | None = None
 
 
 def _setup_parsers(sub: argparse._SubParsersAction[argparse.ArgumentParser], common: argparse.ArgumentParser) -> None:
@@ -77,84 +60,30 @@ def _setup_parsers(sub: argparse._SubParsersAction[argparse.ArgumentParser], com
 
 
 def _app_parsers(sub: argparse._SubParsersAction[argparse.ArgumentParser], common: argparse.ArgumentParser) -> None:
-    new = sub.add_parser("new", parents=[common], help="create a new app and its GitHub repo")
+    new = sub.add_parser("new", parents=[common], help="create a new app")
     new.add_argument("name")
-    new.add_argument("--sbu", required=True, help="business unit, such as fi")
-    new.add_argument("--ui", choices=get_args(Ui), default="react")
+    new.add_argument("--sbu", required=True, help="the department, such as fi")
+    new.add_argument("--kind", choices=get_args(Kind), default="dash", help="dash: one dashboard and any jobs; job: only jobs")
     new.add_argument("--dir", type=Path, help="parent folder; default: the current folder")
     new.add_argument("--owner", help="owner email; default: the GitHub login's email")
     new.add_argument("--offline", action="store_true", help="for platform tests only: write the files with no repository, so the app can never be deployed")
-    open_ = sub.add_parser("open", parents=[common], help="clone an existing app")
-    open_.add_argument("name")
-    open_.add_argument("--sbu", required=True)
-    open_.add_argument("--dir", type=Path)
     dev = sub.add_parser("dev", parents=[common], help="run the dashboard locally in the background, or restart it; --stop stops it")
     dev.add_argument("--port", type=int, help="default: 8501, or the next free port")
     dev.add_argument("--stop", action="store_true", help="stop the local dashboard")
-    dev.add_argument("--fake", action="store_true", help="serve the fake rows in fixtures/ instead of the real sources")
-    docs_ui = (
-        sub.add_parser("docs", parents=[common], help="the firm's documentation for this app")
-        .add_subparsers(dest="action", required=True)
-        .add_parser("ui", parents=[common], help="the firm's components: every family, or one component's props, variants, and example")
-    )
-    docs_ui.add_argument("name", nargs="?", help="a component, such as Button")
-    docs_ui.add_argument("--search", help="words saying what the component is for, such as 'date picker'")
-    shot = sub.add_parser("shot", parents=[common], help="a picture of a page ctzd dev serves, and the problems on it")
-    shot.add_argument("page", nargs="?", default="/", help="the page's path, such as /bonds; default: /")
+    dev.add_argument("--fake", action="store_true", help="serve every source's sample rows instead of the real sources")
     exec_ = sub.add_parser("exec", parents=[common], help="run a command in the app with its credentials, as ctzd dev does: ctzd exec --json -- python -c '...'")
     exec_.add_argument("argv", nargs=argparse.REMAINDER, help="the command, after --")
-    run = sub.add_parser("run", parents=[common], help="run a job in Airflow, or locally with --local")
+    run = sub.add_parser("run", parents=[common], help="run a job; --local runs it on this desktop")
     run.add_argument("job")
     run.add_argument("--local", action="store_true")
-    run.add_argument("--wait", action="store_true", help="wait until the Airflow run finishes")
-    run.add_argument("--timeout", type=float, default=_DEPLOY_TIMEOUT)
-    sources = sub.add_parser("sources", parents=[common], help="the data sources the platform has, and what each holds; with SOURCE, its tables; with TABLE, its columns and rows")
-    sources.add_argument("source", nargs="?", help="a source the app lists in [sources].use, such as fi_pricing")
-    sources.add_argument("table", nargs="?", help="a table or view as `ctzd sources SOURCE` lists it")
-    add = sub.add_parser("add", parents=[common], help="add a part to the app")
-    add_sub = add.add_subparsers(dest="action", required=True)
-    add_dataset = add_sub.add_parser("dataset", parents=[common], help="add a dataset the pages read, with its loader and test")
-    add_dataset.add_argument("name", help="such as sector_prices")
-    add_dataset.add_argument("--source", help="the source it reads, as `ctzd sources` names it; without it, the loader returns example rows")
-    add_page = add_sub.add_parser("page", parents=[common], help="add a page that shows a dataset as a chart and a grid")
-    add_page.add_argument("name", help="the page's path, such as sector-prices")
-    add_page.add_argument("--dataset", required=True, help="the dataset it shows")
-    api = sub.add_parser("api", parents=[common], help="the app's datasets").add_subparsers(dest="action", required=True)
-    api.add_parser("list", parents=[common], help="each dataset's route, client function, parameters, and columns")
-    add_job = add_sub.add_parser("job", parents=[common], help="add a scheduled job")
-    add_job.add_argument("name")
-    add_job.add_argument("--schedule", required=True, help="five-field cron, such as '0 7 * * 1-5'")
-    add_job.add_argument("--timezone", default="UTC", help="IANA time zone the schedule runs in, such as Europe/London (default UTC)")
-    add_job.add_argument("--size", choices=["s", "m", "l"], default="m")
     check = sub.add_parser("check", parents=[common], help="run every gate")
     check.add_argument("--fast", action="store_true", help="skip the tests")
-    sub.add_parser("env", parents=[common], help="write read-only source credentials into .env")
-    sub.add_parser("sync", parents=[common], help="rewrite platform-owned files to this ctzd version")
-
-
-def _ship_parsers(sub: argparse._SubParsersAction[argparse.ArgumentParser], common: argparse.ArgumentParser) -> None:
-    deploy = sub.add_parser("deploy", parents=[common], help="check, commit, push, and wait for the live URL; also resumes auto-deploy after a rollback")
-    deploy.add_argument("--message", help="commit message; default: the changed files")
-    deploy.add_argument("--detach", action="store_true", help="return right after pushing")
-    deploy.add_argument("--timeout", type=float, default=_DEPLOY_TIMEOUT, help="seconds to wait for Jenkins")
-    status = sub.add_parser("status", parents=[common], help="current release, URL, jobs, and last build")
-    status.add_argument("--wait", action="store_true", help="wait for the build of the latest commit")
-    status.add_argument("--timeout", type=float, default=_DEPLOY_TIMEOUT)
-    logs = sub.add_parser("logs", parents=[common], help="recent dashboard or job log lines")
-    logs.add_argument("--job")
-    logs.add_argument("--tail", type=int, default=200)
-    sub.add_parser("releases", parents=[common], help="list releases")
-    rollback = sub.add_parser("rollback", parents=[common], help="restore a release and pause auto-deploy")
-    rollback.add_argument("target", nargs="?", help="release such as v12; default: the one before the current")
-    rollback.add_argument("--timeout", type=float, default=300.0)
-    delete = sub.add_parser("delete", parents=[common], help="delete the app")
-    delete.add_argument("--yes", action="store_true")
+    sub.add_parser("sync", parents=[common], help="rewrite the build files and guidance from this ctzd")
 
 
 def _ci_parsers(sub: argparse._SubParsersAction[argparse.ArgumentParser], common: argparse.ArgumentParser) -> None:
-    ci_sub = sub.add_parser("ci", parents=[common], help="steps the Jenkins pipeline runs").add_subparsers(dest="action", required=True)
-    ci_check = ci_sub.add_parser("check", parents=[common])
-    ci_check.add_argument("--candidate", type=int, help="for the platform's own CI: move the app to this platform release first, with every automatic fix")
+    ci_sub = sub.add_parser("ci", parents=[common], help="the steps the reusable workflow runs").add_subparsers(dest="action", required=True)
+    ci_sub.add_parser("check", parents=[common])
     ci_render = ci_sub.add_parser("render", parents=[common])
     ci_render.add_argument("--image", required=True)
     ci_render.add_argument("--release", type=int)
@@ -162,8 +91,6 @@ def _ci_parsers(sub: argparse._SubParsersAction[argparse.ArgumentParser], common
     ci_release = ci_sub.add_parser("release", parents=[common])
     ci_release.add_argument("--image", required=True)
     ci_release.add_argument("--commit", required=True)
-    ci_smoke = ci_sub.add_parser("smoke", parents=[common])
-    ci_smoke.add_argument("--url", required=True)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -175,7 +102,7 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="ctzd", description="Create, check, and deploy ctzd apps.", parents=[top])
     parser.add_argument("--version", action="version", version=f"ctzd {assets.version()}")
     sub = parser.add_subparsers(dest="command", required=True)
-    for add in (_setup_parsers, _app_parsers, _ship_parsers, _ci_parsers):
+    for add in (_setup_parsers, _app_parsers, _ci_parsers):
         add(sub, common)
     return parser
 
@@ -192,31 +119,15 @@ Handler = Callable[[Args, Context], Outcome]
 HANDLERS: dict[str, Handler] = {
     "setup": lambda _a, ctx: commands.setup(ctx),
     "login": lambda a, ctx: commands.login_start(ctx, open_browser=not a.no_browser) if a.start else commands.login_wait(ctx),
-    "new": lambda a, ctx: commands.new(ctx, name=_required(a.name, "NAME"), sbu=_required(a.sbu, "--sbu"), ui=a.ui, directory=a.dir, owner=a.owner, offline=a.offline),
-    "open": lambda a, ctx: commands.open_app(ctx, name=_required(a.name, "NAME"), sbu=_required(a.sbu, "--sbu"), directory=a.dir),
+    "new": lambda a, ctx: commands.new(ctx, name=_required(a.name, "NAME"), sbu=_required(a.sbu, "--sbu"), kind=a.kind, directory=a.dir, owner=a.owner, offline=a.offline),
     "dev": lambda a, ctx: commands.dev(ctx, port=a.port, stop=a.stop, fake=a.fake),
-    "shot": lambda a, ctx: commands.shot(ctx, page=a.page),
-    "docs ui": lambda a, ctx: commands.docs_ui(ctx, name=a.name, search=a.search),
-    "add dataset": lambda a, ctx: commands.add_dataset(ctx, name=_required(a.name, "NAME"), source=a.source),
-    "add page": lambda a, ctx: commands.add_page(ctx, name=_required(a.name, "NAME"), dataset=_required(a.dataset, "--dataset")),
-    "api list": lambda _a, ctx: commands.api_list(ctx),
-    "run": lambda a, ctx: commands.run_job(ctx, job=_required(a.job, "JOB"), local=a.local, wait=a.wait, timeout=a.timeout),
+    "run": lambda a, ctx: commands.run_job(ctx, job=_required(a.job, "JOB"), local=a.local),
     "exec": lambda a, ctx: commands.exec_command(ctx, argv=a.argv),
-    "sources": lambda a, ctx: commands.sources(ctx, source=a.source, table=a.table),
-    "add job": lambda a, ctx: commands.add_job(ctx, name=_required(a.name, "NAME"), schedule=_required(a.schedule, "--schedule"), size=a.size, timezone=a.timezone),
     "check": lambda a, ctx: commands.check(ctx, fast=a.fast),
-    "env": lambda _a, ctx: commands.env(ctx),
-    "deploy": lambda a, ctx: commands.deploy(ctx, message=a.message, detach=a.detach, timeout=a.timeout),
-    "status": lambda a, ctx: commands.status(ctx, wait=a.wait, timeout=a.timeout),
-    "logs": lambda a, ctx: commands.logs(ctx, job=a.job, tail=a.tail),
-    "releases": lambda _a, ctx: commands.list_releases(ctx),
-    "rollback": lambda a, ctx: commands.rollback(ctx, target=a.target, timeout=a.timeout),
     "sync": lambda _a, ctx: commands.sync_files(ctx),
-    "delete": lambda a, ctx: commands.delete(ctx, confirmed=a.yes),
-    "ci check": lambda a, ctx: commands.ci_check(ctx, candidate=a.candidate),
+    "ci check": lambda _a, ctx: commands.ci_check(ctx),
     "ci render": lambda a, ctx: commands.ci_render(ctx, image=_required(a.image, "--image"), release_number=a.release, out=_required(a.out, "--out")),
     "ci release": lambda a, ctx: commands.ci_release(ctx, image=_required(a.image, "--image"), commit=_required(a.commit, "--commit"), now=lambda: datetime.now(UTC)),
-    "ci smoke": lambda a, ctx: commands.ci_smoke(ctx, url=_required(a.url, "--url")),
 }
 
 
@@ -252,7 +163,7 @@ def main(argv: Sequence[str] | None = None, *, ctx: Context | None = None) -> in
     except ValidationError as err:
         sys.stderr.write(f"ctzd: {err}\n")
         return EXIT_USAGE
-    context = ctx or Context(cwd=Path.cwd(), platform_factory=commands.default_platform, releases=releases.ReleaseSource(commands.release_platform))
+    context = ctx or Context(cwd=Path.cwd())
     command = " ".join(part for part in (args.command, args.action) if part is not None)
     try:
         hints = commands.prepare(context, command)

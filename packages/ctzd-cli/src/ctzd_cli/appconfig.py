@@ -20,7 +20,7 @@ SOURCE = re.compile(r"[a-z][a-z0-9_]{0,62}")
 _CRON_FIELD = re.compile(r"[\d*/,\-A-Za-z]+")
 _CRON_FIELDS = 5
 Size = Literal["s", "m", "l"]
-Ui = Literal["react", "none"]
+Kind = Literal["dash", "job"]
 
 _CONFIG = ConfigDict(extra="forbid", frozen=True, validate_default=True, revalidate_instances="always", allow_inf_nan=False)
 
@@ -29,7 +29,7 @@ class AppSection(BaseModel):
     model_config = _CONFIG
     name: str
     sbu: str
-    ui: Ui
+    kind: Kind
     size: Size = "s"
     owners: tuple[str, ...] = Field(min_length=1)
 
@@ -165,15 +165,15 @@ def render(config: AppConfig) -> str:
     app = tomlkit.table()
     app.add("name", config.app.name)
     app.add("sbu", config.app.sbu)
-    app.add("ui", config.app.ui)
-    app["ui"].comment("react | none")
+    app.add("kind", config.app.kind)
+    app["kind"].comment("dash | job")
     app.add("size", config.app.size)
     app["size"].comment("s | m | l")
     app.add("owners", list(config.app.owners))
     document.add("app", app)
     sources = tomlkit.table()
     sources.add("use", list(config.sources.use))
-    sources["use"].comment("sources `ctzd env` fetches credentials for")
+    sources["use"].comment("the kit's sources this app reads: `ctzd sources` lists them")
     document.add("sources", sources)
     if config.jobs:
         jobs = tomlkit.aot()
