@@ -2,7 +2,7 @@
 
 Status: run on 2026-11-06 against CLI 0.2.0, `ctzd-core` 0.1.1, and chart 0.2.0.
 This page plans how to validate the platform as far as possible before the
-Phase 0 spikes in [plan.md](plan.md) section 13: the CLI, the platform API, the
+Phase 0 checks in [PLAN.md](../PLAN.md) section 16: the CLI, the platform API, the
 Jenkins pipeline, and the skills and agent use around them. Sections 1 to 5 are
 the plan, with notes where the run differed from it; section 6 records the
 decisions the plan needed, and section 7 the results. `validation/README.md`
