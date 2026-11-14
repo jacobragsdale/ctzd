@@ -1,0 +1,4 @@
+# A database, read with ctzd-kit's Oracle driver. Its secret arrives whole as CTZD_SOURCE_FI_PRICING.
+description = "Bond prices the pricing team publishes each morning: clean price, yield to worst and spread for every bond FI holds or watches"
+refreshed = "each business day by 07:00 London"
+kind = "oracle"

@@ -11,7 +11,7 @@ from typing import get_args
 import httpx
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from ctzd_cli import assets, commands
+from ctzd_cli import assets, commands, kitwork
 from ctzd_cli.appconfig import Kind
 from ctzd_cli.commands import Context, Outcome
 from ctzd_cli.errors import CliError, UsageError
@@ -48,6 +48,13 @@ class Args(BaseModel):
     commit: str | None = None
     fake: bool = False
     argv: tuple[str, ...] = ()
+    source: str | None = None
+    table: str | None = None
+    title: str | None = None
+    kit_kind: str | None = None
+    path: Path | None = None
+    no_apps: bool = False
+    part: str | None = None
 
 
 def _setup_parsers(sub: argparse._SubParsersAction[argparse.ArgumentParser], common: argparse.ArgumentParser) -> None:
@@ -76,9 +83,28 @@ def _app_parsers(sub: argparse._SubParsersAction[argparse.ArgumentParser], commo
     run = sub.add_parser("run", parents=[common], help="run a job; --local runs it on this desktop")
     run.add_argument("job")
     run.add_argument("--local", action="store_true")
+    sources = sub.add_parser("sources", parents=[common], help="the kit's sources and loaders; with SOURCE, its tables; with TABLE, its columns and first rows")
+    sources.add_argument("source", nargs="?", help="a source, as `ctzd sources` lists it")
+    sources.add_argument("table", nargs="?", help="a table or view, as `ctzd sources SOURCE` lists it")
     check = sub.add_parser("check", parents=[common], help="run every gate")
     check.add_argument("--fast", action="store_true", help="skip the tests")
     sub.add_parser("sync", parents=[common], help="rewrite the build files and guidance from this ctzd")
+
+
+def _kit_parsers(sub: argparse._SubParsersAction[argparse.ArgumentParser], common: argparse.ArgumentParser) -> None:
+    kit_sub = sub.add_parser("kit", parents=[common], help="for kit maintainers: start a kit, add a source, prove the contract").add_subparsers(dest="action", required=True)
+    new = kit_sub.add_parser("new", parents=[common], help="start kits/SBU")
+    new.add_argument("name", metavar="SBU")
+    new.add_argument("--title", required=True, help="the department's name, such as 'Fixed Income'")
+    new.add_argument("--dir", type=Path, help="the folder of kits; default: the current folder")
+    add = kit_sub.add_parser("add", parents=[common], help="add a part to the kit").add_subparsers(dest="part", required=True)
+    source = add.add_parser("source", parents=[common], help="add a source with a working loader, sample rows and a test")
+    source.add_argument("name")
+    source.add_argument("--kind", dest="kit_kind", required=True, choices=kitwork.SOURCE_KINDS)
+    source.add_argument("--dir", type=Path, help="the kit's folder; default: the kit the current folder is in")
+    check = kit_sub.add_parser("check", parents=[common], help="prove the kit meets the contract")
+    check.add_argument("path", nargs="?", type=Path, help="the kit's folder; default: the kit the current folder is in")
+    check.add_argument("--no-apps", action="store_true", help="skip making and checking an app of each template on the kit")
 
 
 def _ci_parsers(sub: argparse._SubParsersAction[argparse.ArgumentParser], common: argparse.ArgumentParser) -> None:
@@ -102,7 +128,7 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="ctzd", description="Create, check, and deploy ctzd apps.", parents=[top])
     parser.add_argument("--version", action="version", version=f"ctzd {assets.version()}")
     sub = parser.add_subparsers(dest="command", required=True)
-    for add in (_setup_parsers, _app_parsers, _ci_parsers):
+    for add in (_setup_parsers, _app_parsers, _kit_parsers, _ci_parsers):
         add(sub, common)
     return parser
 
@@ -124,6 +150,10 @@ HANDLERS: dict[str, Handler] = {
     "run": lambda a, ctx: commands.run_job(ctx, job=_required(a.job, "JOB"), local=a.local),
     "exec": lambda a, ctx: commands.exec_command(ctx, argv=a.argv),
     "check": lambda a, ctx: commands.check(ctx, fast=a.fast),
+    "sources": lambda a, ctx: commands.sources(ctx, source=a.source, table=a.table),
+    "kit new": lambda a, ctx: commands.kit_new(ctx, sbu=_required(a.name, "SBU"), title=_required(a.title, "--title"), directory=a.dir),
+    "kit add source": lambda a, ctx: commands.kit_add_source(ctx, name=_required(a.name, "NAME"), kind=_required(a.kit_kind, "--kind"), directory=a.dir),
+    "kit check": lambda a, ctx: commands.kit_check(ctx, directory=a.path, make_apps=not a.no_apps),
     "sync": lambda _a, ctx: commands.sync_files(ctx),
     "ci check": lambda _a, ctx: commands.ci_check(ctx),
     "ci render": lambda a, ctx: commands.ci_render(ctx, image=_required(a.image, "--image"), release_number=a.release, out=_required(a.out, "--out")),
@@ -164,7 +194,7 @@ def main(argv: Sequence[str] | None = None, *, ctx: Context | None = None) -> in
         sys.stderr.write(f"ctzd: {err}\n")
         return EXIT_USAGE
     context = ctx or Context(cwd=Path.cwd())
-    command = " ".join(part for part in (args.command, args.action) if part is not None)
+    command = " ".join(part for part in (args.command, args.action, args.part) if part is not None)
     try:
         hints = commands.prepare(context, command)
         outcome = dispatch(command, args, context)

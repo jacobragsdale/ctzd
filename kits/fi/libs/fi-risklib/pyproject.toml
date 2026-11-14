@@ -1,0 +1,13 @@
+[project]
+name = "fi-risklib"
+version = "1.4.0"
+description = "A made-up stand-in for a department's own risk library, which makes its own connection"
+requires-python = ">=3.14"
+dependencies = ["httpx>=0.28", "pandas>=3.1"]
+
+[build-system]
+requires = ["uv_build>=0.13.6,<0.14"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "fi_risklib"

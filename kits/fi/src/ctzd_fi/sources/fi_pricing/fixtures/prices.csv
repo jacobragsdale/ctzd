@@ -1,0 +1,7 @@
+isin,issuer,sector,clean_price,ytw,oas,as_of
+US91282CJL69,US Treasury,Government,99.84375,0.04212,0.0,2026-11-13
+US91282CKQ32,US Treasury,Government,101.25,0.04105,0.0,2026-11-13
+US037833DX52,Northwind Traders,Industrial,96.512,0.05031,0.00912,2026-11-13
+US459200KS99,Fabrikam Holdings,Technology,102.004,0.04688,0.00577,2026-11-13
+US06051GLA25,Woodgrove Bank,Financial,98.75,0.05322,0.01214,2026-11-13
+US20030NDK44,Contoso Power,Utility,100.125,0.04877,0.00731,2026-11-13

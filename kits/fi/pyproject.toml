@@ -1,10 +1,16 @@
 [project]
 name = "ctzd-fi"
 version = "0.1.0"
-description = "FI (fixed income) library for ctzd apps: the SBU's package stack and shared loaders"
+description = "Fixed Income's kit for ctzd apps: its sources, loaders and helpers"
 readme = "README.md"
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "ctzd-kit>=0.1,<1",
+    "fi-risklib>=1.4,<2",  # the desk's own risk library, which fi_risk wraps
+]
+
+[project.entry-points."ctzd.kits"]
+fi = "ctzd_fi"
 
 [build-system]
 requires = ["uv_build>=0.13.6,<0.14"]

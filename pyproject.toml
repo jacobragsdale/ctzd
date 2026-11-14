@@ -7,7 +7,8 @@ requires-python = ">=3.14"
 [dependency-groups]
 dev = [
     "ctzd",
-    "ctzd-fi",
+    "ctzd-common[dash]",
+    "ctzd-kit",
     "httpx2>=2.16",  # starlette.testclient prefers it
     "pandas-stubs>=3.1",
     "pyarrow-stubs>=20",
@@ -17,23 +18,29 @@ dev = [
     "pytest-randomly>=5.0",
     "ruff==0.17.3",
     "ty==0.0.95",
+    "ctzd-fi",
+    "ctzd-mas",
 ]
 
 [tool.uv]
 package = false
 
 [tool.uv.workspace]
-members = ["packages/*", "kits/*"]
+members = ["packages/*", "kits/*", "kits/*/libs/*"]  # a kit's libs/ holds made-up department packages
 
 [tool.uv.sources]
 ctzd = { workspace = true }
-ctzd-fi = { workspace = true }
+ctzd-common = { workspace = true }
+ctzd-kit = { workspace = true }
+fi-risklib = { workspace = true }
+ctzd-fi = {workspace = true}
+ctzd-mas = {workspace = true}
 
 
 [tool.ruff]
 line-length = 200
 extend-exclude = ["packages/ctzd-cli/src/ctzd_cli/assets"]  # app code; checked by generating an app
-src = ["packages/*/src", "kits/*/src", "airflow/dags"]
+src = ["packages/*/src", "kits/*/src", "kits/*/libs/*/src", "airflow/dags"]
 required-version = ">=0.17.3"
 force-exclude = true
 show-fixes = true
@@ -58,6 +65,9 @@ ignore = [
 "**/tests/**" = ["S101", "PLR2004"]
 "**/test_*.py" = ["S101", "PLR2004"]
 "**/conftest.py" = ["S101", "PLR2004"]
+
+[tool.ruff.lint.flake8-builtins]
+allowed-modules = ["email"]  # ctzd_common.email is the name PLAN.md gives apps; it is always imported as part of ctzd_common
 
 [tool.ruff.lint.isort]
 split-on-trailing-comma = false  # Do not preserve comma-forced import line breaks.
@@ -85,8 +95,9 @@ strict-equality-semantics = true  # Do not narrow from ==, in, or match value pa
 error-on-warning = true
 
 [tool.pytest.ini_options]
-addopts = "-ra --strict-markers --strict-config --import-mode=importlib -m 'not integration'"
+addopts = "-ra --strict-markers --strict-config --import-mode=importlib -m 'not integration' -p no:dash"
 testpaths = ["packages", "kits"]
+# Dash's pytest plugin drives a browser, and its hooks fail pytest 9's warnings.
 norecursedirs = [".*", "build", "dist", "node_modules", "assets", "airflow"]  # assets/ holds app templates, tested by generating an app
 xfail_strict = true  # An xfail that starts passing is a failure, not a silent pass.
 filterwarnings = [

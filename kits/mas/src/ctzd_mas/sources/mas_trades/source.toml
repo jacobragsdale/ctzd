@@ -1,0 +1,5 @@
+# A database, read with ctzd-kit's SQL Server driver. Its secret arrives whole as CTZD_SOURCE_MAS_TRADES.
+description = "Every trade the multi-asset portfolios book: portfolio, instrument, side, quantity, price and when it was booked"
+refreshed = "continuously, within a minute of booking"
+kind = "mssql"
+max_concurrent = 2              # the trade store is small: two reads at once per app

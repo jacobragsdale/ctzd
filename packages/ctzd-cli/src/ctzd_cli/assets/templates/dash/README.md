@@ -1,3 +1,8 @@
 # {{title}}
 
-A ctzd app for {{sbu_name}}. Ask your AI agent to change it, run it, or ship it.
+A {{sbu_name}} dashboard on ctzd. Owners: {{owners}}.
+
+- Dev: {{dev_url}}
+- Prod: {{prod_url}}
+
+The agent working on it reads `AGENTS.md`, which ctzd writes.

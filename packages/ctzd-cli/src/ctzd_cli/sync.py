@@ -46,6 +46,7 @@ def tokens(platform: PlatformConfig, app: AppConfig) -> dict[str, str]:
         "kit": sbu.kit_module,
         "kit_package": sbu.kit_package,
         "owners": ", ".join(app.app.owners),
+        "owner": app.app.owners[0],
         "dev_url": platform.app_url(app.app.sbu, app.app.name, "dev"),
         "prod_url": platform.app_url(app.app.sbu, app.app.name, "prod"),
     }
@@ -66,11 +67,11 @@ def recorded_version(root: Path) -> Version | None:
         return None
 
 
-def expected_files(platform: PlatformConfig, app: AppConfig, extra: Mapping[str, str] | None = None) -> dict[str, str]:
-    """Every build file of the app as this CLI writes it, `.ctzd/version` among them; `extra` adds the token values that
-    come from the app's installed kit."""
-    filled = tokens(platform, app) | dict(extra or {})
-    return assets.locked_files(app.app.kind, filled) | {VERSION_FILE: f"{assets.version()}\n"}
+def expected_files(platform: PlatformConfig, app: AppConfig, kit: Mapping[str, str] | None = None) -> dict[str, str]:
+    """Every build file of the app as this CLI writes it, `.ctzd/version` among them. `kit`, the token values that come
+    from the app's installed kit, adds the files that need them."""
+    filled = tokens(platform, app) | dict(kit or {})
+    return assets.locked_files(app.app.kind, filled, kit=kit is not None) | {VERSION_FILE: f"{assets.version()}\n"}
 
 
 def python_index(platform: PlatformConfig) -> tuple[PackageIndex, ...]:
@@ -114,9 +115,9 @@ def _lookup(document: Mapping[str, object], dotted: str) -> object:
     return node
 
 
-def drift(root: Path, platform: PlatformConfig, app: AppConfig, extra: Mapping[str, str] | None = None) -> list[Drift]:
+def drift(root: Path, platform: PlatformConfig, app: AppConfig, kit: Mapping[str, str] | None = None) -> list[Drift]:
     problems: list[Drift] = []
-    for path, text in sorted(expected_files(platform, app, extra).items()):
+    for path, text in sorted(expected_files(platform, app, kit).items()):
         target = root / path
         if not target.is_file():
             problems.append(Drift(path, "missing"))
@@ -153,10 +154,10 @@ def write_pyproject(root: Path, platform: PlatformConfig) -> bool:
     return after != before
 
 
-def write_build(root: Path, platform: PlatformConfig, app: AppConfig, extra: Mapping[str, str] | None = None) -> list[str]:
+def write_build(root: Path, platform: PlatformConfig, app: AppConfig, kit: Mapping[str, str] | None = None) -> list[str]:
     """Bring every build file to this CLI's and record its version; return the paths that changed."""
     changed: list[str] = []
-    for path, text in expected_files(platform, app, extra).items():
+    for path, text in expected_files(platform, app, kit).items():
         target = root / path
         if target.is_file() and _normalized(target.read_text(encoding="utf-8")) == text:
             continue

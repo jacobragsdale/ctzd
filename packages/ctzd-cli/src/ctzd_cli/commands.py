@@ -8,14 +8,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Protocol, assert_never
 
-from ctzd_cli import appconfig, assets, auth, checks, config, devserver, gitops, proc, release, render, scaffold, setup_checks, sync
+from ctzd_cli import appconfig, assets, auth, checks, config, devserver, gitops, kitfacts, kitwork, proc, release, render, scaffold, setup_checks, sync
 from ctzd_cli.appconfig import AppConfig, AppSection, Job, Kind, SourcesSection
 from ctzd_cli.errors import CliError, UsageError
 
 ENV_FILE = ".env"
 _TEMPLATE_JOB = Job(name="daily_positions", schedule="0 7 * * 1-5", timezone="Europe/London")
 # Commands that work inside an app; each brings the app's platform files to this CLI before it runs.
-APP_COMMANDS = frozenset({"dev", "run", "exec", "check", "sync"})
+APP_COMMANDS = frozenset({"dev", "run", "exec", "check", "sync", "sources"})
 NOT_BUILT = "is not built yet: it arrives with the GitHub side of the platform (PLAN.md section 15, step 7)"
 
 
@@ -60,10 +60,14 @@ def prepare(ctx: Context, command: str) -> list[str]:
         root, app = _app(ctx)
     except CliError:
         return []  # The command itself reports a missing or broken app.toml.
-    step = checks.platform_files(_target(root, app), "local")
+    target = _target(root, app)
+    step = checks.platform_files(target, "local")
     if step.state == "failed":
         raise CliError(step.detail)
-    sync.write_guidance(root)
+    found = kitfacts.facts(root) if (root / ".venv").is_dir() else None
+    if found is not None and found.sbu == app.app.sbu:
+        sync.write_build(root, target.platform, app, kitfacts.tokens(found))
+    sync.write_guidance(root, {} if found is None else kitfacts.skill_files(found))
     return []
 
 
@@ -131,6 +135,7 @@ def new(ctx: Context, *, name: str, sbu: str, kind: Kind, directory: Path | None
         root.mkdir(parents=True, exist_ok=True)
         scaffold.scaffold(root, platform=platform, app=app)
         _install(root)
+        _write_kit_files(root, platform, app)
     except BaseException:
         _empty(root, remove=made)
         raise
@@ -142,6 +147,16 @@ def new(ctx: Context, *, name: str, sbu: str, kind: Kind, directory: Path | None
         data={"path": str(root), "repo": None, "url": platform.app_url(sbu, name), "guide": _guide(root)},
         next_steps=[f"Read `guide`, the app's {root / 'AGENTS.md'}, and the skills it names before you write code. Then work inside {root}."],
     )
+
+
+def _write_kit_files(root: Path, platform: config.PlatformConfig, app: AppConfig) -> None:
+    """The files that come from the app's installed kit: `.importlinter`, and the department's skill."""
+    found = kitfacts.facts(root, mode="fresh")
+    if found is None or found.sbu != app.app.sbu:
+        msg = f"The new app's kit is not {platform.sbu(app.app.sbu).kit_package}."
+        raise CliError(msg, hint="Check the department's kit in platform.toml, then run the same `ctzd new` command again.")
+    sync.write_build(root, platform, app, kitfacts.tokens(found))
+    sync.write_guidance(root, kitfacts.skill_files(found))
 
 
 def _install(root: Path) -> None:
@@ -306,3 +321,87 @@ def ci_release(ctx: Context, *, image: str, commit: str, now: Callable[[], objec
     git.tag(name, release.message(record), commit)
     git.push_tag(name)
     return Outcome(summary=f"Tagged {commit[:8]} as {name}.", data={"release": number, "tag": name})
+
+
+# ---------------------------------------------------------------- looking at data
+
+
+_TABLES_SHOWN = 40  # a screenful in the summary; `tables` in the JSON has them all
+
+
+def sources(ctx: Context, *, source: str | None, table: str | None) -> Outcome:
+    """The kit's sources and loaders; with SOURCE, a database source's tables; with TABLE, a table's columns and rows."""
+    root, app = _app(ctx)
+    if source is None:
+        found = kitfacts.facts(root)
+        if found is None:
+            msg = "The app's packages are not installed yet."
+            raise CliError(msg, hint="Run `ctzd check`, which installs them, then `ctzd sources` again.")
+        lines = [f"{found.title}'s sources (kit {found.kit}):"]
+        for item in found.sources:
+            used = " [in app.toml]" if item.name in app.sources.use else ""
+            sample = f" Serves sample rows here: {item.serves_sample}." if item.serves_sample is not None else ""
+            lines.append(f"- {item.name} ({item.kind}){used}: {item.description}{sample}")
+            lines += [f"    {loader.example}" for loader in item.loaders]
+        return Outcome(
+            summary="\n".join(lines),
+            data={"kit": found.kit, "sources": [item.model_dump() for item in found.sources]},
+            next_steps=[
+                "Pick the source whose description matches what the person asked for, and tell them in business words which one you will use.",
+                "Add it to [sources].use in app.toml, call its loaders from src/app/data/, and see the `sbu-" + found.sbu + "` skill. For a database source, `ctzd sources SOURCE` lists its tables.",
+            ],
+        )
+    args = ("tables", source) if table is None else ("table", source, table)
+    found_tables = kitfacts.run_explore(root, *args, env=local_env(root, app))
+    listed = found_tables.get("tables")
+    if isinstance(listed, list):
+        names = [".".join(str(part) for part in (item.get("schema_name"), item.get("name")) if part) for item in listed if isinstance(item, dict)]
+        more = f" and {len(names) - _TABLES_SHOWN} more" if len(names) > _TABLES_SHOWN else ""
+        return Outcome(
+            summary=f"{source} has {len(names)} table(s) and view(s): {', '.join(names[:_TABLES_SHOWN])}{more}.",
+            data=found_tables,
+            next_steps=[f"Run `ctzd sources {source} TABLE` for a table's columns and first rows."],
+        )
+    if "columns" in found_tables:
+        return Outcome(
+            summary=f"{table} in {source}: its columns and first rows are below.",
+            data=found_tables,
+            next_steps=[f"Select only the columns the page needs, ids as text, in src/app/data/sql/; write made-up rows for it in fixtures/{source}/FILE.csv (never these real rows)."],
+        )
+    return Outcome(summary=str(found_tables.get("message", f"{source} has no tables.")), data=found_tables)
+
+
+# ---------------------------------------------------------------- kits
+
+
+def kit_new(ctx: Context, *, sbu: str, title: str, directory: Path | None) -> Outcome:
+    kit, written = kitwork.new(directory or ctx.cwd, sbu=sbu, title=title)
+    return Outcome(
+        summary=f"Started the {title} kit in {kit.root}, with only the sample source.",
+        data={"path": str(kit.root), "module": kit.module, "files": written},
+        next_steps=[
+            f"List the department in packages/ctzd-cli/src/ctzd_cli/platform.toml's [sbus.{sbu}], run `uv sync`, then add its first source with `ctzd kit add source NAME --kind KIND` in {kit.root}.",
+            "Read the ctzd-kits skill: it says how to wrap a department package and write sample rows.",
+        ],
+    )
+
+
+def kit_add_source(ctx: Context, *, name: str, kind: str, directory: Path | None) -> Outcome:
+    kit = kitwork.find_kit(directory or ctx.cwd)
+    written = kitwork.add_source(kit, name=name, kind=kind)
+    return Outcome(
+        summary=f"Added the {kind} source {name} to {kit.module}, with a working loader, sample rows and a test.",
+        data={"files": written},
+        next_steps=[
+            f"Say what {name} holds and when it is current in its source.toml, rename and describe its loader, and write a few made-up rows for each loader in its fixtures/.",
+            f"Then run `ctzd kit check {kit.root}`.",
+        ],
+    )
+
+
+def kit_check(ctx: Context, *, directory: Path | None, make_apps: bool) -> Outcome:
+    checked = kitwork.check(directory or ctx.cwd, make_apps=make_apps)
+    outcome = check_outcome(checked.steps)
+    outcome.summary = outcome.summary.replace("All checks passed.", "The kit meets the contract.")
+    outcome.next_steps += [f"Warning: {warning}" for warning in checked.warnings]
+    return outcome

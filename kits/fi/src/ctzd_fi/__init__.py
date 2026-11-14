@@ -1,8 +1,9 @@
-"""The Fixed Income (FI) library every FI app depends on.
+"""Fixed Income's kit: what its apps import. `ctzd kit add source` writes this file from the source folders."""
 
-It pins the FI package stack (the dependencies in this package's pyproject.toml)
-and holds loaders that several FI apps share. Both are owned by the FI champion;
-the first sources and the stack are still to be named (see docs/plan.md).
-"""
+from ctzd_fi.sources.fi_curves import loaders as fi_curves
+from ctzd_fi.sources.fi_pricing import loaders as fi_pricing
+from ctzd_fi.sources.fi_risk import loaders as fi_risk
+from ctzd_kit import app_query as query
+from ctzd_kit import sample, store
 
-SBU = "fi"
+__all__ = ["fi_curves", "fi_pricing", "fi_risk", "query", "sample", "store"]

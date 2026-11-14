@@ -1,0 +1,4 @@
+# An API, read with ctzd-kit's REST client. Its secret arrives whole as CTZD_SOURCE_FI_CURVES.
+description = "The Treasury curve the rates desk marks each evening, tenor by tenor"
+refreshed = "each business day by 18:00 New York"
+kind = "rest"

@@ -1,0 +1,5 @@
+# The department this kit belongs to.
+sbu = "{{sbu}}"
+title = "{{title}}"
+team = "sbu-{{sbu}}"            # the GitHub team whose members may create apps on this kit
+owners = ["@contoso/sbu-{{sbu}}-engineers"]   # the kit's code owners

@@ -1,6 +1,6 @@
 # ctzd-fi
 
-The Fixed Income library: the FI package stack (this package's dependencies) and
-loaders shared by several FI apps. Owned by the FI champion through CODEOWNERS.
-Every FI app depends on it, so a change here reaches those apps the next time they
-update their lock file.
+Fixed Income's kit: how its apps read the department's data. One folder per source in `src/ctzd_fi/sources/`, pure
+functions in `src/ctzd_fi/helpers/`, and the department's conventions in `src/ctzd_fi/NOTES.md`, which every app's
+`sbu-fi` skill carries. Add a source with `ctzd kit add source NAME --kind KIND`, and prove the kit with
+`ctzd kit check kits/fi`.

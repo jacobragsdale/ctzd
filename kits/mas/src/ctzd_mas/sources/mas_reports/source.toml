@@ -1,0 +1,6 @@
+# Files the portfolio team drops on its share each evening. The share is reachable only from the cluster's network,
+# so on a desktop this source always serves its sample rows: a fallback to fix, which `ctzd kit check` warns about.
+description = "The portfolio team's nightly allocation reports: each portfolio's weight in each asset class, against its target"
+refreshed = "each business day by 21:00 London"
+kind = "file"
+desktop = false

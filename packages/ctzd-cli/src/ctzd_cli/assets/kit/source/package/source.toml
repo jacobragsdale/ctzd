@@ -1,0 +1,7 @@
+description = "Describe what {{source}} holds, in business words"
+refreshed = "Say when its data is current, such as each business day by 07:00 London"
+kind = "package"
+io = []                         # the department's packages its loaders call, which make their own connections
+
+# The variables the package already reads, from the fields of the source's secret.
+[secret.env]

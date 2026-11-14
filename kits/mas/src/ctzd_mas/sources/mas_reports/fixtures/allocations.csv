@@ -1,0 +1,10 @@
+portfolio_id,asset_class,weight,target_weight
+P-BAL,Equity,0.523,0.5
+P-BAL,Fixed Income,0.401,0.4
+P-BAL,Cash,0.076,0.1
+P-GRW,Equity,0.781,0.8
+P-GRW,Fixed Income,0.169,0.15
+P-GRW,Cash,0.05,0.05
+P-INC,Equity,0.248,0.25
+P-INC,Fixed Income,0.682,0.65
+P-INC,Cash,0.07,0.1

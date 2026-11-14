@@ -1,0 +1,5 @@
+# The department this kit belongs to.
+sbu = "mas"
+title = "Multi-Asset Solutions"
+team = "sbu-mas"            # the GitHub team whose members may create apps on this kit
+owners = ["@contoso/sbu-mas-engineers"]   # the kit's code owners

@@ -1,0 +1,105 @@
+# Platform-owned: ctzd sync writes this file from the CLI and the app's kit. These rules keep the app's layers apart.
+[importlinter]
+root_packages =
+    app
+    {{kit}}
+    ctzd_common
+include_external_packages = True
+
+[importlinter:contract:layers]
+name = app.py above pages and jobs, which sit above data and logic; data and logic never import each other
+type = layers
+containers =
+    app
+layers =
+    app
+    pages | jobs
+    data | logic
+unmatched_ignore_imports_alerting = none
+ignore_imports =
+    app.__main__ -> app.app
+
+[importlinter:contract:only-data-reads]
+name = only data imports the kit's sources, query and store; the rest of the app may use its helpers
+type = forbidden
+source_modules =
+    app.app
+    app.pages
+    app.jobs
+    app.logic
+    app.theme
+    app.ui
+forbidden_modules =
+    {{kit}}
+unmatched_ignore_imports_alerting = none
+ignore_imports =
+    app.** -> {{kit}}.helpers
+    app.** -> {{kit}}.helpers.**
+allow_indirect_imports = True
+
+[importlinter:contract:pure-logic]
+name = logic does no I/O: no reads, no messages, no web
+type = forbidden
+source_modules =
+    app.logic
+forbidden_modules =
+    {{kit}}.sources
+    ctzd_kit
+    ctzd_common
+    dash
+    dash_ag_grid
+    dash_mantine_components
+    plotly
+    httpx
+    oracledb
+    mssql_python{{io_modules}}
+unmatched_ignore_imports_alerting = none
+ignore_imports =
+    app.** -> {{kit}}.helpers
+    app.** -> {{kit}}.helpers.**
+
+[importlinter:contract:through-the-kit]
+name = nothing in the app imports ctzd_kit, a driver, or a package a source lists as doing I/O: the kit does
+type = forbidden
+source_modules =
+    app
+forbidden_modules =
+    ctzd_kit
+    oracledb
+    mssql_python{{io_modules}}
+allow_indirect_imports = True
+
+[importlinter:contract:messages]
+name = only pages and jobs send messages
+type = forbidden
+source_modules =
+    app.data
+    app.logic
+forbidden_modules =
+    ctzd_common.email
+    ctzd_common.slack
+allow_indirect_imports = True
+
+[importlinter:contract:locked-modules]
+name = theme and ui import nothing of the app's
+type = forbidden
+source_modules =
+    app.theme
+    app.ui
+forbidden_modules =
+    app.app
+    app.pages
+    app.data
+    app.logic
+    app.jobs
+
+[importlinter:contract:locked-modules-users]
+name = only app.py and the pages import theme and ui
+type = forbidden
+source_modules =
+    app.data
+    app.logic
+    app.jobs
+forbidden_modules =
+    app.theme
+    app.ui

@@ -21,7 +21,7 @@ def tool(name: str) -> str:
     return found
 
 
-WHEELS = ("ctzd-kit", "ctzd-common", "ctzd-fi", "ctzd-mas", "contoso-risklib")
+WHEELS = ("ctzd-kit", "ctzd-common", "ctzd-fi", "ctzd-mas", "fi-risklib")
 """The packages an app installs from this repository, built as local wheels."""
 
 

@@ -80,9 +80,15 @@ def render(text: str, tokens: Mapping[str, str]) -> str:
     return text
 
 
-def locked_files(kind: Kind, tokens: Mapping[str, str]) -> dict[str, str]:
-    """The build files of an app of `kind`, their `{{token}}`s filled from the app and its kit."""
-    return {path: render(text, tokens) for path, text in (_folder("locked/common/") | _folder(f"locked/{kind}/")).items()}
+KIT_TOKEN = "{{" + "io_modules" + "}}"
+"""The token of the one kind of locked file that also comes from the app's installed kit: `.importlinter`."""
+
+
+def locked_files(kind: Kind, tokens: Mapping[str, str], *, kit: bool) -> dict[str, str]:
+    """The build files of an app of `kind`, their `{{token}}`s filled from the app and, with `kit`, its installed kit;
+    without `kit`, the files that need it are left out."""
+    files = _folder("locked/common/") | _folder(f"locked/{kind}/")
+    return {path: render(text, tokens) for path, text in files.items() if kit or KIT_TOKEN not in text}
 
 
 def guidance_files() -> dict[str, str]:
@@ -92,6 +98,12 @@ def guidance_files() -> dict[str, str]:
         files[f"{SKILLS_DIR}/{path}"] = text
         files[f"{CLAUDE_SKILLS_DIR}/{path}"] = text
     return files
+
+
+def kit_scaffold(part: str, tokens: Mapping[str, str]) -> dict[str, str]:
+    """A part of a kit's scaffold, `new`, `source/common` or `source/KIND`, its `{{token}}`s filled and `__module__`
+    in its paths the kit's module."""
+    return {path.replace("__module__", tokens["kit"]): render(text, tokens) for path, text in _folder(f"kit/{part}/").items()}
 
 
 def template_files(kind: Kind, tokens: Mapping[str, str]) -> dict[str, str]:

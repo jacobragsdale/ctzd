@@ -7,7 +7,7 @@ repo=$(cd "$(dirname "$0")/.." && pwd)
 work=${1:-$(mktemp -d)}
 mkdir -p "$work/wheels" "$work/apps" "$work/home"
 cd "$repo"
-for package in ctzd-kit ctzd-common ctzd-fi ctzd-mas contoso-risklib; do
+for package in ctzd-kit ctzd-common ctzd-fi ctzd-mas fi-risklib; do
     uv build --quiet --package "$package" --out-dir "$work/wheels"
 done
 # The bundled platform config, with the internal index swapped for the local wheels plus PyPI.

@@ -1,0 +1,19 @@
+[project]
+name = "ctzd-mas"
+version = "0.1.0"
+description = "Multi-Asset Solutions's kit for ctzd apps: its sources, loaders and helpers"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "ctzd-kit>=0.1,<1",
+]
+
+[project.entry-points."ctzd.kits"]
+mas = "ctzd_mas"
+
+[build-system]
+requires = ["uv_build>=0.13.6,<0.14"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "ctzd_mas"

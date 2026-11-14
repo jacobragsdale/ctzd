@@ -1,19 +1,26 @@
 """`ctzd check`: every gate, the same locally and in CI. Locally a gate fixes what it can first; in CI it only checks."""
 
 import ast
+import datetime as dt
 import os
 import re
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
 import sqlglot
 import sqlglot.errors
+import tomlkit
+from packaging.requirements import Requirement
 from packaging.version import Version
+from pydantic import BaseModel, ConfigDict, ValidationError
 
-from ctzd_cli import assets, proc, rounding, sync
+from ctzd_cli import assets, kitfacts, proc, rounding, sync
 from ctzd_cli.appconfig import AppConfig
 from ctzd_cli.config import PlatformConfig
+from ctzd_cli.errors import CliError
+from ctzd_cli.kitfacts import KitFacts
 
 Mode = Literal["local", "ci"]
 State = Literal["passed", "fixed", "failed", "skipped"]
@@ -47,8 +54,24 @@ def _uv() -> str:
     return proc.which("uv", hint="Install uv: https://docs.astral.sh/uv/")
 
 
-def tool(root: Path, name: str, *args: str) -> proc.Completed:
-    return proc.run([_uv(), "run", "--no-sync", name, *args], cwd=root, timeout=_TOOL_TIMEOUT)
+def tool(root: Path, name: str, *args: str, env: dict[str, str] | None = None) -> proc.Completed:
+    return proc.run([_uv(), "run", "--no-sync", name, *args], cwd=root, env=env, timeout=_TOOL_TIMEOUT)
+
+
+def fake_env(target: Target) -> dict[str, str]:
+    """What the app's tests, its pages' drive and its jobs' runs see: every source serving its sample rows, the store
+    and the outbox in scratch folders, and no message sent."""
+    root, app = target.root, target.app
+    return {
+        "CTZD_APP": app.app.name,
+        "CTZD_SBU": app.app.sbu,
+        "CTZD_ENV": "local",
+        "CTZD_FAKE": "1",
+        "CTZD_OWNERS": ",".join(app.app.owners),
+        "CTZD_FIXTURES": str(root / "fixtures"),
+        "CTZD_STORE_URL": str(root / ".ctzd" / "out" / "check-store"),
+        "CTZD_OUTBOX": str(root / ".ctzd" / "out" / "check-outbox"),
+    }
 
 
 def platform_files(target: Target, mode: Mode) -> Step:
@@ -74,12 +97,69 @@ def platform_files(target: Target, mode: Mode) -> Step:
     return Step("platform files", "fixed", f"{verb} the platform files to ctzd {running}: {', '.join(changed)}.", paths=tuple(changed))
 
 
-def environment(root: Path, mode: Mode) -> Step:
+def environment(target: Target, mode: Mode) -> Step:
+    """The app's packages installed: exactly uv.lock's in CI. Locally the app first moves to the newest release of its
+    kit within the major version it is on, when the index can be asked."""
+    root = target.root
+    if mode == "local":
+        kit = target.platform.sbu(target.app.app.sbu).kit_package
+        proc.run([_uv(), "lock", "--quiet", "--upgrade-package", kit], cwd=root, timeout=_TOOL_TIMEOUT)
     args = [_uv(), "sync", "--locked"] if mode == "ci" else [_uv(), "sync"]
     result = proc.run(args, cwd=root, timeout=_TOOL_TIMEOUT)
     if result.ok:
         return Step("environment", "passed")
     return Step("environment", "failed", proc.tail(result.output, 30))
+
+
+def kit(target: Target, mode: Mode) -> tuple[Step, KitFacts | None]:
+    """The app's kit is its department's, and the files that come from it (`.importlinter`, and the department's
+    skill) are what it says: written locally, checked in CI."""
+    root, app = target.root, target.app
+    try:
+        found = kitfacts.facts(root, mode="fresh" if mode == "ci" else "cached")
+    except CliError as err:
+        return Step("kit", "failed", err.message if err.hint is None else f"{err.message}\n{err.hint}"), None
+    if found is None:
+        return Step("kit", "failed", "The app's packages are not installed; the environment step installs them."), None
+    if found.sbu != app.app.sbu:
+        return Step("kit", "failed", f"The app's kit is {found.kit}, {found.title}'s, and app.toml says sbu {app.app.sbu!r}: an app depends on its own department's kit alone."), found
+    return _kit_files(target, mode, found), found
+
+
+def _kit_files(target: Target, mode: Mode, found: KitFacts) -> Step:
+    root, app = target.root, target.app
+    tokens = kitfacts.tokens(found)
+    if mode == "ci":
+        problems = [f"{item.path} ({item.problem})" for item in sync.drift(root, target.platform, app, tokens)]
+        if problems:
+            return Step("kit", "failed", f"Files written from the kit differ: {'; '.join(problems)}. Run `ctzd check` on a desktop and push the result.")
+        return Step("kit", "passed")
+    changed = sync.write_build(root, target.platform, app, tokens)
+    sync.write_guidance(root, kitfacts.skill_files(found))
+    if changed:
+        return Step("kit", "fixed", f"Wrote {', '.join(changed)} from {found.kit}.", paths=tuple(changed))
+    return Step("kit", "passed")
+
+
+def sql_dialects(root: Path, found: KitFacts | None) -> dict[str, tuple[str, ...]]:
+    """Each SQL file's dialect, by its name, from the `query(SOURCE, FILE, ...)` calls in `src/app/data/`."""
+    if found is None:
+        return {}
+    dialects: dict[str, tuple[str, ...]] = {}
+    for path in sorted((root / "src" / "app" / "data").rglob("*.py")):
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except SyntaxError:
+            continue
+        for call in (node for node in ast.walk(tree) if isinstance(node, ast.Call)):
+            name = call.func.attr if isinstance(call.func, ast.Attribute) else call.func.id if isinstance(call.func, ast.Name) else None
+            arguments = [argument.value for argument in call.args[:2] if isinstance(argument, ast.Constant) and isinstance(argument.value, str)]
+            if name != "query" or len(arguments) != 2:  # noqa: PLR2004 - the source and the file
+                continue
+            source = found.source(str(arguments[0]))
+            if source is not None and source.dialect is not None:
+                dialects[Path(str(arguments[1])).name] = (source.dialect,)
+    return dialects
 
 
 def formatting(root: Path, mode: Mode) -> Step:
@@ -215,10 +295,11 @@ def deprecations(output: str) -> list[str]:
     return found
 
 
-def tests(root: Path) -> Step:
+def tests(target: Target) -> Step:
+    root = target.root
     # With no logic there is nothing to cover, and coverage of nothing reads 0%.
     floor = () if has_logic(root) else ("--cov-fail-under=0",)
-    result = tool(root, "pytest", "-q", "--no-header", "-p", "no:cacheprovider", "-p", "no:dash", *floor)
+    result = tool(root, "pytest", "-q", "--no-header", "-p", "no:cacheprovider", "-p", "no:dash", *floor, env=fake_env(target))
     if not result.ok:
         return Step("tests", "failed", proc.tail(result.output, 80))
     found = deprecations(result.output)
@@ -244,16 +325,102 @@ def sample(root: Path, mode: Mode) -> Step:
     return Step("sample", "failed", detail) if mode == "ci" else Step("sample", "passed", detail, warning=detail)
 
 
-def run_all(target: Target, *, mode: Mode, fast: bool) -> list[Step]:
-    """Every gate, in PLAN.md's order."""
+def run_all(target: Target, *, mode: Mode, fast: bool, upgrade: bool = True, now: dt.datetime | None = None) -> list[Step]:
+    """Every gate, in PLAN.md's order; locally, with every test run and every gate passed, the kit's next major version
+    is tried (`next_major`)."""
     root = target.root
     steps = [platform_files(target, mode)]
     if steps[0].state == "failed" and mode == "ci":
         return steps
-    steps.append(environment(root, mode))
+    steps.append(environment(target, mode))
     if steps[-1].state == "failed":
         return steps
-    steps += [formatting(root, mode), lint(root, mode), types(root), layers(root), sql_files(root), numbers(root), app_toml(target)]
-    steps.append(Step("tests", "skipped", "--fast") if fast else tests(root))
+    found_kit, found = kit(target, mode)
+    steps.append(found_kit)
+    known = None if found is None else frozenset(source.name for source in found.sources)
+    steps += [formatting(root, mode), lint(root, mode), types(root), layers(root), sql_files(root, sql_dialects(root, found)), numbers(root), app_toml(target, known)]
+    steps.append(Step("tests", "skipped", "--fast") if fast else tests(target))
     steps.append(sample(root, mode))
-    return steps
+    if mode == "ci" or fast or not upgrade:
+        return steps
+    return next_major(target, steps, now=now or dt.datetime.now(dt.UTC))
+
+
+# ---------------------------------------------------------------- a kit's next major version
+
+KIT_UPGRADE = ".ctzd/kit-upgrade.json"
+_RETRY_MAJOR = dt.timedelta(days=1)
+
+
+class _Tried(BaseModel):
+    """A major version of the kit this app did not pass, and when: tried again a day later, not on every check."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    major: int
+    tried_at: dt.datetime
+    failed: tuple[str, ...]
+
+
+def _locked_major(root: Path, package: str) -> int | None:
+    path = root / "uv.lock"
+    if not path.is_file():
+        return None
+    for entry in tomllib.loads(path.read_text(encoding="utf-8")).get("package", []):
+        if isinstance(entry, dict) and entry.get("name") == package and isinstance(entry.get("version"), str):
+            return Version(entry["version"]).major
+    return None
+
+
+def _require(root: Path, package: str, major: int) -> None:
+    """Make the app's requirement of `package` the major version `major`, in pyproject.toml."""
+    path = root / "pyproject.toml"
+    document = tomlkit.parse(path.read_text(encoding="utf-8"))
+    project = document.get("project")
+    dependencies = project.get("dependencies") if isinstance(project, dict) else None
+    if not isinstance(dependencies, list):
+        return
+    for index, text in enumerate(dependencies):
+        if Requirement(str(text)).name == package:
+            dependencies[index] = f"{package}>={major},<{major + 1}"
+    path.write_text(tomlkit.dumps(document), encoding="utf-8")
+
+
+def next_major(target: Target, steps: list[Step], *, now: dt.datetime) -> list[Step]:
+    """Locally, once a day at most: move the app to its kit's next major version when the index has one and every
+    check passes on it; otherwise stay, put the files back, and say so (PLAN.md section 7, "Reaching apps")."""
+    root = target.root
+    package = target.platform.sbu(target.app.app.sbu).kit_package
+    record = root / KIT_UPGRADE
+    major = _locked_major(root, package)
+    if major is None or any(step.state == "failed" for step in steps):
+        return steps
+    try:
+        tried = _Tried.model_validate_json(record.read_bytes()) if record.is_file() else None
+    except ValidationError:
+        tried = None
+    if tried is not None and tried.major == major + 1 and now - tried.tried_at < _RETRY_MAJOR:
+        return [*steps, Step("kit version", "passed", warning=_stay(package, major, tried.failed))]
+    saved = {name: (root / name).read_bytes() for name in ("pyproject.toml", "uv.lock")}
+    _require(root, package, major + 1)
+    if not proc.run([_uv(), "lock", "--quiet"], cwd=root, timeout=_TOOL_TIMEOUT).ok:
+        for name, data in saved.items():
+            (root / name).write_bytes(data)
+        return steps  # no next major version on the index, or the index cannot be asked
+    moved = run_all(target, mode="local", fast=False, upgrade=False)
+    failed = tuple(step.name for step in moved if step.state == "failed")
+    if not failed:
+        record.unlink(missing_ok=True)
+        return [*moved, Step("kit version", "fixed", f"Moved to {package} {major + 1}, its next major version, on which every check passes.", paths=("pyproject.toml", "uv.lock"))]
+    for name, data in saved.items():
+        (root / name).write_bytes(data)
+    environment(target, "local")
+    record.parent.mkdir(parents=True, exist_ok=True)
+    record.write_text(_Tried(major=major + 1, tried_at=now, failed=failed).model_dump_json(), encoding="utf-8")
+    return [*steps, Step("kit version", "passed", warning=_stay(package, major, failed))]
+
+
+def _stay(package: str, major: int, failed: tuple[str, ...]) -> str:
+    return (
+        f"{package} {major + 1} is out, and this app does not pass its checks on it yet ({', '.join(failed)}), so it stays on {package} {major}. "
+        "Tell the person; the kit's maintainers can say what changed."
+    )

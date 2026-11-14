@@ -1,0 +1,4 @@
+# The sample source every kit has: made-up rows a template's page and job read before an app reads a real source.
+description = "Made-up fixed income holdings, trades and accounts, for the templates and for trying things out"
+refreshed = "never: these are sample rows"
+kind = "sample"

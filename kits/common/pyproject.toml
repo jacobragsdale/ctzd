@@ -1,0 +1,31 @@
+[project]
+name = "ctzd-common"
+version = "0.1.0"
+description = "What every ctzd app may use beside its kit: email, Slack, display rounding, and the dashboard's pinned stack"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "httpx>=0.28",
+    "openpyxl>=3.1",
+    "pandas>=3.1",
+]
+
+[project.optional-dependencies]
+# The dashboard's stack, the same for every app: Dash on its FastAPI backend, with Mantine, AG Grid and Plotly.
+dash = [
+    "anyio==4.16.0",
+    "dash[fastapi]==4.5.0",
+    "dash-ag-grid==35.3.0",
+    "dash-mantine-components==3.0.0",
+    "httpx2==2.16.0",  # what Starlette's TestClient drives the app with, in its tests and `ctzd check`
+    "orjson==3.13.0",
+    "plotly==7.1.0",
+    "uvicorn[standard]==0.54.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.13.6,<0.14"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "ctzd_common"

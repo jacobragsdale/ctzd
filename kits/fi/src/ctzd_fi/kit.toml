@@ -1,0 +1,5 @@
+# The department this kit belongs to.
+sbu = "fi"
+title = "Fixed Income"
+team = "sbu-fi"            # the GitHub team whose members may create apps on this kit
+owners = ["@contoso/sbu-fi-engineers"]   # the kit's code owners

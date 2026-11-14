@@ -1,0 +1,9 @@
+# A department package that makes its own connection: fi_risklib reads FI_RISK_USER and FI_RISK_PASSWORD itself.
+description = "Risk measures from the desk's own risk library: DV01 and spread duration of every position, by book"
+refreshed = "each business day by 06:30 New York"
+kind = "package"
+io = ["fi_risklib"]             # apps may not import it; only this source's loaders do
+
+[secret.env]                    # the variables the library already reads, from the secret's fields
+FI_RISK_USER = "user"
+FI_RISK_PASSWORD = "password"
