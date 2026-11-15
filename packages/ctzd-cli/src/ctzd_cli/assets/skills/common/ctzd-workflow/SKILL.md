@@ -45,7 +45,7 @@ change ─▶ ctzd check ─▶ ctzd deploy ─▶ dev address + review link ─
 6. **`ctzd status --json`** shows the release live in each environment, what is waiting for whose approval, the jobs
    with their links, and their last runs. Use it whenever the person asks "is it live?" or "did it run?".
 
-The addresses are `https://SBU-NAME.ctzd-dev.contoso.com` (dev) and `https://SBU-NAME.ctzd.contoso.com` (prod).
+The addresses are `https://SBU-NAME.{{dev_apps_domain}}` (dev) and `https://SBU-NAME.{{apps_domain}}` (prod).
 
 ## The live app
 

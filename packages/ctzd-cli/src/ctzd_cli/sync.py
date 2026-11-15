@@ -34,10 +34,23 @@ class Drift:
     problem: Literal["changed", "missing"]
 
 
-def tokens(platform: PlatformConfig, app: AppConfig) -> dict[str, str]:
-    """What `{{token}}`s in the templates and locked files stand for, for this app."""
-    sbu = platform.sbu(app.app.sbu)
+def platform_tokens(platform: PlatformConfig) -> dict[str, str]:
+    """What the platform's own `{{token}}`s stand for: its addresses, so nothing the CLI ships names a host itself."""
     return {
+        "apps_domain": platform.environments["prod"].apps_domain,
+        "dev_apps_domain": platform.environments["dev"].apps_domain,
+        "site": platform.platform.site.rstrip("/"),
+        "downloads": platform.platform.downloads,
+        "index_url": default_index(platform).url,
+        "github_host": platform.github.host,
+        "github_org": platform.github.org,
+    }
+
+
+def tokens(platform: PlatformConfig, app: AppConfig) -> dict[str, str]:
+    """What `{{token}}`s in the templates, locked files and guidance stand for, for this app."""
+    sbu = platform.sbu(app.app.sbu)
+    return platform_tokens(platform) | {
         "name": platform.repo_name(app.app.sbu, app.app.name),
         "app": app.app.name,
         "title": title_for(app.app.name),
@@ -77,6 +90,12 @@ def expected_files(platform: PlatformConfig, app: AppConfig, kit: Mapping[str, s
 def python_index(platform: PlatformConfig) -> tuple[PackageIndex, ...]:
     overrides = platform.build_overrides
     return assets.build().python.index if overrides is None or overrides.python_index is None else overrides.python_index
+
+
+def default_index(platform: PlatformConfig) -> PackageIndex:
+    """The index apps install from by default: the internal one, or the first an override marks default."""
+    indexes = python_index(platform)
+    return next((index for index in indexes if index.default), indexes[0])
 
 
 def managed_pyproject(platform: PlatformConfig) -> dict[str, object]:
@@ -182,10 +201,10 @@ def write_env_example(root: Path, app: AppConfig) -> bool:
     return True
 
 
-def write_guidance(root: Path, extra: Mapping[str, str] | None = None) -> bool:
-    """Make `AGENTS.md` and both skill folders exactly this CLI's, with `extra` (the kit's department skill) added;
-    return whether anything changed."""
-    expected = assets.guidance_files() | dict(extra or {})
+def write_guidance(root: Path, filled: Mapping[str, str], extra: Mapping[str, str] | None = None) -> bool:
+    """Make `AGENTS.md` and both skill folders exactly this CLI's, their `{{token}}`s `filled` from the app, with
+    `extra` (the kit's department skill) added; return whether anything changed."""
+    expected = assets.guidance_files(filled) | dict(extra or {})
     present = {file.relative_to(root).as_posix() for folder in GUIDANCE_DIRS if (root / folder).is_dir() for file in (root / folder).rglob("*") if file.is_file()}
     stale = [path for path, text in expected.items() if not (root / path).is_file() or (root / path).read_text(encoding="utf-8") != text]
     if not (present - expected.keys()) and not stale:

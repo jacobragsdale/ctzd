@@ -34,6 +34,8 @@ jobs:
           version: "0.13.6"
       - run: uv sync --locked
       - run: uv run ctzd kit check kits/${{ matrix.kit }}
+        env:
+          CTZD_PYTHON_INDEX: https://pypi.org/simple  # this repository has no internal index
 
   templates:
     runs-on: ubuntu-latest

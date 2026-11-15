@@ -119,6 +119,8 @@ def _ci_parsers(sub: argparse._SubParsersAction[argparse.ArgumentParser], common
     ci_render.add_argument("--image", required=True)
     ci_render.add_argument("--release", type=int)
     ci_render.add_argument("--out", type=Path, required=True)
+    ci_site = ci_sub.add_parser("site", parents=[common], help="write what the platform's site serves: install.ps1 and the bootstrap skill")
+    ci_site.add_argument("--out", type=Path, required=True)
     ci_release = ci_sub.add_parser("release", parents=[common])
     ci_release.add_argument("--image", required=True)
     ci_release.add_argument("--commit", required=True)
@@ -163,6 +165,7 @@ HANDLERS: dict[str, Handler] = {
     "sync": lambda _a, ctx: commands.sync_files(ctx),
     "ci check": lambda _a, ctx: commands.ci_check(ctx),
     "ci render": lambda a, ctx: commands.ci_render(ctx, image=_required(a.image, "--image"), release_number=a.release, out=_required(a.out, "--out")),
+    "ci site": lambda a, _ctx: commands.ci_site(out=_required(a.out, "--out")),
     "ci release": lambda a, ctx: commands.ci_release(ctx, image=_required(a.image, "--image"), commit=_required(a.commit, "--commit"), now=lambda: datetime.now(UTC)),
 }
 

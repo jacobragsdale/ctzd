@@ -439,7 +439,7 @@ wheels = [
 
 [[package]]
 name = "ctzd"
-version = "0.5.0"
+version = "0.6.0"
 source = { editable = "packages/ctzd-cli" }
 dependencies = [
     { name = "croniter" },

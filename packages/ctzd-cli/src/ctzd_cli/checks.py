@@ -136,7 +136,7 @@ def _kit_files(target: Target, mode: Mode, found: KitFacts) -> Step:
             return Step("kit", "failed", f"Files written from the kit differ: {'; '.join(problems)}. Run `ctzd check` on a desktop and push the result.")
         return Step("kit", "passed")
     changed = sync.write_build(root, target.platform, app, tokens)
-    sync.write_guidance(root, kitfacts.skill_files(found))
+    sync.write_guidance(root, sync.tokens(target.platform, app), kitfacts.skill_files(found))
     if changed:
         return Step("kit", "fixed", f"Wrote {', '.join(changed)} from {found.kit}.", paths=tuple(changed))
     return Step("kit", "passed")

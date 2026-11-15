@@ -29,6 +29,8 @@ from ctzd_common.display import STEPS, Format, text
 
 _LOG = logging.getLogger("ctzd_common.email")
 _TIMEOUT_SECONDS = 30.0
+LOCAL_SENDER = "ctzd@localhost"
+"""The sender of the copies kept on the desktop; in the cluster, CTZD_SMTP_SENDER from the platform's settings."""
 _XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 _WIDEST = 60
 
@@ -139,7 +141,7 @@ def attachment(filename: str, item: Attached) -> Attachment:
 
 
 def message(  # noqa: PLR0913 - the parts of one email, every one after `body` keyword-only
-    to: str | Sequence[str], subject: str, body: str, *, table: Table | None = None, attachments: Mapping[str, Attached] | None = None, link: str | None = None, sender: str = "ctzd@contoso.com"
+    to: str | Sequence[str], subject: str, body: str, *, table: Table | None = None, attachments: Mapping[str, Attached] | None = None, link: str | None = None, sender: str = LOCAL_SENDER
 ) -> EmailMessage:
     recipients = (to,) if isinstance(to, str) else tuple(to)
     if not recipients:
@@ -173,13 +175,14 @@ def send(  # noqa: PLR0913 - the parts of one email, every one after `body` keyw
         named = ", ".join((to,) if isinstance(to, str) else to)
         body = f"{messages.DEV_MARK} From the app's dev deployment. In prod this goes to: {named}.\n\n{body}"
         to, subject = messages.owners(place), f"{messages.DEV_MARK} {subject}"
-    mime = message(to, subject, body, table=table, attachments=attachments, link=link, sender=os.environ.get("CTZD_SMTP_SENDER", "ctzd@contoso.com"))
+    sender = os.environ.get("CTZD_SMTP_SENDER", "")
+    mime = message(to, subject, body, table=table, attachments=attachments, link=link, sender=sender or LOCAL_SENDER)
     if place.env == "local":
         messages.save("email", ".eml", mime.as_bytes(), place)
         return
     host, port = os.environ.get("CTZD_SMTP_HOST", ""), os.environ.get("CTZD_SMTP_PORT", "25")
-    if not host:
-        msg = "Email needs the platform's mail relay (CTZD_SMTP_HOST), which only the cluster has."
+    if not host or not sender:
+        msg = "Email needs the platform's mail relay and sender (CTZD_SMTP_HOST, CTZD_SMTP_SENDER), which only the cluster has."
         raise EmailError(msg)
     with smtplib.SMTP(host, int(port), timeout=_TIMEOUT_SECONDS) as smtp:
         smtp.send_message(mime)

@@ -36,4 +36,4 @@ def scaffold(root: Path, *, platform: PlatformConfig, app: AppConfig) -> None:
     (root / "pyproject.toml").write_text(initial_pyproject(platform, app), encoding="utf-8")
     sync.write_build(root, platform, app)
     sync.write_env_example(root, app)
-    sync.write_guidance(root)
+    sync.write_guidance(root, sync.tokens(platform, app))

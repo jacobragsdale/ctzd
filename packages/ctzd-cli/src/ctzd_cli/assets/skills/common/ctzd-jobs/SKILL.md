@@ -66,9 +66,9 @@ from app.logic import positions as rules
 
 DESK = ZoneInfo("Europe/London")
 SATURDAY = 5
-TO = ("desk-team@contoso.com",)
+TO = ("{{owner}}",)
 CHANNEL = "fi-desk"
-DASHBOARD = "https://fi-bond-prices.ctzd.contoso.com"
+DASHBOARD = "{{prod_url}}"
 USD = display.Format("money", 0, currency="USD")
 _LOG = logging.getLogger(__name__)
 

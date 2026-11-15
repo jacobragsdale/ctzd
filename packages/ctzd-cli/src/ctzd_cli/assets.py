@@ -5,7 +5,10 @@
 - `guidance/` and `skills/`: `AGENTS.md` and the common skills, gitignored, rewritten by every command;
 - `templates/<kind>/`: what `ctzd new` writes once, its `{{token}}`s filled;
 - `build.toml`: the managed tables of every app's `pyproject.toml`;
-- `start/GUIDE.md`: what `ctzd setup` hands the agent.
+- `start/GUIDE.md`: what `ctzd setup` hands the agent;
+- `site/`: what the platform's site serves, `install.ps1` and the bootstrap skill, written by `ctzd ci site`.
+
+Every `{{token}}` the platform's addresses fill is in `sync.platform_tokens`: nothing here names a host itself.
 """
 
 import functools
@@ -91,12 +94,12 @@ def locked_files(kind: Kind, tokens: Mapping[str, str], *, kit: bool) -> dict[st
     return {path: render(text, tokens) for path, text in files.items() if kit or KIT_TOKEN not in text}
 
 
-def guidance_files() -> dict[str, str]:
-    """`AGENTS.md` and the common skills, under both skill folders: Claude Code does not read `.agents/skills/`."""
-    files = _folder("guidance/")
+def guidance_files(tokens: Mapping[str, str]) -> dict[str, str]:
+    """`AGENTS.md` and the common skills, their `{{token}}`s filled, under both skill folders: Claude Code does not
+    read `.agents/skills/`."""
+    files = {path: render(text, tokens) for path, text in _folder("guidance/").items()}
     for path, text in _folder("skills/common/").items():
-        files[f"{SKILLS_DIR}/{path}"] = text
-        files[f"{CLAUDE_SKILLS_DIR}/{path}"] = text
+        files[f"{SKILLS_DIR}/{path}"] = files[f"{CLAUDE_SKILLS_DIR}/{path}"] = render(text, tokens)
     return files
 
 
@@ -111,5 +114,11 @@ def template_files(kind: Kind, tokens: Mapping[str, str]) -> dict[str, str]:
     return {path: render(text, tokens) for path, text in _folder(f"templates/{kind}/").items()}
 
 
-def start_guide() -> str:
-    return bundle()["start/GUIDE.md"]
+def start_guide(tokens: Mapping[str, str]) -> str:
+    return render(bundle()["start/GUIDE.md"], tokens)
+
+
+def site_files(tokens: Mapping[str, str]) -> dict[str, str]:
+    """What the platform's site serves, its `{{token}}`s filled: `install.ps1`, and the bootstrap skill the firm's
+    skills platform carries."""
+    return {path: render(text, tokens) for path, text in _folder("site/").items()}

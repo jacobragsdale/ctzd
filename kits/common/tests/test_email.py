@@ -62,7 +62,7 @@ def plain_of(mime: EmailMessage) -> str:
 def test_a_table_in_the_body_reads_as_the_page_writes_it() -> None:
     mime = email.message(["ann.lee@contoso.com", "bo.chan@contoso.com"], "Summary", "Today's summary.\n\nSecond line.", table=summary(), link="https://fi-bond-prices.ctzd.contoso.com")
     assert mime["To"] == "ann.lee@contoso.com, bo.chan@contoso.com"
-    assert mime["From"] == "ctzd@contoso.com"
+    assert mime["From"] == "ctzd@localhost"
     html = html_of(mime)
     assert '<caption style="text-align: left; font-weight: bold">Sector summary</caption>' in html
     for shown in (f"12.50{NBSP}bp", "-$1,234.50", "$1,000,000.00", "40.00%", ">12<", "2026-11-13 09:30", ">2026-11-13<", ">Yes<", ">No<"):
@@ -188,6 +188,7 @@ def relay(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, int, EmailMessage]
     monkeypatch.setattr(email.smtplib, "SMTP", FakeSMTP)
     monkeypatch.setenv("CTZD_SMTP_HOST", "relay.contoso.com")
     monkeypatch.setenv("CTZD_SMTP_PORT", "2525")
+    monkeypatch.setenv("CTZD_SMTP_SENDER", "fi-bond-prices@contoso.com")
     return FakeSMTP.sent
 
 
@@ -207,7 +208,6 @@ def test_the_outbox_can_be_moved(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 def test_in_dev_an_email_goes_only_to_the_owners_marked_dev(monkeypatch: pytest.MonkeyPatch, relay: list[tuple[str, int, EmailMessage]]) -> None:
     monkeypatch.setenv("CTZD_ENV", "dev")
     monkeypatch.setenv("CTZD_OWNERS", "owner.one@contoso.com,owner.two@contoso.com")
-    monkeypatch.setenv("CTZD_SMTP_SENDER", "fi-bond-prices@contoso.com")
     email.send(["desk@contoso.com"], "Summary", "Today's summary.")
     ((host, port, mime),) = relay
     assert (host, port) == ("relay.contoso.com", 2525)
@@ -238,6 +238,14 @@ def test_off_the_cluster_there_is_no_relay(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setenv("CTZD_ENV", "prod")
     with pytest.raises(EmailError, match="CTZD_SMTP_HOST"):
         email.send("desk@contoso.com", "Summary", "Body.")
+
+
+def test_in_the_cluster_an_email_needs_the_platforms_sender(monkeypatch: pytest.MonkeyPatch, relay: list[tuple[str, int, EmailMessage]]) -> None:
+    monkeypatch.setenv("CTZD_ENV", "prod")
+    monkeypatch.delenv("CTZD_SMTP_SENDER")
+    with pytest.raises(EmailError, match="CTZD_SMTP_SENDER"):
+        email.send("desk@contoso.com", "Summary", "Body.")
+    assert relay == []
 
 
 def test_display_and_email_agree() -> None:

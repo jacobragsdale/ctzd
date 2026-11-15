@@ -69,15 +69,15 @@ def test_guidance_goes_to_agents_and_claude_and_is_gitignored(tmp_path: Path) ->
 
 
 def test_writing_guidance_adds_the_kits_skill_and_removes_extra_ones(tmp_path: Path) -> None:
-    make_app(tmp_path)
+    filled = sync.tokens(config.load(), make_app(tmp_path))
     extra = tmp_path / ".agents" / "skills" / "homemade" / "SKILL.md"
     extra.parent.mkdir(parents=True)
     extra.write_text("mine\n")
     kit_skill = {".agents/skills/sbu-fi/SKILL.md": "fi\n", ".claude/skills/sbu-fi/SKILL.md": "fi\n"}
-    assert sync.write_guidance(tmp_path, kit_skill)
+    assert sync.write_guidance(tmp_path, filled, kit_skill)
     assert not extra.exists()
     assert (tmp_path / ".claude" / "skills" / "sbu-fi" / "SKILL.md").read_text() == "fi\n"
-    assert not sync.write_guidance(tmp_path, kit_skill)
+    assert not sync.write_guidance(tmp_path, filled, kit_skill)
 
 
 def test_an_unreadable_recorded_version_counts_as_none(tmp_path: Path) -> None:

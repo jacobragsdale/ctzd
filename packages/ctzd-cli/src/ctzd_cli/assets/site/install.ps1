@@ -1,11 +1,12 @@
 # Installs ctzd for the current user, with no admin rights. An AI agent runs this; the person never has to:
-#   powershell -c "irm https://ctzd.contoso.com/install.ps1 | iex"
-# Every download comes from the platform host, so desktops need no access to github.com or pypi.org.
+#   powershell -c "irm {{site}}/install.ps1 | iex"
+# Every download comes from the platform's site and package index, so desktops need no access to github.com or
+# pypi.org. Written by `ctzd ci site` from the platform's settings.
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 
-$Platform = 'https://ctzd.contoso.com'
-$Index = 'https://pypi.contoso.com/simple'
+$Downloads = '{{downloads}}'
+$Index = '{{index_url}}'
 $Bin = Join-Path $HOME '.local\bin'
 
 function Add-UserPath([string] $Folder) {
@@ -22,7 +23,7 @@ function Add-UserPath([string] $Folder) {
 New-Item -ItemType Directory -Force -Path $Bin | Out-Null
 if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
     $zip = Join-Path $env:TEMP 'ctzd-uv.zip'
-    Invoke-WebRequest -Uri "$Platform/downloads/uv-x86_64-pc-windows-msvc.zip" -OutFile $zip
+    Invoke-WebRequest -Uri "$Downloads/uv-x86_64-pc-windows-msvc.zip" -OutFile $zip
     Expand-Archive -Path $zip -DestinationPath $Bin -Force
     Remove-Item $zip
 }
@@ -30,17 +31,21 @@ Add-UserPath $Bin
 # `ctzd setup` unpacks a private git here when the desktop has none; agents may need it for a merge conflict.
 Add-UserPath (Join-Path $env:LOCALAPPDATA 'ctzd\mingit\cmd')
 
-# 2. Point uv at the internal package index and the internal mirror of Python builds.
+# 2. Point uv at the internal package index and the internal mirror of Python builds, trusting the certificates
+#    Windows trusts: the firm's own authority, and the proxy's when it inspects TLS.
 $uvConfigDir = Join-Path $env:APPDATA 'uv'
 New-Item -ItemType Directory -Force -Path $uvConfigDir | Out-Null
-@"
-python-install-mirror = "$Platform/downloads/python"
+$uvConfig = @"
+system-certs = true
+python-install-mirror = "$Downloads/python"
 
 [[index]]
 name = "internal"
 url = "$Index"
 default = true
-"@ | Set-Content -Path (Join-Path $uvConfigDir 'uv.toml') -Encoding utf8
+"@
+# Without a byte-order mark, which Windows PowerShell's utf8 encoding writes and TOML does not allow.
+[IO.File]::WriteAllText((Join-Path $uvConfigDir 'uv.toml'), $uvConfig)
 
 # 3. ctzd itself, as a uv tool (its own Python and environment, upgraded in place).
 uv tool install --upgrade ctzd

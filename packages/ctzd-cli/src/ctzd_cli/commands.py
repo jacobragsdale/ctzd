@@ -67,7 +67,7 @@ def prepare(ctx: Context, command: str) -> list[str]:
     found = kitfacts.facts(root) if (root / ".venv").is_dir() else None
     if found is not None and found.sbu == app.app.sbu:
         sync.write_build(root, target.platform, app, kitfacts.tokens(found))
-    sync.write_guidance(root, {} if found is None else kitfacts.skill_files(found))
+    sync.write_guidance(root, sync.tokens(target.platform, app), {} if found is None else kitfacts.skill_files(found))
     return []
 
 
@@ -81,7 +81,7 @@ def setup(_ctx: Context) -> Outcome:
     data: dict[str, object] = {"checks": [{"name": check.name, "state": check.state, "detail": check.detail} for check in results]}
     if missing:
         return Outcome(summary="ctzd needs attention: " + ", ".join(check.name for check in missing), data=data, next_steps=[check.detail for check in missing], ok=False)
-    data["guide"] = assets.start_guide()
+    data["guide"] = assets.start_guide(sync.platform_tokens(config.load()))
     return Outcome(summary="ctzd is ready.", data=data, next_steps=["Read `guide`: it says how to start a new app or open an existing one."])
 
 
@@ -156,7 +156,7 @@ def _write_kit_files(root: Path, platform: config.PlatformConfig, app: AppConfig
         msg = f"The new app's kit is not {platform.sbu(app.app.sbu).kit_package}."
         raise CliError(msg, hint="Check the department's kit in platform.toml, then run the same `ctzd new` command again.")
     sync.write_build(root, platform, app, kitfacts.tokens(found))
-    sync.write_guidance(root, kitfacts.skill_files(found))
+    sync.write_guidance(root, sync.tokens(platform, app), kitfacts.skill_files(found))
 
 
 def _install(root: Path) -> None:
@@ -309,6 +309,16 @@ def ci_render(ctx: Context, *, image: str, release_number: int | None, out: Path
     (out / "helm-values.json").write_text(values.model_dump_json(indent=2, by_alias=True), encoding="utf-8")
     (out / "airflow-spec.json").write_text(spec.model_dump_json(indent=2), encoding="utf-8")
     return Outcome(summary=f"Wrote helm-values.json and airflow-spec.json to {out}.", data={"dashboard": values.enabled, "jobs": len(app.jobs)})
+
+
+def ci_site(*, out: Path) -> Outcome:
+    """The platform's site, from its settings: `install.ps1`, and the bootstrap skill for the firm's skills platform."""
+    files = assets.site_files(sync.platform_tokens(config.load()))
+    for path, text in files.items():
+        target = out / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(text.replace("\n", "\r\n").encode() if path.endswith(".ps1") else text.encode())
+    return Outcome(summary=f"Wrote {', '.join(sorted(files))} to {out}.", data={"files": sorted(files)})
 
 
 def ci_release(ctx: Context, *, image: str, commit: str, now: Callable[[], object]) -> Outcome:

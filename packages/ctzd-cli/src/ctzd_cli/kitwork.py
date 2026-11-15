@@ -13,12 +13,14 @@ import re
 import shutil
 import tempfile
 import tomllib
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+import tomlkit
 from packaging.requirements import InvalidRequirement, Requirement
 
-from ctzd_cli import assets, checks, proc
+from ctzd_cli import assets, checks, config, proc, sync
 from ctzd_cli.errors import CliError, UsageError
 
 SOURCE_KINDS = ("oracle", "mssql", "rest", "file", "package")
@@ -46,7 +48,7 @@ def _uv() -> str:
 
 
 def _tokens(module: str, sbu: str, title: str, source: str = "") -> dict[str, str]:
-    return {"kit": module, "kit_package": module.replace("_", "-"), "sbu": sbu, "title": title, "source": source}
+    return sync.platform_tokens(config.load()) | {"kit": module, "kit_package": module.replace("_", "-"), "sbu": sbu, "title": title, "source": source}
 
 
 def _write(root: Path, files: dict[str, str]) -> list[str]:
@@ -237,15 +239,27 @@ def build_wheels(workspace: Path, packages: list[str], target: Path) -> proc.Com
     return None
 
 
+def index_args(indexes: Sequence[config.PackageIndex]) -> list[str]:
+    """`uv pip` options that install from these indexes, as an app's pyproject.toml does."""
+    args: list[str] = []
+    for index in indexes:
+        if index.format == "flat":
+            args += ["--find-links", index.url]
+        else:
+            args += ["--default-index" if index.default else "--index", index.url]
+    return args
+
+
 def wheels(workspace: Path, kit: KitDir, wheelhouse: Path) -> list[str]:
     """Contract item 2: the kit installs from wheels alone, beside ctzd-common[dash], on Python 3.14 on the desktop's
     Windows and the image's Linux. Resolved, not installed."""
     requirements = wheelhouse / "requirements.in"
     requirements.write_text(f"{kit.module.replace('_', '-')}\nctzd-common[dash]\n", encoding="utf-8")
     problems: list[str] = []
+    indexes = index_args(sync.python_index(config.load()))
     for platform in PLATFORMS:
         resolved = proc.run(
-            [_uv(), "pip", "compile", "--quiet", "--python-version", "3.14", "--python-platform", platform, "--only-binary", ":all:", "--find-links", str(wheelhouse), str(requirements)],
+            [_uv(), "pip", "compile", "--quiet", "--python-version", "3.14", "--python-platform", platform, "--only-binary", ":all:", "--find-links", str(wheelhouse), *indexes, str(requirements)],
             cwd=workspace,
             timeout=_TIMEOUT,
         )
@@ -286,11 +300,12 @@ def contract(workspace: Path, kit: KitDir) -> tuple[list[str], list[str]]:
 
 def apps(kit: KitDir, wheelhouse: Path, scratch: Path) -> list[str]:
     """An app of each template, made offline on the kit from its wheels, and `ctzd check` run in it."""
-    config = scratch / "platform.toml"
-    bundled = (Path(__file__).parent / "platform.toml").read_text(encoding="utf-8")
-    index = f'python_index = [{{name = "local", url = "{wheelhouse}", format = "flat"}}, {{name = "pypi", url = "https://pypi.org/simple", default = true}}]'
-    config.write_text(f"{bundled}\n[build_overrides]\n{index}\n", encoding="utf-8")
-    env = {"CTZD_PLATFORM_CONFIG": str(config), "CTZD_HOME": str(scratch / "home")}
+    settings = scratch / "platform.toml"
+    platform = config.load()
+    local = config.PackageIndex(name="local", url=wheelhouse.as_posix(), format="flat")
+    scratch_platform = platform.model_copy(update={"build_overrides": config.BuildOverrides(python_index=(local, *sync.python_index(platform)))})
+    settings.write_text(tomlkit.dumps(scratch_platform.model_dump(mode="json", exclude_none=True)), encoding="utf-8")
+    env = {"CTZD_PLATFORM_CONFIG": str(settings), "CTZD_HOME": str(scratch / "home")}
     ctzd = shutil.which("ctzd") or "ctzd"
     problems: list[str] = []
     for kind in ("dash", "job"):

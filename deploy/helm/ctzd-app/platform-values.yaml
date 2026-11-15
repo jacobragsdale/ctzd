@@ -5,6 +5,8 @@ gateway:
   name: ctzd
   namespace: envoy-gateway-system
   sectionName: https
+# The mail relay's settings, a ConfigMap in ctzd-apps with CTZD_SMTP_HOST, CTZD_SMTP_PORT and CTZD_SMTP_SENDER (the
+# From address of every app's email). ctzd_common.email refuses to send in the cluster without the host and sender.
 smtpConfigMapName: ctzd-smtp
 serviceAccountName: ctzd-app
 # Company sign-in: set enabled to true once the Entra ID app registration accepts the apps' callback URLs

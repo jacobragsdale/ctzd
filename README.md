@@ -12,12 +12,10 @@ organisations and people in this repository are `contoso` placeholders, and its 
 
 | Path | What it is |
 |---|---|
-| `packages/ctzd-cli` | The `ctzd` CLI (distribution `ctzd`, module `ctzd_cli`), with the templates, locked build files and skills it writes into apps |
+| `packages/ctzd-cli` | The `ctzd` CLI (distribution `ctzd`, module `ctzd_cli`), with the templates, locked build files and skills it writes into apps, and the Windows installer and bootstrap skill it writes for the platform's site (`ctzd ci site`) |
 | `packages/ctzd-kit` | `ctzd-kit`, what every department's kit builds on: the loader seam, fakes, the store, drivers, the source explorer |
 | `kits/common` | `ctzd-common`: email, Slack and display rounding for apps, and the dashboard's pinned stack |
 | `kits/fi`, `kits/mas` | Two made-up departments' kits, the worked examples for kit maintainers |
-| `bootstrap/skills/ctzd` | The one skill the firm's skills platform distributes; it sets ctzd up |
-| `install/install.ps1` | The per-user Windows installer the agent runs |
 | `images/base` | The base image every app image builds on |
 | `airflow/` | The factory DAG that turns job specs into DAGs, and the janitor (its own uv project) |
 | `deploy/helm/ctzd-app` | The Helm chart for one app |
@@ -35,7 +33,8 @@ a Windows desktop or Cursor.
 ```sh
 uv sync
 uv run ruff format . && uv run ruff check . && uv run ty check && uv run pytest
-uv run ctzd kit check kits/fi && uv run ctzd kit check kits/mas
+CTZD_PYTHON_INDEX=https://pypi.org/simple uv run ctzd kit check kits/fi
+CTZD_PYTHON_INDEX=https://pypi.org/simple uv run ctzd kit check kits/mas
 scripts/e2e.sh                            # both templates on both kits, end to end (needs pypi.org)
 (cd airflow && uv sync && uv run pytest)  # factory and janitor DAGs against a real Airflow
 ```

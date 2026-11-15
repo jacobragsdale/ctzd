@@ -40,7 +40,16 @@ class EnvironmentConfig(_Model):
 class PlatformUrls(_Model):
     registry: str
     base_image: str
-    mingit_url: str
+    site: str
+    """The platform's own site: `install.ps1` at its root, and under `/downloads` uv, the Python builds and MinGit."""
+
+    @property
+    def downloads(self) -> str:
+        return f"{self.site.rstrip('/')}/downloads"
+
+    @property
+    def mingit_url(self) -> str:
+        return f"{self.downloads}/MinGit-64-bit.zip"
 
 
 class PackageIndex(_Model):
@@ -131,11 +140,20 @@ def parse(text: str) -> PlatformConfig:
     return PlatformConfig.model_validate(tomllib.loads(text))
 
 
+PYTHON_INDEX = "CTZD_PYTHON_INDEX"
+"""For the platform's own tests in a repository with no internal index: a package index, such as PyPI, that replaces
+the internal one in every app this CLI writes and checks, when the platform config has no index override itself."""
+
+
 @functools.cache
 def load() -> PlatformConfig:
     override = os.environ.get("CTZD_PLATFORM_CONFIG", "")
     text = Path(override).read_text(encoding="utf-8") if override else resources.files("ctzd_cli").joinpath("platform.toml").read_text(encoding="utf-8")
-    return parse(text)
+    found = parse(text)
+    index = os.environ.get(PYTHON_INDEX, "")
+    if not index or (found.build_overrides is not None and found.build_overrides.python_index is not None):
+        return found
+    return found.model_copy(update={"build_overrides": BuildOverrides(python_index=(PackageIndex(name="override", url=index, default=True),))})
 
 
 def user_dir() -> Path:

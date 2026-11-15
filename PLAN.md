@@ -140,7 +140,7 @@ validation approach.
 | `deploy/helm/ctzd-app` | The chart for one app: a Deployment and Service for a dash app, an `HTTPRoute`, `ExternalSecret`s, the job test pods, with values for dev and prod |
 | `airflow/` | The factory and janitor DAGs, reading per-environment specs |
 | `images/base` | The one base image: Python 3.14 and the system packages departments have asked for |
-| `install/`, `bootstrap/skills/ctzd` | The Windows installer and the one bootstrap skill, updated for the new login and the absence of an API |
+| `packages/ctzd-cli/src/ctzd_cli/assets/site` | The Windows installer and the one bootstrap skill, updated for the new login and the absence of an API, and written from the platform's settings by `ctzd ci site` |
 | `validation/` | The harness, with its API and Jenkins stages replaced (section 14) |
 | `scripts/e2e.sh` | Generates one app of each template for each kit, offline, and runs `ctzd check` in each |
 

@@ -38,8 +38,8 @@ Claude Code. Explain this to the person and rename it only with their agreement.
    - `dash`: a dashboard, with any number of scheduled jobs beside it (the usual choice);
    - `job`: only scheduled jobs, such as a weekly email or a table refreshed each morning.
 4. A short name: 3 to 30 lowercase letters, digits or hyphens, starting with a letter, without the department
-   (`bond-prices`, not `fi-bond-prices`). The dashboard will live at `https://SBU-NAME.ctzd.contoso.com`, and while
-   it is being reviewed at `https://SBU-NAME.ctzd-dev.contoso.com`. Confirm the name with the person in one line.
+   (`bond-prices`, not `fi-bond-prices`). The dashboard will live at `https://SBU-NAME.{{apps_domain}}`, and while
+   it is being reviewed at `https://SBU-NAME.{{dev_apps_domain}}`. Confirm the name with the person in one line.
 5. Run `ctzd new NAME --sbu SBU --kind dash --json` (or `--kind job`). It creates the app's GitHub repository, writes
    the template for the department's kit, pushes it and installs it, in a folder named NAME under the current folder
    (`--dir PARENT` puts it elsewhere). It returns `path`, `url` and `guide`, the app's `AGENTS.md`: read `guide` now,
@@ -51,8 +51,8 @@ Claude Code. Explain this to the person and rename it only with their agreement.
 
 ## Open an existing app
 
-If they give a link such as `https://fi-bond-prices.ctzd.contoso.com` (or `.ctzd-dev.`), the department is `fi` and
-the name is `bond-prices`. Run `ctzd open NAME --sbu SBU --json` (`--dir PARENT` to choose where). It returns `path`,
+If they give a link such as `https://fi-bond-prices.{{apps_domain}}` (or its review address,
+`https://fi-bond-prices.{{dev_apps_domain}}`), the department is `fi` and the name is `bond-prices`. Run `ctzd open NAME --sbu SBU --json` (`--dir PARENT` to choose where). It returns `path`,
 `url` and `guide`, the app's `AGENTS.md`, to read now. If it says they have no access, the app's owner or a colleague
 in the department must add them; tell the person.
 

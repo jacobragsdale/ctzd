@@ -12,7 +12,8 @@ oauth_client_id = "Ov23li00000000000000"
 [platform]
 registry = "contosoctzd.azurecr.io"
 base_image = "contosoctzd.azurecr.io/ctzd/base:py3.14"
-mingit_url = "https://ctzd.contoso.com/downloads/MinGit-64-bit.zip"
+# The platform's own site: it serves install.ps1, and under /downloads uv, the Python builds and MinGit.
+site = "https://ctzd.contoso.com"
 
 [environments.dev]
 apps_domain = "ctzd-dev.contoso.com"
