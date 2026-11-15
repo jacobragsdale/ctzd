@@ -47,6 +47,8 @@ jobs:
       - run: uv sync --locked
       - run: uv run playwright install --with-deps chromium
       - run: scripts/e2e.sh
+        env:
+          CTZD_PYTHON_INDEX: https://pypi.org/simple  # this repository has no internal index
 
   airflow:
     runs-on: ubuntu-latest

@@ -2,7 +2,8 @@
 # End to end: build the kits and what they build on as local wheels, make one app of each template on each kit with
 # `ctzd new --offline`, and run `ctzd check` in each. Each dashboard then gets the ctzd-pages skill's page with nothing
 # to choose, written as an agent would, passes every check again, and is opened in a real browser
-# (scripts/browser_check.py, with the reload proof). Needs pypi.org for everything else.
+# (scripts/browser_check.py, with the reload proof). Everything else comes from the platform's index, or from
+# CTZD_PYTHON_INDEX when it is set.
 #   scripts/e2e.sh [WORK_DIR]
 # E2E_KITS and E2E_KINDS narrow the apps; E2E_BROWSER is chromium (Playwright's, the default), msedge or chrome (an
 # installed browser), or off. Screenshots and each browser report land in WORK_DIR/browser/APP.
@@ -14,12 +15,14 @@ cd "$repo"
 for package in ctzd-kit ctzd-common ctzd-fi ctzd-mas fi-risklib; do
     uv build --quiet --package "$package" --out-dir "$work/wheels"
 done
-# The bundled platform config, with the internal index swapped for the local wheels plus PyPI.
+# The bundled platform config, with the local wheels before the platform's own index (build.toml's), or before
+# CTZD_PYTHON_INDEX where this repository has no internal index (CI, a laptop: https://pypi.org/simple).
+index=${CTZD_PYTHON_INDEX:-$("$repo/.venv/bin/python" -c 'import tomllib, sys; print(next(i["url"] for i in tomllib.load(open(sys.argv[1], "rb"))["python"]["index"] if i.get("default")))' packages/ctzd-cli/src/ctzd_cli/assets/build.toml)}
 cp packages/ctzd-cli/src/ctzd_cli/platform.toml "$work/platform.toml"
 cat >> "$work/platform.toml" <<TOML
 
 [build_overrides]
-python_index = [{name = "local", url = "$work/wheels", format = "flat"}, {name = "pypi", url = "https://pypi.org/simple", default = true}]
+python_index = [{name = "local", url = "$work/wheels", format = "flat"}, {name = "index", url = "$index", default = true}]
 TOML
 export CTZD_PLATFORM_CONFIG="$work/platform.toml" CTZD_HOME="$work/home"
 status=0

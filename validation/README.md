@@ -11,8 +11,8 @@ virtual environment, and uv only hardlinks within one filesystem.
 
 ```sh
 uv run ruff format . && uv run ruff check . && uv run ty check && uv run pytest
-CTZD_PYTHON_INDEX=https://pypi.org/simple uv run ctzd kit check kits/fi
-CTZD_PYTHON_INDEX=https://pypi.org/simple uv run ctzd kit check kits/mas
+export CTZD_PYTHON_INDEX=https://pypi.org/simple   # this public repository has no internal index
+uv run ctzd kit check kits/fi && uv run ctzd kit check kits/mas
 scripts/e2e.sh
 (cd airflow && uv run pytest && uv run --with ty==0.0.95 ty check dags tests)
 ```

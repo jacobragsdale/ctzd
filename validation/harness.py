@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -41,15 +42,25 @@ def remove_sample_marks(app: Path) -> None:
             path.write_text(rest)
 
 
+def index_url() -> str:
+    """The index apps install from in a validation run: CTZD_PYTHON_INDEX where this repository has no internal index,
+    or the platform's own, build.toml's."""
+    given = os.environ.get("CTZD_PYTHON_INDEX", "")
+    if given:
+        return given
+    build = tomllib.loads((REPO / "packages" / "ctzd-cli" / "src" / "ctzd_cli" / "assets" / "build.toml").read_text())
+    return next(str(index["url"]) for index in build["python"]["index"] if index.get("default"))
+
+
 def platform_config(work: Path, wheels: Path, *, extra: dict[str, str] | None = None) -> Path:
-    """The bundled platform.toml with other values overridden, and build overrides: local wheels plus PyPI for the
-    internal index."""
+    """The bundled platform.toml with other values overridden, and build overrides: local wheels before the index
+    (`index_url`)."""
     text = PLATFORM_TOML.read_text()
     for old, new in (extra or {}).items():
         text = text.replace(old, new)
     text += f"""
 [build_overrides]
-python_index = [{{name = "local", url = "{wheels}", format = "flat"}}, {{name = "pypi", url = "https://pypi.org/simple", default = true}}]
+python_index = [{{name = "local", url = "{wheels}", format = "flat"}}, {{name = "index", url = "{index_url()}", default = true}}]
 """
     path = work / "platform.toml"
     path.write_text(text)

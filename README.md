@@ -33,8 +33,8 @@ a Windows desktop or Cursor.
 ```sh
 uv sync
 uv run ruff format . && uv run ruff check . && uv run ty check && uv run pytest
-CTZD_PYTHON_INDEX=https://pypi.org/simple uv run ctzd kit check kits/fi
-CTZD_PYTHON_INDEX=https://pypi.org/simple uv run ctzd kit check kits/mas
-scripts/e2e.sh                            # both templates on both kits, end to end (needs pypi.org)
+export CTZD_PYTHON_INDEX=https://pypi.org/simple   # this public repository has no internal index
+uv run ctzd kit check kits/fi && uv run ctzd kit check kits/mas
+scripts/e2e.sh                            # both templates on both kits, end to end, with the browser
 (cd airflow && uv sync && uv run pytest)  # factory and janitor DAGs against a real Airflow
 ```

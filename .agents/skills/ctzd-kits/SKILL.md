@@ -99,6 +99,11 @@ warns about every source that sets it.
 Every loader is a plain synchronous function decorated with `@loader`, in `sources/NAME/loaders.py`, returning a
 DataFrame. The seam then makes every number a float64 and refuses an id (`id` or `..._id`) that holds numbers.
 
+Give a loader the range apps will ask for. Where people will want history (a price over three months, trades over a
+week), take `start` and `end`, not only one `as_of`: an app's agent cannot see the source's tables until it has
+credentials, so with a one-day loader it calls it once a day in a loop, one query each (a 2026-11-15 trial did, 65
+times for one page). Sample rows ignore the arguments, so the loop looks fine until it meets the real source.
+
 **`oracle`, `mssql`**: a database, through SQL files in `sql/`. Binds by name: `:name` for Oracle, `%(name)s` for SQL
 Server. Apps may also write their own SQL against the source, and `ctzd sources NAME` lists its tables.
 
