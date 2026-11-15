@@ -142,6 +142,47 @@ async def show(_path: str) -> tuple[object, ...]:
 Never trigger a callback from a component's `id` or from a hidden component made for the purpose: the address is
 the one input every page has.
 
+## Clicking a chart or a grid to filter
+
+When the person wants to click a bar or a row to narrow what is below, keep the choice in a `dmc.Select` they can see
+and clear, and let the clicks set it. One small callback, which reads no data and so need not be async, turns a click
+into the select's value; the grid below reads the select, like any filter.
+
+```python
+from typing import Any
+
+from dash import Input, Output, State, callback, ctx
+
+type Click = dict[str, Any]
+"""What the browser sends for a click on a bar or a grid cell: JSON, shaped by Plotly or AG Grid."""
+
+
+@callback(Output(SECTOR, "value"), Input(CHART, "clickData"), Input(SECTORS, "cellClicked"), State(SECTORS, "rowData"), prevent_initial_call=True)
+def pick(bar: Click | None, cell: Click | None, rows: list[Click] | None) -> object:
+    """The sector of the bar or the row last clicked: a grid's row id is its index in the rows it was given."""
+    if ctx.triggered_id == CHART and bar is not None:
+        return str(bar["points"][0]["x"])
+    if ctx.triggered_id == SECTORS and cell is not None and rows is not None:
+        return str(rows[int(cell["rowId"])]["sector"])
+    return dash.no_update
+
+
+@callback(Output(HOLDINGS, "rowData"), Input(AS_OF, "value"), Input(SECTOR, "value"))
+async def show_bonds(as_of: str, sector: str | None) -> list[dict[str, object]]:
+    shown = rules.positions(await ui.load(holdings, date.fromisoformat(as_of)), "")
+    return ui.rows(rules.in_sector(shown, sector or ""))
+```
+
+Fill the select's `data` from the callback that answers the chart, so it offers what the chart shows. `ctzd render`
+cannot click; it sets the select instead (`--set sectors-sector.value=Treasury`), which drives the same callbacks.
+Test `pick` with `unittest.mock.patch.object(page, "ctx")` and a made-up click.
+
+## Testing a page
+
+A page's tests call its callbacks on the sample rows, as `ctzd check` runs them: `asyncio.run(page.show(...))`. A
+callback answers `tuple[object, ...]`, so read a grid's answer back with `ui.grid_rows(rows)`, which gives each row as
+a dict of named cells, instead of a cast.
+
 ## Formats
 
 A page names a format for every number it shows, in a grid column, a stat or a chart axis, and never writes one.

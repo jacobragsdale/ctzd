@@ -121,7 +121,9 @@ Only `pages` and `jobs` send messages.
   bot must be in it. Ask the person which channel; never guess.
 - `email.Table(frame, formats, title=None)`: `formats` maps each number column to a
   `display.Format(kind, decimals, currency=None, step=None)`, `kind` being `"number"`, `"pct"`, `"bps"`, `"money"`,
-  `"price"` or `"price32"`: the same formats a page names with `ui.py`.
+  `"price"` or `"price32"`: the same formats a page names with `ui.py`. Its headers, in the email, the attachment and
+  Slack, read as a page's grid does by default: `market_value` shows as "Market value". Name a column in words
+  (`frame.rename(columns={"portfolio_id": "Desk"})`) to show it as it is; `formats` then uses the new name.
 - A number in a subject, a body or a Slack text goes through `ctzd_common.display`, which rounds as the page does:
   `display.number(value, decimals=0)`, `display.money(value, "USD")`, `display.percent(value, decimals=1)`,
   `display.bps(value)`, `display.price(value, decimals=3)`, `display.price32(value)`. Never `round()` it or write

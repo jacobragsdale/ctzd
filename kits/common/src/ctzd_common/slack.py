@@ -16,7 +16,7 @@ from typing import Final
 import httpx
 
 from ctzd_common import messages
-from ctzd_common.email import Table, cell
+from ctzd_common.email import Table, cell, heading
 
 API: Final = "https://slack.com/api"
 _TIMEOUT_SECONDS = 30.0
@@ -32,13 +32,14 @@ def table_text(table: Table) -> str:
     """The table as fixed-width text, numbers right-aligned in the page's formats."""
     columns = [str(column) for column in table.frame.columns]
     cells = [[cell(value, table.formats.get(column))[:_WIDEST] for column, value in zip(columns, record, strict=True)] for record in table.frame.itertuples(index=False, name=None)]
-    widths = [max([len(column), *(len(row[index]) for row in cells)]) for index, column in enumerate(columns)]
+    headings = [heading(column) for column in columns]
+    widths = [max([len(shown), *(len(row[index]) for row in cells)]) for index, shown in enumerate(headings)]
     numeric = [column in table.formats for column in columns]
 
     def line(values: list[str]) -> str:
         return "  ".join(value.rjust(width) if right else value.ljust(width) for value, width, right in zip(values, widths, numeric, strict=True)).rstrip()
 
-    return "\n".join([*([] if table.title is None else [table.title]), line(columns), *(line(row) for row in cells)])
+    return "\n".join([*([] if table.title is None else [table.title]), line(headings), *(line(row) for row in cells)])
 
 
 def payload(channel: str, text: str, table: Table | None) -> dict[str, object]:

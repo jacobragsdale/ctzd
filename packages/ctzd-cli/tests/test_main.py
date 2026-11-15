@@ -43,3 +43,12 @@ def test_json_works_before_or_after_the_command(tmp_path: Path, capsys: pytest.C
     make_app(tmp_path)
     main.main(argv, ctx=commands.Context(cwd=tmp_path))
     assert json.loads(capsys.readouterr().out)["command"] == "sync"
+
+
+@pytest.mark.parametrize("argv", [["deploy", "--json"], ["promote", "--release", "3", "--json"], ["--json", "env"], ["logs", "daily", "--env", "prod", "--json"]])
+def test_a_command_the_guidance_names_but_not_yet_built_says_what_to_do_meanwhile(tmp_path: Path, capsys: pytest.CaptureFixture[str], argv: list[str]) -> None:
+    code, out = run(argv, tmp_path, capsys)
+    assert code == main.EXIT_FAILED
+    assert out["ok"] is False
+    assert "is not built yet" in str(out["summary"])
+    assert out["next"] == [commands.NOT_YET[str(out["command"])]]

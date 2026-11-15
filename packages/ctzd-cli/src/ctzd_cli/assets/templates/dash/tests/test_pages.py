@@ -2,6 +2,7 @@
 
 import asyncio
 
+from app import ui
 from app.app import app
 from app.pages import positions
 
@@ -14,8 +15,9 @@ def test_the_app_has_its_positions_page() -> None:
 def test_the_positions_callback_answers_its_grid_its_stats_and_its_charts() -> None:
     shown = asyncio.run(positions.show(positions.last_close().isoformat(), None))
     rows, market_value, *_stats, sectors, scatter = shown
-    assert isinstance(rows, list)
-    assert rows
+    held = ui.grid_rows(rows)
+    assert held
+    assert {row["book"] for row in held} <= set(positions.BOOKS)
     assert str(market_value).startswith("$")
     assert sectors is not None
     assert scatter is not None

@@ -190,6 +190,20 @@ def _cell(value: object) -> object:
     return value
 
 
+def grid_rows(answer: object) -> list[dict[str, object]]:
+    """A grid's `rowData` as a callback answered it, read back in a test: each row as a dict of named cells."""
+    if not isinstance(answer, list):
+        msg = f"A grid's rowData is a list of rows, not {type(answer).__name__}."
+        raise TypeError(msg)
+    found: list[dict[str, object]] = []
+    for row in answer:
+        if not isinstance(row, dict):
+            msg = f"A grid's row is a dict of cells, not {type(row).__name__}."
+            raise TypeError(msg)
+        found.append({str(key): value for key, value in row.items()})
+    return found
+
+
 def rows(frame: pd.DataFrame) -> list[dict[str, object]]:
     """A frame as a grid's `rowData`: one record per row, every number as it is, a missing value as null, a date as
     ISO text."""

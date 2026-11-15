@@ -137,6 +137,8 @@ def _parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
     for add in (_setup_parsers, _app_parsers, _kit_parsers, _ci_parsers):
         add(sub, common)
+    for name in commands.NOT_YET:
+        sub.add_parser(name, parents=[common], help="not built yet: it arrives with the GitHub side of the platform")
     return parser
 
 
@@ -196,6 +198,12 @@ def emit(command: str, outcome: Outcome, *, as_json: bool) -> None:
 
 
 def main(argv: Sequence[str] | None = None, *, ctx: Context | None = None) -> int:
+    given = list(sys.argv[1:] if argv is None else argv)
+    first = next((part for part in given if not part.startswith("-")), "")
+    if first in commands.NOT_YET:
+        # Answered before parsing, so whatever options the guidance gives them, the agent learns what to do meanwhile.
+        emit(first, commands.not_yet(first), as_json="--json" in given)
+        return EXIT_FAILED
     namespace = _parser().parse_args(argv)
     try:
         args = Args.model_validate(vars(namespace))

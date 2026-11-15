@@ -64,7 +64,8 @@ def test_a_table_in_the_body_reads_as_the_page_writes_it() -> None:
     assert mime["To"] == "ann.lee@contoso.com, bo.chan@contoso.com"
     assert mime["From"] == "ctzd@localhost"
     html = html_of(mime)
-    assert '<caption style="text-align: left; font-weight: bold">Sector summary</caption>' in html
+    assert '<caption style="text-align: left; font-weight: bold; white-space: nowrap">Sector summary</caption>' in html
+    assert ">Sector</th>" in html
     for shown in (f"12.50{NBSP}bp", "-$1,234.50", "$1,000,000.00", "40.00%", ">12<", "2026-11-13 09:30", ">2026-11-13<", ">Yes<", ">No<"):
         assert shown in html, shown
     assert "Corp &amp; &lt;Other&gt;" in html
@@ -102,10 +103,10 @@ def test_a_plain_frame_attaches_as_a_workbook_or_csv() -> None:
     frame = pd.DataFrame({"sector": ["Gov"], "avg_price": [99.1]})
     sheet = openpyxl.load_workbook(io.BytesIO(email.attachment("summary.xlsx", frame).content)).active
     assert sheet is not None
-    assert [cell.value for cell in sheet[1]] == ["sector", "avg_price"]
+    assert [cell.value for cell in sheet[1]] == ["Sector", "Avg price"]
     as_csv = email.attachment("summary.csv", Table(frame))
     assert as_csv.mime_type == "text/csv"
-    assert as_csv.content.decode().splitlines() == ["sector,avg_price", "Gov,99.1"]
+    assert as_csv.content.decode().splitlines() == ["Sector,Avg price", "Gov,99.1"]
 
 
 def test_an_empty_frame_attaches_as_a_workbook() -> None:
@@ -246,6 +247,11 @@ def test_in_the_cluster_an_email_needs_the_platforms_sender(monkeypatch: pytest.
     with pytest.raises(EmailError, match="CTZD_SMTP_SENDER"):
         email.send("desk@contoso.com", "Summary", "Body.")
     assert relay == []
+
+
+@pytest.mark.parametrize(("column", "shown"), [("market_value", "Market value"), ("dv01", "Dv01"), ("Desk", "Desk"), ("P&L", "P&L"), ("day pnl", "day pnl")])
+def test_a_header_reads_as_a_pages_grid_shows_a_column_by_default(column: str, shown: str) -> None:
+    assert email.heading(column) == shown
 
 
 def test_display_and_email_agree() -> None:

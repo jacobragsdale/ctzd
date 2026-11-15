@@ -58,6 +58,13 @@ class Attachment:
     mime_type: str
 
 
+def heading(column: object) -> str:
+    """A column's header as a page's grid shows it by default: `market_value` reads "Market value"; a name already in
+    words, such as "Desk" or "P&L", stays as it is."""
+    name = str(column)
+    return name if name != name.lower() or " " in name else name.replace("_", " ").capitalize()
+
+
 def cell(value: object, given: Format | None) -> str:
     if value is None or value is pd.NaT or (isinstance(value, float) and pd.isna(value)):
         return ""
@@ -77,14 +84,14 @@ def html_table(table: Table) -> str:
     def align(column: str) -> str:
         return "right" if column in table.formats or pd.api.types.is_numeric_dtype(table.frame[column]) else "left"
 
-    head = "".join(f'<th style="{style}; text-align: {align(column)}">{html.escape(column)}</th>' for column in columns)
+    head = "".join(f'<th style="{style}; text-align: {align(column)}">{html.escape(heading(column))}</th>' for column in columns)
     rows = [
         "<tr>"
         + "".join(f'<td style="{style}; text-align: {align(column)}">{html.escape(cell(value, table.formats.get(column)))}</td>' for column, value in zip(columns, record, strict=True))
         + "</tr>"
         for record in table.frame.itertuples(index=False, name=None)
     ]
-    caption = f'<caption style="text-align: left; font-weight: bold">{html.escape(table.title)}</caption>' if table.title is not None else ""
+    caption = f'<caption style="text-align: left; font-weight: bold; white-space: nowrap">{html.escape(table.title)}</caption>' if table.title is not None else ""
     return f'<table style="border-collapse: collapse">{caption}<thead><tr>{head}</tr></thead><tbody>{"".join(rows)}</tbody></table>'
 
 
@@ -114,7 +121,7 @@ def _workbook(item: Attached) -> bytes:
     formats = item.formats if isinstance(item, Table) else {}
     buffer = io.BytesIO()
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-        frame.to_excel(writer, index=False, sheet_name="Data")
+        frame.rename(columns=heading).to_excel(writer, index=False, sheet_name="Data")
         sheet = writer.sheets["Data"]
         sheet.freeze_panes = "A2"
         if len(frame.columns):
@@ -125,7 +132,7 @@ def _workbook(item: Attached) -> bytes:
             if shape is not None:
                 for (written,) in sheet.iter_rows(min_row=2, min_col=position, max_col=position):
                     written.number_format = shape
-            widths = [len(str(column)), *(len(cell(value, given)) for value in frame[column].head(200))]
+            widths = [len(heading(column)), *(len(cell(value, given)) for value in frame[column].head(200))]
             sheet.column_dimensions[get_column_letter(position)].width = min(max(widths) + 2, _WIDEST)
     return buffer.getvalue()
 
@@ -135,7 +142,7 @@ def attachment(filename: str, item: Attached) -> Attachment:
     if filename.endswith(".xlsx"):
         return Attachment(filename, _workbook(item), _XLSX)
     if filename.endswith(".csv"):
-        return Attachment(filename, frame.to_csv(index=False).encode(), "text/csv")
+        return Attachment(filename, frame.rename(columns=heading).to_csv(index=False).encode(), "text/csv")
     msg = f"Attachment {filename!r} must end in .xlsx or .csv."
     raise EmailError(msg)
 

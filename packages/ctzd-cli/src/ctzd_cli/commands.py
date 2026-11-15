@@ -17,6 +17,20 @@ _TEMPLATE_JOB = Job(name="daily_positions", schedule="0 7 * * 1-5", timezone="Eu
 # Commands that work inside an app; each brings the app's platform files to this CLI before it runs.
 APP_COMMANDS = frozenset({"dev", "render", "run", "exec", "check", "sync", "sources"})
 NOT_BUILT = "is not built yet: it arrives with the GitHub side of the platform (PLAN.md section 15, step 7)"
+_LOCAL_ONLY = (
+    "Until it is, an app runs only on this computer: show the person a dashboard with `ctzd dev`, run a job with "
+    "`ctzd run JOB --local`, and tell them in plain words that sharing it with colleagues comes with the platform's next step."
+)
+NOT_YET: dict[str, str] = {
+    "env": (
+        "Until it is, a source with no credentials here serves its sample rows on this computer, and a page that shows them "
+        "says so with the sample-data banner: build and check on those rows, and tell the person their real data appears "
+        "once the platform connects the app."
+    ),
+    "open": "Until it is, work on an app that is already on this computer, in its folder.",
+    **dict.fromkeys(("deploy", "promote", "rollback", "releases", "status", "logs", "delete"), _LOCAL_ONLY),
+}
+"""Commands the guidance names that arrive with the GitHub side of the platform, and what to do meanwhile."""
 
 
 @dataclass
@@ -69,6 +83,10 @@ def prepare(ctx: Context, command: str) -> list[str]:
         sync.write_build(root, target.platform, app, kitfacts.tokens(found))
     sync.write_guidance(root, sync.tokens(target.platform, app), {} if found is None else kitfacts.skill_files(found))
     return []
+
+
+def not_yet(command: str) -> Outcome:
+    return Outcome(summary=f"`ctzd {command}` {NOT_BUILT}.", next_steps=[NOT_YET[command]], ok=False)
 
 
 # ---------------------------------------------------------------- setup and login
@@ -357,6 +375,13 @@ def render_page(ctx: Context, *, page: str, sets: tuple[str, ...]) -> Outcome:
 _TABLES_SHOWN = 40  # a screenful in the summary; `tables` in the JSON has them all
 
 
+def _unreadable_here(root: Path, source: str) -> kitfacts.SourceFacts | None:
+    """The kit's facts about `source` when it serves only sample rows on this computer, so it has no tables to list."""
+    found = kitfacts.facts(root)
+    about = None if found is None else next((item for item in found.sources if item.name == source), None)
+    return about if about is not None and about.kind != "sample" and about.serves_sample is not None else None
+
+
 def sources(ctx: Context, *, source: str | None, table: str | None) -> Outcome:
     """The kit's sources and loaders; with SOURCE, a database source's tables; with TABLE, a table's columns and rows."""
     root, app = _app(ctx)
@@ -377,6 +402,20 @@ def sources(ctx: Context, *, source: str | None, table: str | None) -> Outcome:
             next_steps=[
                 "Pick the source whose description matches what the person asked for, and tell them in business words which one you will use.",
                 "Add it to [sources].use in app.toml, call its loaders from src/app/data/, and see the `sbu-" + found.sbu + "` skill. For a database source, `ctzd sources SOURCE` lists its tables.",
+            ],
+        )
+    about = _unreadable_here(root, source)
+    if about is not None:
+        lines = [f"{source} cannot be read on this computer ({about.serves_sample}), so its tables cannot be listed here. Its loaders, and the columns their rows have:"]
+        lines += [f"- {loader.example}: {' '.join(loader.doc.split())} Columns: {', '.join(f'{column.name} ({column.type})' for column in loader.columns)}." for loader in about.loaders]
+        return Outcome(
+            summary="\n".join(lines),
+            data={"source": about.model_dump()},
+            next_steps=[
+                (
+                    "Build on its loaders: here they serve sample rows with these columns, and a page showing them says so with the "
+                    f"sample-data banner. `ctzd env`, which would connect {source} on this computer, is not built yet."
+                )
             ],
         )
     args = ("tables", source) if table is None else ("table", source, table)

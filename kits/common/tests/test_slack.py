@@ -31,12 +31,12 @@ def desktop(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_a_table_is_fixed_width_text_with_numbers_right_aligned() -> None:
-    assert slack.table_text(TABLE).splitlines() == ["By sector", "sector        par  bonds", "Gov        $1,235      3", "Corporate    -$50     12"]
+    assert slack.table_text(TABLE).splitlines() == ["By sector", "Sector        Par  Bonds", "Gov        $1,235      3", "Corporate    -$50     12"]
 
 
 def test_a_long_cell_is_cut_and_a_table_without_a_title_starts_with_its_header() -> None:
     text = slack.table_text(Table(pd.DataFrame({"note": ["x" * 50]})))
-    assert text.splitlines() == ["note", "x" * 40]
+    assert text.splitlines() == ["Note", "x" * 40]
 
 
 def test_the_payload_puts_the_table_in_a_code_block() -> None:

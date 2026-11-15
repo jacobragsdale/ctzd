@@ -40,6 +40,8 @@ and `theme`. Nothing imports `ctzd_kit`.
   refuses them. Ids are text.
 - **Never open `.env`.** Never read, print, copy or source it, and never pass it to a program yourself: it holds
   credentials. To look at live data, run `ctzd exec --json -- python -c "..."`, which loads them for you.
+- **Python runs through ctzd.** This computer has no `python` of its own on the PATH: run a one-off with
+  `ctzd exec -- python ...`, the tests with `ctzd check`, and a dashboard with `ctzd dev`.
 - **Never edit locked files**: this file, `.agents/`, `.claude/`, `src/app/__main__.py`, `src/app/theme.py`,
   `src/app/ui.py`, `.github/`, `Dockerfile`, `ruff.toml`, `ty.toml`, `.importlinter`, `pytest.toml`,
   `.pre-commit-config.yaml`, `.gitignore`, `.cursorignore`, `.gitattributes`, `.dockerignore`, `.python-version`,
