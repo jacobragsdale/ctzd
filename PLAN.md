@@ -716,4 +716,4 @@ Added on 2026-11-15, before the first clone in the firm's environment ([docs/por
   with nothing to choose and the reload proof.
 - **What the index must hold** is `scripts/index_check.py`'s list, recorded in docs/package-index.md.
 - **Agent smoke trials** (docs/trials/2026-11-15-smoke.md): three fresh agents built what a business user asked for
-  from the guidance alone; their findings are fixed above. They are not step 6, which stays Jacob's to run.
+  from the guidance alone; their findings are fixed above. They are not step 6, which stays the platform owner's to run.
