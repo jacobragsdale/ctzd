@@ -20,13 +20,15 @@ organisations and people in this repository are `contoso` placeholders, and its 
 | `airflow/` | The factory DAG that turns job specs into DAGs, and the janitor (its own uv project) |
 | `deploy/helm/ctzd-app` | The Helm chart for one app |
 | `scripts/e2e.sh` | Makes one app of each template on each kit, offline, and runs `ctzd check` in each |
+| `scripts/prove-windows.ps1`, `scripts/prove-install.ps1` | The same on a Windows desktop, with the dev server's reload and Edge; and the installer, run as a new Windows user against `scripts/site_standin.py`, a stand-in for the platform's site and index |
 | `validation/` | The validation harness ([docs/validation-plan.md](docs/validation-plan.md)) |
 
 ## Status
 
 The rebuild in [PLAN.md](PLAN.md) is under way; section 15 lists its steps. What runs today is recorded in the
-commit history: each step's commit says what it verified and what it did not. Nothing has run against GitHub, Azure,
-a Windows desktop or Cursor.
+commit history: each step's commit says what it verified and what it did not. Nothing has run against GitHub, Azure or
+Cursor; on Windows, only on a stand-in for the firm's desktops (Windows 11 behind a TLS-inspecting proxy), not a
+Citrix desktop.
 
 ## Developing
 

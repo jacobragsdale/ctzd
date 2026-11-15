@@ -4,6 +4,7 @@ import asyncio
 
 from app import ui
 from app.app import app
+from app.logic import positions as rules
 from app.pages import positions
 
 
@@ -13,7 +14,7 @@ def test_the_app_has_its_positions_page() -> None:
 
 
 def test_the_positions_callback_answers_its_grid_its_stats_and_its_charts() -> None:
-    shown = asyncio.run(positions.show(positions.last_close().isoformat(), None))
+    shown = asyncio.run(positions.show(rules.last_close().isoformat(), None))
     rows, market_value, *_stats, sectors, scatter = shown
     held = ui.grid_rows(rows)
     assert held
@@ -24,4 +25,4 @@ def test_the_positions_callback_answers_its_grid_its_stats_and_its_charts() -> N
 
 
 def test_the_curve_callback_answers_a_figure_from_the_apps_own_sql() -> None:
-    assert asyncio.run(positions.show_curve(positions.last_close().isoformat())) is not None
+    assert asyncio.run(positions.show_curve(rules.last_close().isoformat())) is not None

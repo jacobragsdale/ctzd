@@ -47,8 +47,9 @@ default = true
 # Without a byte-order mark, which Windows PowerShell's utf8 encoding writes and TOML does not allow.
 [IO.File]::WriteAllText((Join-Path $uvConfigDir 'uv.toml'), $uvConfig)
 
-# 3. ctzd itself, as a uv tool (its own Python and environment, upgraded in place).
-uv tool install --upgrade ctzd
+# 3. ctzd itself, as a uv tool (its own Python and environment, upgraded in place), on the platform's Python: uv
+#    would otherwise take the newest it can download.
+uv tool install --python 3.14 --upgrade ctzd
 if ($LASTEXITCODE -ne 0) { throw 'uv could not install ctzd from the internal package index.' }
 
 # 4. Say where ctzd is: the agent's shell keeps the PATH it started with, so it finds `ctzd` by name only after a restart.

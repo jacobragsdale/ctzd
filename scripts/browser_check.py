@@ -410,6 +410,8 @@ def check_reload(run: Run, pages: dict[str, Path]) -> None:
                     module.write_text(text, encoding="utf-8")
                     page.wait_for_function(JS_HEADER_SHOWS, arg=wanted, timeout=RELOAD_MS)
                     timings[wanted] = round(time.monotonic() - started, 1)
+                    # Let the new page's callbacks finish: the next edit's reload would cancel them (ERR_ABORTED).
+                    settle(page)
             except PlaywrightTimeout:
                 run.report.fail(f"reload {path}", f"the open page did not show the edited name within {RELOAD_MS // 1000} s")
             finally:

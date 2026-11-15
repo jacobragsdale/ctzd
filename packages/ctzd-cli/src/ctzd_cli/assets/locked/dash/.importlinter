@@ -19,6 +19,12 @@ unmatched_ignore_imports_alerting = none
 ignore_imports =
     app.__main__ -> app.app
 
+[importlinter:contract:pages-apart]
+name = no page imports another: Dash runs each page's file itself, so an imported page would run twice and its callbacks clash
+type = independence
+modules =
+    app.pages.*
+
 [importlinter:contract:only-data-reads]
 name = only data imports the kit's sources, query and store; the rest of the app may use its helpers
 type = forbidden

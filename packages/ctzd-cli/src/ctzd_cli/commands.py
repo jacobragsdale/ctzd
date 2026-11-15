@@ -8,6 +8,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Protocol, assert_never
 
+from pydantic import ValidationError
+
 from ctzd_cli import appconfig, assets, auth, checks, config, devserver, gitops, kitfacts, kitwork, proc, release, render, scaffold, setup_checks, sync
 from ctzd_cli.appconfig import AppConfig, AppSection, Job, Kind, SourcesSection
 from ctzd_cli.errors import CliError, UsageError
@@ -143,7 +145,13 @@ def new(ctx: Context, *, name: str, sbu: str, kind: Kind, directory: Path | None
     platform = config.load()
     platform.sbu(sbu)
     jobs = (_TEMPLATE_JOB,) if kind == "job" else ()
-    app = AppConfig(app=AppSection(name=name, sbu=sbu, kind=kind, owners=(_owner_email(owner),)), sources=SourcesSection(use=("sample",)), jobs=jobs)
+    try:
+        section = AppSection(name=name, sbu=sbu, kind=kind, owners=(_owner_email(owner),))
+    except ValidationError as err:
+        problems = "; ".join(error["msg"].removeprefix("Value error, ") for error in err.errors(include_url=False))
+        msg = f"ctzd cannot make that app: {problems}."
+        raise UsageError(msg, hint="Choose a name such as bond-prices, and give the owner as an email address.") from None
+    app = AppConfig(app=section, sources=SourcesSection(use=("sample",)), jobs=jobs)
     root = (directory or ctx.cwd) / name
     if root.exists() and any(root.iterdir()):
         msg = f"{root} already exists and is not empty."
@@ -240,6 +248,13 @@ def dev(ctx: Context, *, port: int | None, stop: bool, fake: bool = False) -> Ou
     command = _uv_run(root, "python", "-m", "app", "--dev", "--port", str(chosen))
     where = " on the sample rows" if fake else ""
     match devserver.start(root, command, port=chosen, env=local_env(root, app, fake=fake)):
+        case devserver.Started(server, _process, str(error)):
+            return Outcome(
+                summary=f"The dashboard at {server.url} is waiting for a fix: the app's code stopped with the error in `output`. Fix it; it starts again by itself when the file is saved.",
+                data={"url": server.url, "port": server.port, "output": error, "log": devserver.LOG.as_posix()},
+                next_steps=["Fix the error and save the file; the dashboard starts again by itself, with no need to run `ctzd dev` again."],
+                ok=False,
+            )
         case devserver.Started(server, _process):
             return Outcome(
                 summary=f"The dashboard runs at {server.url}{where} in the background; ctzd dev restarts it, ctzd dev --stop stops it.",

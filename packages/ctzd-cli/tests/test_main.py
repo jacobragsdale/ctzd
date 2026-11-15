@@ -29,6 +29,14 @@ def test_new_without_offline_says_the_github_side_is_not_built(tmp_path: Path, c
     assert not (tmp_path / "bond-prices").exists()
 
 
+@pytest.mark.parametrize("name", ["rl", "Bond-Prices", "1st-app"])
+def test_new_refuses_a_bad_name_in_json_not_a_traceback(tmp_path: Path, capsys: pytest.CaptureFixture[str], name: str) -> None:
+    code, out = run(["new", name, "--sbu", "fi", "--kind", "dash", "--offline", "--owner", "ann.lee@contoso.com"], tmp_path, capsys)
+    assert code == main.EXIT_USAGE
+    assert "3-30 lowercase letters" in str(out["summary"])
+    assert not (tmp_path / name).exists()
+
+
 def test_a_job_app_has_no_dashboard(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     from .conftest import app_config  # noqa: PLC0415 - the one test that needs a job app
 

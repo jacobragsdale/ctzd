@@ -1,10 +1,24 @@
 """The holdings' rules, as pure functions of frames: frames in, a frame out. Nothing here reads anything or imports
 Dash, so a job can run them as they stand, and tests can check them on a few rows."""
 
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
+
 import pandas as pd
 
 BASIS_POINT = 0.0001
 DAYS_A_YEAR = 365.0
+DESK = ZoneInfo("Europe/London")
+SATURDAY = 5
+
+
+def last_close() -> date:
+    """The last weekday before today in London, the close a desk reads in the morning. Here, not in a page, so every
+    page can use it: a page never imports another page, which Dash would then run twice."""
+    day = datetime.now(DESK).date() - timedelta(days=1)
+    while day.weekday() >= SATURDAY:
+        day -= timedelta(days=1)
+    return day
 
 
 def positions(holdings: pd.DataFrame, book: str) -> pd.DataFrame:

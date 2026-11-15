@@ -7,6 +7,7 @@ and `ctzd login --wait` blocks until they have approved it.
 
 import json
 import os
+import ssl
 import time
 import webbrowser
 from collections.abc import Callable
@@ -15,6 +16,7 @@ from datetime import UTC, datetime, timedelta
 import httpx
 import keyring
 import keyring.errors
+import truststore
 from pydantic import BaseModel, ConfigDict
 
 from ctzd_cli import config
@@ -169,4 +171,7 @@ def utc_now() -> datetime:
 
 
 def http_client() -> httpx.Client:
-    return httpx.Client(timeout=_TIMEOUT)
+    """A client that trusts the certificates the operating system trusts, as uv's `system-certs` does: the firm's own
+    authority, and a proxy's that inspects TLS. Python's own bundle (certifi) knows neither, so behind such a proxy
+    every request to GitHub failed with CERTIFICATE_VERIFY_FAILED."""
+    return httpx.Client(timeout=_TIMEOUT, verify=truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT))

@@ -96,6 +96,9 @@ What every page does:
   function in a worker thread, so a slow read never holds the server for everyone else, and shows the sample-data
   banner when the rows came from sample rows. Never call a `data/` function directly in a callback, and never read
   in a plain `def` callback: `ctzd check` refuses both. Several reads are several `await ui.load(...)` lines.
+- **A page never imports another page.** Dash runs each file in `pages/` itself, so a page another page imports runs
+  twice and the browser refuses its callbacks as duplicates; `ctzd check` stops it. What two pages share (a date
+  rule such as `last_close`, a format) goes in `logic/`, or `data/` if it reads.
 - **Rules go in `logic/`**: the callback loads, calls the rules and returns what `ui.py` builds. Keep it that short.
 - **One callback per thing that changes for a different reason**: the template gives the curve its own callback,
   because it depends only on the date.
@@ -117,7 +120,6 @@ from dash import Input, Output, callback
 from app import ui
 from app.data import holdings
 from app.logic import positions as rules
-from app.pages.positions import last_close
 
 dash.register_page(__name__, path="/today", title="Today", name="Today")
 
@@ -135,7 +137,7 @@ def layout() -> dmc.Stack:
 
 @callback(Output(TOTAL, "children"), Output(GRID, "rowData"), Input(LOCATION, "pathname"))
 async def show(_path: str) -> tuple[object, ...]:
-    shown = rules.positions(await ui.load(holdings, last_close()), "")
+    shown = rules.positions(await ui.load(holdings, rules.last_close()), "")
     return ui.text(rules.totals(shown)["market_value"], USD), ui.rows(rules.by_sector(shown))
 ```
 

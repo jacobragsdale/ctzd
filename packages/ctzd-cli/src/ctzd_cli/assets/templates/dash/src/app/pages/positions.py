@@ -2,8 +2,7 @@
 """Positions: every holding of the book asked for, as of a close, with its totals, its sectors, its yield against
 duration and the Treasury curve."""
 
-from datetime import date, datetime, timedelta
-from zoneinfo import ZoneInfo
+from datetime import date
 
 import dash
 import dash_mantine_components as dmc
@@ -26,8 +25,6 @@ SCATTER = "positions-scatter"
 CURVE = "positions-curve"
 GRID = "positions-grid"
 BOOKS = ("Core Rates", "Credit", "Liquidity", "Municipals")
-DESK = ZoneInfo("Europe/London")
-SATURDAY = 5
 USD = ui.money("USD", 0)
 COLUMNS = [
     ui.column("cusip", "CUSIP", pinned=True, width=120),
@@ -48,18 +45,10 @@ COLUMNS = [
 ]
 
 
-def last_close() -> date:
-    """The last weekday before today in London, the close a desk reads in the morning."""
-    day = datetime.now(DESK).date() - timedelta(days=1)
-    while day.weekday() >= SATURDAY:
-        day -= timedelta(days=1)
-    return day
-
-
 def layout() -> dmc.Stack:
     filters = dmc.Group(
         [
-            dmc.DateInput(id=AS_OF, label="As of", value=last_close().isoformat(), valueFormat="D MMM YYYY", w=180),
+            dmc.DateInput(id=AS_OF, label="As of", value=rules.last_close().isoformat(), valueFormat="D MMM YYYY", w=180),
             dmc.Select(id=BOOK, label="Book", data=list(BOOKS), placeholder="All books", clearable=True, w=200),
         ]
     )

@@ -439,7 +439,7 @@ wheels = [
 
 [[package]]
 name = "ctzd"
-version = "0.6.0"
+version = "0.6.1"
 source = { editable = "packages/ctzd-cli" }
 dependencies = [
     { name = "croniter" },
@@ -449,6 +449,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "sqlglot" },
     { name = "tomlkit" },
+    { name = "truststore" },
     { name = "tzdata", marker = "sys_platform == 'win32'" },
 ]
 
@@ -461,6 +462,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.14" },
     { name = "sqlglot", specifier = ">=30.29" },
     { name = "tomlkit", specifier = ">=0.15" },
+    { name = "truststore", specifier = ">=0.10" },
     { name = "tzdata", marker = "sys_platform == 'win32'", specifier = ">=2025.2" },
 ]
 

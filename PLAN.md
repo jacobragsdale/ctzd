@@ -608,7 +608,7 @@ Phase 0's checks:
 - `ctzd login` through the firm's single sign-on, and `ctzd env`'s Entra sign-in, on a Citrix desktop;
 - the Envoy Gateway wildcard routes;
 - the real databases, and the departments' real packages on a desktop and in a pod;
-- the dev server's reload on Windows, which basis left unverified for this backend;
+- the dev server's reload on a Citrix desktop (on the Windows stand-in it is proven by `scripts/prove-windows.ps1`);
 - Cursor, the agent most people will use: one hand-run session, from `ctzd new` to a release, scored
   with the trials' rubric.
 
@@ -672,6 +672,20 @@ a sentence above, this section says so. Each is open to change.
 - **The two locked modules carry the platform's only suppressions**: Dash's private opt-in to React 19 in `ui.py`, and
   DMC 3.0.0's mistyped `theme` argument in `theme.py`. `ctzd_common.email` keeps its name through ruff's
   `allowed-modules`.
+- **`ctzd dev` reloads with its own supervisor, not uvicorn's.** uvicorn's reloader stops its worker on Windows with a
+  console Ctrl+C, which a server `ctzd dev` starts in the background never gets, so it served the old code forever.
+  `python -m app --dev` now holds the port's socket, hands it to each server it starts (on Windows through
+  `socket.share`, with a selector loop, since a proactor loop ties the socket to one process's completion port), and
+  starts a new one after each change under `src/`. While the code cannot start, a standby on the same socket answers
+  `/_ctzd/dev`, says why at `/health/ready` (503) and shows it on the page; `ctzd dev` then answers `ok: false` with
+  the error, and the server starts again once the file is saved. A record whose server is mid-restart is waited for
+  (30 s), not forgotten.
+- **No page imports another page**: Dash runs each file in `pages/` itself, so an imported page ran twice and the
+  browser refused its callbacks as duplicates (the ctzd-pages skill's own page did this). `.importlinter` has a
+  `pages-apart` independence contract, and the template's `last_close` lives in `logic/`.
+- **ctzd trusts the operating system's certificates** (truststore), as `system-certs` makes uv do: behind a
+  TLS-inspecting proxy every GitHub request, and MinGit's download, failed with Python's own bundle.
+- **The installer pins Python 3.14** for ctzd's tool environment; uv otherwise took 3.15, the newest it could download.
 - **Not built in steps 3 to 5**, as section 15 orders: the GitHub and Key Vault side. `ctzd new` without `--offline`
   and `ctzd run` without `--local` say so; `open`, `env`, `deploy`, `promote`, `rollback`, `logs`, `status`, `releases`
   and `delete` are not in the CLI until step 7.
