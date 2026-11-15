@@ -45,6 +45,7 @@ jobs:
         with:
           version: "0.13.6"
       - run: uv sync --locked
+      - run: uv run playwright install --with-deps chromium
       - run: scripts/e2e.sh
 
   airflow:

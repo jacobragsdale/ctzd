@@ -172,7 +172,9 @@ def grid(grid_id: str, columns: Sequence[dict[str, object]], *, height: int = 48
         columnDefs=list(columns),
         rowData=[],
         defaultColDef={"sortable": True, "resizable": True, "filter": True},
-        dashGridOptions={"theme": theme.GRID, "overlayNoRowsTemplate": EMPTY_ROWS, "animateRows": False},
+        # Columns as wide as what they hold, once the rows arrive; the empty-grid words as plain text, which
+        # dash-ag-grid allows, where an overlay template is HTML it refuses.
+        dashGridOptions={"theme": theme.GRID, "localeText": {"noRowsToShow": EMPTY_ROWS}, "animateRows": False, "autoSizeStrategy": {"type": "fitCellContents"}},
         style={"height": f"{height}px", "width": "100%"},
     )
     return _loading(table, grid_id, ["rowData"])

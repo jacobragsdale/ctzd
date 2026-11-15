@@ -90,11 +90,11 @@ async def show(as_of: str, book: str | None) -> tuple[object, ...]:
         ui.text(total["pnl"], USD),
         ui.text(total["ytw"], ui.pct(2)),
         ui.bar(rules.by_sector(shown), x="sector", y="market_value", y_format=USD),
-        ui.scatter(shown, x="duration", y="ytw", x_format=ui.number(2), y_format=ui.pct(2), label="cusip", color="sector"),
+        ui.scatter(shown, x="duration", y="ytw", x_format=ui.number(2), y_format=ui.pct(2), label="cusip", color="sector").update_yaxes(title_text="Yield to worst"),
     )
 
 
 @callback(Output(CURVE, "figure"), Input(AS_OF, "value"))
 async def show_curve(as_of: str) -> object:
     points = await ui.load(curve, date.fromisoformat(as_of))
-    return ui.line(points, x="years", y="ytw", y_format=ui.pct(2))
+    return ui.line(points, x="years", y="ytw", y_format=ui.pct(2)).update_yaxes(title_text="Yield to worst")

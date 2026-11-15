@@ -55,8 +55,9 @@ TOKENS: Final[dict[str, tuple[str, str]]] = {
 FONT_SANS: Final = '"Segoe UI Variable", "Segoe UI", system-ui, -apple-system, sans-serif'
 FONT_NUM: Final = '"Segoe UI Variable", "Segoe UI", system-ui, sans-serif'
 """The desktop's own fonts, with tabular figures switched on for numbers: nothing is fetched from another origin."""
-SERIES: Final[tuple[str, ...]] = ("#3c7dde", "#d54f00", "#2fa172", "#c68610", "#008300", "#d04782", "#8c83e5", "#e46361")
-"""A figure's series colours, in their fixed order: one palette that reads on both schemes' cards."""
+SERIES: Final[tuple[str, ...]] = ("#3c7dde", "#d54f00", "#2fa172", "#c68610", "#8c83e5", "#d04782", "#008300", "#e46361")
+"""A figure's series colours, in their fixed order: one palette that reads on both schemes' cards, the second green
+seventh so the first six never share a hue."""
 PALETTE: Final[tuple[str, ...]] = ("#eef3fd", "#dbe6fb", "#b9cdf5", "#8fb0ef", "#6a96e8", "#4a7fe2", "#2f63d6", "#2856bd", "#224aa2", "#1c3d86")
 """Mantine's ten-step primary palette, `ctzd`, at the primary's hue."""
 

@@ -8,6 +8,7 @@ Platform-owned: ctzd sync rewrites this file.
 import argparse
 import os
 import sys
+import uuid
 from collections.abc import Sequence
 
 import uvicorn
@@ -17,6 +18,16 @@ from fastapi.responses import PlainTextResponse
 DEV_ID = "CTZD_DEV_ID"
 """The token `ctzd dev` gives the server, which it answers at `/_ctzd/dev`, so `ctzd dev --stop` stops only its own."""
 _DEV = "CTZD_DEV"
+_BOOT = "/_ctzd/boot"
+# Under `ctzd dev`, every open page asks each second which server process answers it, and loads itself again when a
+# new one does: uvicorn starts a new process for each change to the code, and Dash's own hot reload, on the FastAPI
+# backend, sees the new process but does not redraw the page.
+_RELOAD_SCRIPT = (
+    "<script>(() => { let boot = null; const ask = () => fetch('" + _BOOT + "', {cache: 'no-store'})"
+    ".then(answer => answer.ok ? answer.text() : null)"
+    ".then(now => { if (now && boot && now !== boot) { window.location.reload(); } if (now) { boot = now; } })"
+    ".catch(() => null).finally(() => setTimeout(ask, 1000)); ask(); })();</script>"
+)
 
 
 def _dash_variables() -> list[str]:
@@ -25,16 +36,22 @@ def _dash_variables() -> list[str]:
 
 
 def server() -> FastAPI:
-    """The app's server: Dash's FastAPI app, with `/health/live`, `/health/ready` and, under `ctzd dev`, `/_ctzd/dev`."""
+    """The app's server: Dash's FastAPI app, with `/health/live`, `/health/ready` and, under `ctzd dev`, `/_ctzd/dev`
+    and `/_ctzd/boot`, the process's id, by which open pages load themselves again after a change to the code."""
     from app.app import app  # noqa: PLC0415 - built when the server starts, in uvicorn's worker under --dev
 
     built = app.server
     if not isinstance(built, FastAPI):
         msg = "The app is not on Dash's FastAPI backend: build it with ui.dash_app(TITLE) in app.py."
         raise TypeError(msg)
-    if os.environ.get(_DEV) == "1":
-        app.enable_dev_tools(debug=True, dev_tools_hot_reload=True, dev_tools_disable_version_check=True)
+    dev_mode = os.environ.get(_DEV) == "1"
+    if dev_mode:
+        # Dash's checks of component properties, without its debug panel, which would sit over the page the person
+        # is looking at: errors reach them through `ui.on_error`, and the agent through `ctzd render`.
+        app.enable_dev_tools(debug=True, dev_tools_ui=False, dev_tools_hot_reload=False, dev_tools_disable_version_check=True)
+        app.index_string = app.index_string.replace("{%renderer%}", "{%renderer%}\n" + _RELOAD_SCRIPT)
     token = os.environ.get(DEV_ID, "")
+    boot = uuid.uuid4().hex
 
     def live() -> PlainTextResponse:
         return PlainTextResponse("ok")
@@ -42,7 +59,10 @@ def server() -> FastAPI:
     def dev() -> PlainTextResponse:
         return PlainTextResponse(token)
 
-    routes = [("/health/live", live), ("/health/ready", live), *([("/_ctzd/dev", dev)] if token else [])]
+    def booted() -> PlainTextResponse:
+        return PlainTextResponse(boot)
+
+    routes = [("/health/live", live), ("/health/ready", live), *([("/_ctzd/dev", dev)] if token else []), *([(_BOOT, booted)] if dev_mode else [])]
     # Added before Dash's first request sets up its own routes, so they come before its catch-all page route.
     for path, endpoint in routes:
         built.add_api_route(path, endpoint, methods=["GET"], include_in_schema=False)
