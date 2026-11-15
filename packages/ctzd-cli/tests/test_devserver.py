@@ -144,3 +144,21 @@ def test_dev_on_a_taken_port_is_a_usage_error(tmp_path: Path, capsys: pytest.Cap
     code, out = run(["dev", "--port", str(taken_port)], tmp_path, capsys)
     assert code == main.EXIT_USAGE
     assert out["summary"] == f"Port {taken_port} is in use by another program."
+
+
+def test_a_port_another_dashboard_took_at_the_same_moment_moves_to_the_next_free_one(tmp_path: Path) -> None:
+    first = _free()
+    asked: list[int] = []
+
+    def command(port: int) -> list[str]:
+        asked.append(port)
+        if len(asked) == 1:
+            return [sys.executable, "-c", f"import sys; print({devserver.LOST_PORT!r} + ' 127.0.0.1:{port}: in use', flush=True); sys.exit(1)"]
+        return _http_server(port)
+
+    started = devserver.start_free(tmp_path, command, port=first, env={})
+    assert isinstance(started, devserver.Started)
+    assert asked[0] == first
+    assert started.server.port == asked[1] != first
+    devserver.stop(tmp_path)
+    started.process.wait(timeout=10)

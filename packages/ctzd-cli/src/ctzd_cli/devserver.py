@@ -40,6 +40,10 @@ _POLL_SECONDS = 0.5
 _RESTART_SECONDS = 30.0  # how long the app may take to start again after a change, on a slow desktop
 ID_VARIABLE = "CTZD_DEV_ID"  # the app's __main__.py reports it at IDENTITY_PATH
 IDENTITY_PATH = "/_ctzd/dev"
+LOST_PORT = "ctzd dev: cannot listen on"
+"""What the app's `python -m app --dev` says when its port was taken between `ctzd dev` choosing it and the app
+listening on it: two dashboards starting at the same moment."""
+_PORT_RETRIES = 3
 
 
 @dataclass(frozen=True)
@@ -179,6 +183,20 @@ def start(root: Path, command: Sequence[str], *, port: int, env: Mapping[str, st
     _kill(server)
     (root / STATE).unlink(missing_ok=True)
     return Failed(reason=f"did not answer within {_START_SECONDS:.0f} seconds", log=_log_tail(root))
+
+
+def start_free(root: Path, command_for: Callable[[int], Sequence[str]], *, port: int, env: Mapping[str, str], clock: Callable[[], float] = time.monotonic) -> Started | Failed:
+    """`start` on `port`, or on the next free port when another dashboard starting at the same moment took it."""
+    started = start(root, command_for(port), port=port, env=env, clock=clock)
+    for _ in range(_PORT_RETRIES):
+        if not isinstance(started, Failed) or LOST_PORT not in started.log:
+            return started
+        found = free_port(port + 1)
+        if found is None:
+            return started
+        port = found
+        started = start(root, command_for(port), port=port, env=env, clock=clock)
+    return started
 
 
 def stop(root: Path) -> Server | None:

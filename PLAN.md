@@ -687,5 +687,33 @@ a sentence above, this section says so. Each is open to change.
   TLS-inspecting proxy every GitHub request, and MinGit's download, failed with Python's own bundle.
 - **The installer pins Python 3.14** for ctzd's tool environment; uv otherwise took 3.15, the newest it could download.
 - **Not built in steps 3 to 5**, as section 15 orders: the GitHub and Key Vault side. `ctzd new` without `--offline`
-  and `ctzd run` without `--local` say so; `open`, `env`, `deploy`, `promote`, `rollback`, `logs`, `status`, `releases`
-  and `delete` are not in the CLI until step 7.
+  and `ctzd run` without `--local` say so, and so, since 2026-11-15, do `open`, `env`, `deploy`, `promote`,
+  `rollback`, `logs`, `status`, `releases` and `delete`: the guidance names them, and an agent met argparse's refusal,
+  so each now says it is not built yet and what to do meanwhile (run the app on this computer; build on sample rows).
+
+Added on 2026-11-15, before the first clone in the firm's environment ([docs/porting.md](docs/porting.md)):
+
+- **Moving the platform is a change to two files.** `platform.toml` (with `[platform] site`, the platform's own site,
+  in place of `mingit_url`) and the index in `build.toml`. Every address in what the CLI ships is a `{{token}}` from
+  `sync.platform_tokens`; the guidance, skills and start guide are filled per app. The Windows installer and the
+  bootstrap skill moved into the CLI's assets (`assets/site/`), and `ctzd ci site --out DIR` writes them from the
+  settings. The installer writes uv.toml without a byte-order mark and with `system-certs = true`.
+- **Tests that make apps use the platform's index**: `ctzd kit check`, `scripts/e2e.sh` and the validation harness put
+  local wheels before build.toml's index, or before `CTZD_PYTHON_INDEX`, which this public repository's checks and CI
+  set to PyPI. Nothing types in pypi.org.
+- **In the cluster an email needs `CTZD_SMTP_SENDER`**, from the `ctzd-smtp` ConfigMap, as it needs the host; there
+  is no default sender.
+- **Under `ctzd dev`** Dash's debug panel is off (it covered the page and offered Plotly Cloud), and so is Dash's hot
+  reload, which on the FastAPI backend redraws nothing after a new server process starts; the server answers
+  `/_ctzd/boot` with its process's id and an open page reloads itself when that changes.
+- **Grids** size their columns to their contents once rows arrive, and say "No rows for this view" through
+  `localeText`: dash-ag-grid refuses an HTML overlay template.
+- **Email, attachment and Slack tables** head a column as a page's grid does by default ("Market value").
+- **`ctzd sources SOURCE`** for a source that serves only sample rows here lists its loaders and their columns.
+- **`ui.grid_rows`** reads a grid's answer back typed, for page tests.
+- **The browser is a check**: `scripts/browser_check.py` (Playwright, in the dev group) opens every page in light and
+  dark and holds it to what `ctzd render` reports; `scripts/e2e.sh` runs it on each dashboard, with the skill's page
+  with nothing to choose and the reload proof.
+- **What the index must hold** is `scripts/index_check.py`'s list, recorded in docs/package-index.md.
+- **Agent smoke trials** (docs/trials/2026-11-15-smoke.md): three fresh agents built what a business user asked for
+  from the guidance alone; their findings are fixed above. They are not step 6, which stays Jacob's to run.

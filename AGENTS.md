@@ -14,7 +14,7 @@ the agreed decisions, and code that departs from it needs the plan updated in th
 | `.agents/skills/ctzd-kits` | The skill for a kit maintainer's agent |
 | `deploy/helm/ctzd-app`, `airflow/`, `images/base` | The chart, the factory and janitor DAGs (their own uv project), the base image |
 | `validation/` | The validation harness |
-| `scripts/e2e.sh` | One app of each template on each kit, made offline and checked |
+| `scripts/` | `e2e.sh`: one app of each template on each kit, made offline, checked and opened in a browser (`browser_check.py`); `index_check.py`: what the package index must hold; `prove-windows.ps1` and `prove-install.ps1` (with `site_standin.py`): the same on a Windows desktop, and a fresh user's install |
 
 ## Rules
 

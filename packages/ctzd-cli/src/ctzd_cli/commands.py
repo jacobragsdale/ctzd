@@ -245,9 +245,15 @@ def dev(ctx: Context, *, port: int | None, stop: bool, fake: bool = False) -> Ou
         msg = "This app has no dashboard; it runs only jobs."
         raise UsageError(msg, hint="Run a job on this desktop with `ctzd run JOB --local`.")
     chosen = _dev_port(port, previous=None if stopped is None else stopped.port)
-    command = _uv_run(root, "python", "-m", "app", "--dev", "--port", str(chosen))
+
+    def command(on: int) -> list[str]:
+        return _uv_run(root, "python", "-m", "app", "--dev", "--port", str(on))
+
     where = " on the sample rows" if fake else ""
-    match devserver.start(root, command, port=chosen, env=local_env(root, app, fake=fake)):
+    env = local_env(root, app, fake=fake)
+    # A port the agent asked for is that port or nothing; one ctzd chose moves on if another dashboard took it first.
+    begun = devserver.start(root, command(chosen), port=chosen, env=env) if port is not None else devserver.start_free(root, command, port=chosen, env=env)
+    match begun:
         case devserver.Started(server, _process, str(error)):
             return Outcome(
                 summary=f"The dashboard at {server.url} is waiting for a fix: the app's code stopped with the error in `output`. Fix it; it starts again by itself when the file is saved.",

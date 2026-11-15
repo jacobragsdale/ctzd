@@ -62,7 +62,10 @@ is the default now.
 
 On Linux or WSL, `scripts/e2e.sh` makes an app of each template on each kit, offline, runs every gate, opens each
 dashboard in a browser (`E2E_BROWSER=msedge` for the installed Edge) and proves the reload. On a Windows desktop,
-`scripts/prove-windows.ps1` does the same from wheels (see its header).
+`scripts/prove-windows.ps1` does the same from wheels, in Edge, and proves the reload and a syntax error's recovery
+(see its header; `-Index` or `CTZD_PYTHON_INDEX` names the index if build.toml's is not reachable from there).
+`scripts/prove-install.ps1` runs the installer as a brand-new local user against `scripts/site_standin.py`, a
+stand-in for the site and index; on a firm desktop, run the real installer instead, as the bootstrap skill says.
 
 ## 6. The installer and the bootstrap skill
 

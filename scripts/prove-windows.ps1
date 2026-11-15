@@ -8,7 +8,9 @@
 # each check that has no exit code of its own (the reload's), and the browser's screenshots under ROOT\browser\APP.
 # Start it detached (Invoke-CimMethod Win32_Process Create) when driving it over ssh: a dev server started inside an
 # ssh session ends with that session.
-param([string]$Root = (Join-Path $env:USERPROFILE "ctzd-proof"), [switch]$NoBrowser)
+# Apps install from the local wheels, then from the platform's own index (build.toml's), or from -Index, which
+# defaults to CTZD_PYTHON_INDEX when it is set (the stand-in, with no internal index, uses https://pypi.org/simple).
+param([string]$Root = (Join-Path $env:USERPROFILE "ctzd-proof"), [switch]$NoBrowser, [string]$Index = $env:CTZD_PYTHON_INDEX)
 $ErrorActionPreference = "Continue"
 $log = Join-Path $Root "prove.log"
 $wheels = Join-Path $Root "wheels"
@@ -85,11 +87,15 @@ Remove-Item -Recurse -Force (Join-Path $Root "apps"), (Join-Path $Root "browser"
 Step "clean uv cache" { uv cache clean ctzd ctzd-kit ctzd-common ctzd-fi ctzd-mas fi-risklib }
 Step "install ctzd" { uv tool install --force --python 3.14 (Get-ChildItem (Join-Path $wheels "ctzd-*.whl") | Select-Object -First 1).FullName }
 $ctzd = Join-Path (uv tool dir --bin) "ctzd.exe"
-# The bundled platform config, with the internal index swapped for the local wheels plus PyPI.
-$bundled = Join-Path (uv tool dir) "ctzd\Lib\site-packages\ctzd_cli\platform.toml"
+# The bundled platform config, with the local wheels before the index apps install from.
+$cli = Join-Path (uv tool dir) "ctzd\Lib\site-packages\ctzd_cli"
+$bundled = Join-Path $cli "platform.toml"
+if (-not $Index) {
+    $Index = & (Join-Path (uv tool dir) "ctzd\Scripts\python.exe") -c "import tomllib, sys; print(next(i['url'] for i in tomllib.load(open(sys.argv[1], 'rb'))['python']['index'] if i.get('default')))" (Join-Path $cli "assets\build.toml")
+}
 $env:CTZD_PLATFORM_CONFIG = Join-Path $Root "platform.toml"
-$index = ($wheels -replace "\\", "/")
-$config = (Get-Content -Raw $bundled) + "`n[build_overrides]`npython_index = [{name = `"local`", url = `"$index`", format = `"flat`"}, {name = `"pypi`", url = `"https://pypi.org/simple`", default = true}]`n"
+$local = ($wheels -replace "\\", "/")
+$config = (Get-Content -Raw $bundled) + "`n[build_overrides]`npython_index = [{name = `"local`", url = `"$local`", format = `"flat`"}, {name = `"index`", url = `"$Index`", default = true}]`n"
 [IO.File]::WriteAllText($env:CTZD_PLATFORM_CONFIG, $config)  # no byte-order mark, which TOML refuses
 Step "ctzd version" { & $ctzd --version }
 # The browser check's own environment: Playwright drives the installed Edge, so no browser is downloaded.
