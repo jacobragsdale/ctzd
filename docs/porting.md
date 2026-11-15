@@ -7,7 +7,8 @@ and `mas` are made-up departments with sample rows only.
 
 ## What works and what does not, before you start
 
-Works on a desktop, offline: `ctzd new --offline`, `ctzd dev` (the page reloads itself about a second after a save),
+Works on a desktop, offline: `ctzd new --offline`, `ctzd dev` (an open page reloads itself after a save: about 1 s
+on Linux, 2.5 s on the Windows stand-in),
 `ctzd render`, `ctzd check` (every gate), `ctzd run JOB --local`, `ctzd exec`, `ctzd sources`, and `ctzd kit new`,
 `kit add source` and `kit check` for maintainers. `ctzd ci site` writes the installer and the bootstrap skill.
 
@@ -80,13 +81,21 @@ index, the Python mirror and `system-certs = true`.
 
 ## 7. Try an agent
 
+The kits are not on the firm's index (nothing publishes them before step 7), so an app installs them from the local
+wheels the proofs build, with the proofs' settings. After step 5, `scripts/e2e.sh ~/ctzd-try` (or the Windows proof's
+`ROOT`) holds the wheels, `platform.toml` and `home`. Make an app with those settings, and start the agent from a shell
+that has them, so its `ctzd` uses them too:
+
 ```sh
-ctzd new bond-dashboard --sbu fi --kind dash --offline --owner YOU@FIRM
+export CTZD_PLATFORM_CONFIG=~/ctzd-try/platform.toml CTZD_HOME=~/ctzd-try/home PATH="$PWD/.venv/bin:$PATH"
+ctzd new bond-dashboard --sbu fi --kind dash --offline --owner YOU@FIRM --dir ~/ctzd-try/apps
+cd ~/ctzd-try/apps/bond-dashboard && claude      # or open the folder in Cursor from this shell
 ```
 
-Open the folder in the firm's agent (Cursor, or Claude Code), and ask for something in business words, as in
-[trials/2026-11-15-smoke.md](trials/2026-11-15-smoke.md). Check its work with `ctzd check`, `ctzd dev --fake` and
-`uv run python scripts/browser_check.py APP_DIR --out DIR`.
+On Windows, set the same two variables (`$env:CTZD_PLATFORM_CONFIG`, `$env:CTZD_HOME`) to the proof's `ROOT` before
+starting the agent; the proof installed `ctzd` as a uv tool. Then ask for something in business words, as in
+[trials/2026-11-15-smoke.md](trials/2026-11-15-smoke.md), and check the agent's work with `ctzd check`,
+`ctzd dev --fake` and `uv run python scripts/browser_check.py APP_DIR --out DIR`.
 
 ## What to watch for
 
